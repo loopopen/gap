@@ -4,13 +4,16 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/lopolopen/gap/broker"
 	"github.com/lopolopen/gap/internal/enum"
+	"github.com/lopolopen/gap/options/gap"
+	"github.com/lopolopen/gap/storage"
 )
 
-var extRegistries = make(map[enum.PluginType]any)
+var pluginRegistries = make(map[enum.PluginType]any)
 
 func Register[T any](typ enum.PluginType, value T) {
-	extRegistries[typ] = value
+	pluginRegistries[typ] = value
 }
 
 func MustGet[T any](typ enum.PluginType) T {
@@ -18,11 +21,37 @@ func MustGet[T any](typ enum.PluginType) T {
 	if typ == enum.None {
 		return zero
 	}
-	v, _ := extRegistries[typ]
+	v, _ := pluginRegistries[typ]
 	t, ok := v.(T)
 	if !ok {
 		elem := reflect.TypeOf((*T)(nil)).Elem()
 		panic(fmt.Sprintf("key '%s': got %T, want %s", typ, v, elem.String()))
 	}
 	return t
+}
+
+func MustGetBroker(gapOpts *gap.Options) broker.Broker {
+	bp := gapOpts.BrokerPlugin
+	if bp == nil {
+		return nil
+	}
+	f := MustGet[broker.Factory](bp.PluginType())
+	brok, err := f.CreateBroker(gapOpts)
+	if err != nil {
+		panic(err)
+	}
+	return brok
+}
+
+func MustGetStorage(gapOpts *gap.Options) storage.Storage {
+	sp := gapOpts.StoragePlugin
+	if sp == nil {
+		return nil
+	}
+	f := MustGet[storage.Factory](sp.PluginType())
+	stor, err := f.CreateStorage(gapOpts)
+	if err != nil {
+		panic(err)
+	}
+	return stor
 }

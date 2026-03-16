@@ -11,8 +11,10 @@ func (p *Published) ToEntity() *entity.Envelope {
 	}
 	envelope_ := new(entity.Envelope)
 	envelope_.ID = p.ID
+	envelope_.CreatedAt = p.CreatedAt
 	envelope_.Version = p.Version
 	envelope_.Topic = p.Topic
+	envelope_.Status = p.Status
 	envelope_.Payload = []byte(p.Payload)
 	envelope_.Retries = p.Retries
 	p.writeEntity(envelope_)

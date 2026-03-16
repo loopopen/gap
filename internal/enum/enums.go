@@ -1,8 +1,10 @@
 package enum
 
-//go:generate go tool shoot enum -sql -type=Status
+//go:generate go tool shoot enum -sql -json -type=Status
 
 type Status int32
+
+const StatusInvalid = -2
 
 const (
 	StatusFailed  Status = -1
@@ -19,7 +21,6 @@ const (
 	Self MetaType = iota
 	Storage
 	Broker
-	WebFramwork
 )
 
 //go:generate go tool shoot enum -json -type=PluginType

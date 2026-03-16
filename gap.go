@@ -2,9 +2,13 @@ package gap
 
 import (
 	"github.com/lopolopen/gap/internal"
+	"github.com/lopolopen/gap/internal/dashboard"
+	"github.com/lopolopen/gap/internal/enum"
 	"github.com/lopolopen/gap/internal/tx"
 	"github.com/lopolopen/gap/options/gap"
 )
+
+const version = "v0.0.2-alpha.5"
 
 const (
 	KeysMessageID     = internal.KeysMessageID
@@ -28,3 +32,7 @@ type EventPublisher = internal.EventPublisher
 type Handler[T any] = gap.Handler[T]
 
 type Options = gap.Options
+
+func init() {
+	dashboard.AddMeta(enum.Self, 0, version)
+}

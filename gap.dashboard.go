@@ -1,6 +1,7 @@
 package gap
 
 import (
+	"fmt"
 	"net/http"
 	"path"
 
@@ -27,8 +28,18 @@ func initDashboard(gapOpts *Options) {
 	prefix := opts.NormalPrefix()
 
 	for _, r := range boardSvc.HandleAPIs() {
-		opts.Route(r.Method, r.Path, r.Handler)
+		opts.Route(r.Method, addAPIPrefix(prefix, r.Path), r.Handler)
 	}
+
+	opts.Route(http.MethodGet, addAPIPrefix(prefix, "*"), http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, fmt.Sprintf("%d %s %s", http.StatusNotFound, http.MethodGet, r.URL.Path), http.StatusNotFound)
+		}))
+
 	//* must be put bottom
 	opts.Route(http.MethodGet, path.Join(prefix, "*"), boardSvc.HandleSPA())
+}
+
+func addAPIPrefix(prefix, subPath string) string {
+	return path.Join(prefix, "api", subPath)
 }

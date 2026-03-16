@@ -8,6 +8,8 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+const version = "v0.0.1-alpha.6"
+
 //go:generate go tool shoot new -opt -short -type=Options
 
 type Options struct {

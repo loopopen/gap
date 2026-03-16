@@ -58,5 +58,5 @@ func makeDB(opts *Options) (*gorm.DB, error) {
 
 func init() {
 	internal.Register[storage.Factory](enum.GORM, &factory{})
-	dashboard.AddMeta(enum.Storage, enum.GORM.String(), "")
+	dashboard.AddMeta(enum.Storage, enum.GORM, version)
 }

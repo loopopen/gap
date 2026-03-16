@@ -6,8 +6,10 @@ import (
 	"log/slog"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/bwmarrin/snowflake"
+	"github.com/lopolopen/gap/internal/enum"
 	"github.com/lopolopen/gap/internal/errx"
 )
 
@@ -26,15 +28,17 @@ func MustInitSnowflake(node int64) {
 }
 
 type Envelope struct {
-	ID      uint
-	Headers map[string]string
-	Version string
-	Topic   string
-	Group   string
-	Message any
-	Payload []byte
-	Retries int
-	Tag     any
+	ID        uint
+	CreatedAt time.Time
+	Headers   map[string]string
+	Version   string
+	Topic     string
+	Group     string
+	Status    enum.Status
+	Message   any
+	Payload   []byte
+	Retries   int
+	Tag       any
 }
 
 func NewEnvelope(version string, topic string, msg any) *Envelope {

@@ -3,8 +3,27 @@
 build-ui:
 	cd ./internal/dashboard/app && npm run build
 
-# release:
-# 	git tag broker/xkafka/v0.0.1-alpha.2
-# 	git tag broker/xrabbitmq/v0.0.1-alpha.2
-# 	git tag storage/xgorm/v0.0.1-alpha.2
-# 	git tag storage/xmysql/v0.0.1-alpha.2
+define tag_func
+	@if [ -z "$(tag)" ]; then \
+		grep -oE 'version = "v[0-9]+\.[^"]*' $(1) | cut -d'"' -f2; \
+	else \
+		sed -i '' "s/= \"v[0-9]\{1,\}\.[^\"]*\"/= \"$(tag)\"/" $(1); \
+		git commit -am"chore: $(2)$(tag)"; \
+		git tag $(2)$(tag); \
+	fi
+endef
+
+tag-gap:
+	$(call tag_func,./gap.go,)
+
+tag-xgorm:
+	$(call tag_func,./storage/xgorm/options.go,storage/xgorm/)
+
+tag-xmysql:
+	$(call tag_func,./storage/xmysql/options.go,storage/xmysql/)
+
+tag-xkafka:
+	$(call tag_func,./broker/xkafka/options.go,broker/xkafka/)
+
+tag-xrabbitmq:
+	$(call tag_func,./broker/xrabbitmq/options.go,broker/xrabbitmq/)

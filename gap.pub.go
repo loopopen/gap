@@ -15,11 +15,11 @@ import (
 func NewPublisher[T any](opts ...shoot.Option[Options, *Options]) Publisher[T] {
 	gapOpts := new(Options).With(opts...)
 
-	brok := mustGetBroker(gapOpts)
+	brok := internal.MustGetBroker(gapOpts)
 	if brok == nil {
 		panic("broker must not be nil")
 	}
-	stor := mustGetStorage(gapOpts)
+	stor := internal.MustGetStorage(gapOpts)
 
 	//only publisher with storage can have a pump
 	if stor != nil {

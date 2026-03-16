@@ -11,8 +11,10 @@ func (r *Received) ToEntity() *entity.Envelope {
 	}
 	envelope_ := new(entity.Envelope)
 	envelope_.ID = r.ID
+	envelope_.CreatedAt = r.CreatedAt
 	envelope_.Version = r.Version
 	envelope_.Topic = r.Topic
+	envelope_.Status = r.Status
 	envelope_.Payload = []byte(r.Payload)
 	envelope_.Retries = r.Retries
 	envelope_.Group = r.Group

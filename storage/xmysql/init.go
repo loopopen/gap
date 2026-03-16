@@ -40,5 +40,5 @@ func (f factory) CreateStorage(gapOpts *gap.Options) (storage.Storage, error) {
 
 func init() {
 	internal.Register[storage.Factory](enum.MySQL, &factory{})
-	dashboard.AddMeta(enum.Storage, enum.MySQL.String(), "")
+	dashboard.AddMeta(enum.Storage, enum.MySQL, version)
 }

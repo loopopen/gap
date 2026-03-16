@@ -77,11 +77,11 @@ func (g *groupedSubs) subscribeOne(optsClone *Options, hOpts gap.HandlerOptions)
 	}
 	sub, ok := g.subMap[group]
 	if !ok {
-		brok := mustGetBroker(optsClone)
+		brok := internal.MustGetBroker(optsClone)
 		if brok == nil {
 			panic("broker must not be nil")
 		}
-		stor := mustGetStorage(optsClone)
+		stor := internal.MustGetStorage(optsClone)
 
 		sub = internal.NewSub(optsClone, brok, stor)
 		g.subMap[group] = sub

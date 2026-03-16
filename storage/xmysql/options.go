@@ -6,6 +6,8 @@ import (
 	"github.com/lopolopen/shoot"
 )
 
+const version = "v0.0.1-alpha.3"
+
 //go:generate go tool shoot new -opt -short -type=Options
 
 type Options struct {

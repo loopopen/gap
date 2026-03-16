@@ -14,27 +14,24 @@ func _() {
 	_ = x[Self-0]
 	_ = x[Storage-1]
 	_ = x[Broker-2]
-	_ = x[WebFramwork-3]
 }
 
-const _metaType_max = Self | Storage | Broker | WebFramwork
+const _metaType_max = Self | Storage | Broker
 
-var _metaType_values = []MetaType{Self, Storage, Broker, WebFramwork}
+var _metaType_values = []MetaType{Self, Storage, Broker}
 
-var _metaType_strings = []string{"Self", "Storage", "Broker", "WebFramwork"}
+var _metaType_strings = []string{"Self", "Storage", "Broker"}
 
 var _metaType_string_map = map[MetaType]string{
-	Self:        "Self",
-	Storage:     "Storage",
-	Broker:      "Broker",
-	WebFramwork: "WebFramwork",
+	Self:    "Self",
+	Storage: "Storage",
+	Broker:  "Broker",
 }
 
 var _metaType_value_map = map[string]MetaType{
-	"Self":        Self,
-	"Storage":     Storage,
-	"Broker":      Broker,
-	"WebFramwork": WebFramwork,
+	"Self":    Self,
+	"Storage": Storage,
+	"Broker":  Broker,
 }
 
 // String returns the string value of type MetaType
