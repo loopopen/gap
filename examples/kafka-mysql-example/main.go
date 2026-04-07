@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"examples/kafka-mysql-example/sqltx"
 	"fmt"
 	"log/slog"
 	"os/signal"
@@ -14,9 +13,12 @@ import (
 	"github.com/lopolopen/gap"
 	"github.com/lopolopen/gap/broker/xkafka"
 	"github.com/lopolopen/gap/storage/xmysql"
+	"github.com/lopolopen/gap/storage/xsql"
 )
 
 func main() {
+	// slog.SetLogLoggerLevel(slog.LevelDebug)
+
 	dsn := "root:root@tcp(127.0.0.1:3306)/example?charset=utf8mb4&parseTime=True&loc=Local"
 	brokers := []string{"127.0.0.1:9092"}
 
@@ -24,7 +26,7 @@ func main() {
 	defer stop()
 
 	pub := gap.NewPublisher[time.Time](
-		gap.WithContext(ctx),
+		gap.WithDrain(ctx, 5),
 		xkafka.UseKafka(
 			xkafka.Brokers(brokers),
 		),
@@ -34,14 +36,8 @@ func main() {
 	)
 
 	gap.Subscribe(
-		gap.WithContext(ctx),
+		gap.From(pub),
 		gap.ServiceName("kafka-mysql-example.worker"),
-		xkafka.UseKafka(
-			xkafka.Brokers(brokers),
-		),
-		xmysql.UseMySQL(
-			xmysql.DSN(dsn),
-		),
 	)
 
 	db := must(sql.Open("mysql", dsn))
@@ -58,29 +54,21 @@ func runjob(ctx context.Context, db *sql.DB, pub gap.Publisher[time.Time]) {
 	for range ticker.C {
 		slog.Info("running job...")
 
-		_ = func() (err error) {
-			var tx *sql.Tx
-			tx, err = db.Begin()
-			if err != nil {
-				return nil
-			}
-			defer func() {
-				if err != nil {
-					tx.Rollback()
-				} else {
-					err = tx.Commit()
-				}
-			}()
-			pub := must(pub.Bind(sqltx.New(tx)))
+		err := xsql.DoInTx(ctx, func(ctx context.Context, txer gap.Txer) error {
+			pub := must(pub.Bind(txer))
 
 			//do biz db change...
 
-			err = pub.Publish(ctx, "topic.time.now", time.Now())
+			err := pub.Publish(ctx, "topic.time.now", time.Now())
 			if err != nil {
 				return err
 			}
+
 			return nil
-		}()
+		}, db)
+		if err != nil {
+			slog.Error("job failed", slog.Any("err", err))
+		}
 	}
 }
 

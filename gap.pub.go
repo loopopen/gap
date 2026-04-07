@@ -3,28 +3,35 @@ package gap
 import (
 	"log/slog"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/lopolopen/gap/internal"
 	"github.com/lopolopen/gap/internal/entity"
+	"github.com/lopolopen/gap/internal/enum"
+	"github.com/lopolopen/gap/internal/registry"
 	"github.com/lopolopen/gap/internal/workerid"
 	"github.com/lopolopen/shoot"
 )
 
+var fixPubOnce sync.Once
+
 func NewPublisher[T any](opts ...shoot.Option[Options, *Options]) Publisher[T] {
 	gapOpts := new(Options).With(opts...)
 
-	brok := internal.MustGetBroker(gapOpts)
+	brok := registry.MustGetWBroker(gapOpts)
 	if brok == nil {
-		panic("broker must not be nil")
+		panic("writer broker must not be nil")
 	}
-	stor := internal.MustGetStorage(gapOpts)
-
-	//only publisher with storage can have a pump
+	stor := registry.MustGetStorage(gapOpts)
 	if stor != nil {
-		pump := internal.NewPump(gapOpts, stor, brok)
-		pump.PollingSend()
+		fixPubOnce.Do(func() {
+			err := stor.UpdateStatusPublished(gapOpts.Context, 0, enum.StatusProcessing, enum.StatusFailed)
+			if err != nil {
+				panic(err)
+			}
+		})
 	}
 
 	initSnowflake(gapOpts.WorkerID)
@@ -53,23 +60,3 @@ func initSnowflake(node int64) {
 	}
 	entity.MustInitSnowflake(node)
 }
-
-// func storageAndBroker(gapOpts *Options) (storage.Storage, broker.Broker) {
-// 	var stor storage.Storage
-// 	var brok broker.Broker
-// 	if gapOpts.Gorm() != nil {
-// 		f := internal.MustGet[storage.Factory]("gorm")
-// 		stor, _ = f.CreateStorage(gapOpts)
-// 	}
-// 	if gapOpts.MySQL() != nil {
-// 		f := internal.MustGet[storage.Factory]("mysql")
-// 		stor, _ = f.CreateStorage(gapOpts)
-// 	}
-// 	if gapOpts.RabbitMQ() != nil {
-// 		brok = rabbitmq.NewBroker(gapOpts)
-// 	}
-// 	if gapOpts.Kafka() != nil {
-// 		brok = kafka.NewBroker(gapOpts)
-// 	}
-// 	return stor, brok
-// }

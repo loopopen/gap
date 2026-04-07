@@ -14,6 +14,9 @@ type Options struct {
 	//shoot: def=context.Background()
 	Context context.Context
 
+	//shoot: def=context.Background()
+	DrainContext context.Context
+
 	ServiceName string
 
 	//shoot: def="v1"
@@ -21,8 +24,6 @@ type Options struct {
 
 	//shoot: def="default"
 	DefaultGroup string
-
-	Group string
 
 	//shoot: def=200
 	ClaimBatchSize int
@@ -34,10 +35,9 @@ type Options struct {
 	LookbackSeconds int
 
 	//shoot: def=1
-	PumpingIntervalSeconds int
+	PumpIntervalSeconds int
 
-	//shoot: def=1
-	MaxPublishConcurrency int32
+	MaxPublishConcurrency int
 
 	//shoot: def=-1
 	WorkerID int64
@@ -46,10 +46,12 @@ type Options struct {
 
 	BrokerPlugin PluginOptions
 
-	// _brokerExtType       enum.PluginType
-	// _brokerOpts          any
-	// _storageExtType      enum.PluginType
-	// _storageOpts         any
+	//shoot: def=runtime.GOMAXPROCS(0)*512
+	PublishBufferSize int
+
+	//shoot: def=1
+	WorkConcurrencyFactor int
+
 	_dashboard           *dashboard.Options
 	_handlers            []HandlerOptions
 	_dependencies        []HandlerDepsOptions
@@ -58,60 +60,23 @@ type Options struct {
 }
 
 type HandlerOptions struct {
-	Group   string
+	GroupOptions
 	Topic   string
 	Handler Handler[[]byte]
+}
+
+type GroupOptions struct {
+	Group             string
+	IngestConcurrency int
 }
 
 func (o *Options) Lookback() time.Duration {
 	return time.Second * (time.Duration(o.LookbackSeconds))
 }
 
-func (o *Options) PumpingInterval() time.Duration {
-	return time.Second * (time.Duration(o.PumpingIntervalSeconds))
+func (o *Options) PumpInterval() time.Duration {
+	return time.Second * (time.Duration(o.PumpIntervalSeconds))
 }
-
-// func (o *Options) BrokerExt() enum.ExtType {
-// 	return o._brokerExt
-// }
-
-// func (o *Options) RabbitMQ() *rabbitmq.Options {
-// 	return o._rabitmq
-// }
-
-// func (o *Options) Kafka() *kafka.Options {
-// 	return o._kafa
-// }
-
-// func (o *Options) StorageExt() enum.ExtType {
-// 	return o._storageExtType
-// }
-
-// func (o *Options) Gorm() *gorm.Options {
-// 	return o._gorm
-// }
-
-// func (o *Options) MySQL() *mysql.Options {
-// 	return o._mysql
-// }
-
-// func (o *Options) SetBrokerOptions(typ enum.PluginType, opts any) {
-// 	o._brokerExtType = typ
-// 	o._brokerOpts = opts
-// }
-
-// func (o *Options) BrokenOptions() (enum.PluginType, any) {
-// 	return o._brokerExtType, o._brokerOpts
-// }
-
-// func (o *Options) SetStorageOptions(typ enum.PluginType, opts any) {
-// 	o._storageExtType = typ
-// 	o._storageOpts = opts
-// }
-
-// func (o *Options) StorageOptions() (enum.PluginType, any) {
-// 	return o._storageExtType, o._storageOpts
-// }
 
 func (o *Options) Dashboard() *dashboard.Options {
 	return o._dashboard

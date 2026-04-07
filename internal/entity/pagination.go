@@ -1,32 +1,32 @@
 package entity
 
-//go:generate go tool shoot new -getset -json -type=Pagination
-
 const (
 	MaxPageSize int = 200
 	DefPageSize int = 20
 )
 
+//go:generate go tool shoot new -json -file=$GOFILE
+
 type Pagination struct {
 	//shoot: new
-	page int
+	Page int
 	//shoot: new
-	perPage   int
+	PerPage   int
 	Total     int
 	TotalPage int
 }
 
 func (p *Pagination) SetTotal(total int) {
 	p.Total = total
-	p.TotalPage = (total + p.perPage - 1) / p.perPage
+	p.TotalPage = (total + p.PerPage - 1) / p.PerPage
 }
 
 func (p *Pagination) Normalize() Pagination {
 	var page int
 	var perPage int
 	if p != nil {
-		page = p.page
-		perPage = p.perPage
+		page = p.Page
+		perPage = p.PerPage
 	}
 	if page <= 0 {
 		page = 1
@@ -38,7 +38,7 @@ func (p *Pagination) Normalize() Pagination {
 		perPage = DefPageSize
 	}
 	return Pagination{
-		page:    page,
-		perPage: perPage,
+		Page:    page,
+		PerPage: perPage,
 	}
 }

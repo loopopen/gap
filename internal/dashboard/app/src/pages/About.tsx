@@ -16,7 +16,9 @@ const About: React.FC = () => {
       <Paragraph>Created by Lopolop Inc.</Paragraph>
       <h1>About GAP<Link to="https://github.com/lopolopen/gap" target="_blank" style={{ marginLeft: 8 }}><GithubFilled /></Link></h1>
       <div style={{ maxWidth: '60%' }}>
-        <Paragraph>A lightweight, event-driven messaging library for Go. It provides outbox pattern implementation with support for RabbitMQ, Kafka and MySQL (or GORM-based storage), and is designed to support additional brokers and databases in the future.</Paragraph>
+        <Paragraph>GAP is a lightweight, event-driven messaging library for Go. </Paragraph>
+        <Paragraph>It provides outbox pattern implementation with support for RabbitMQ, Kafka and MySQL (or GORM-based storage).</Paragraph>
+        <Paragraph>It is designed to support additional brokers and databases in the future.</Paragraph>
       </div>
       <Spin spinning={loading}>
         <List

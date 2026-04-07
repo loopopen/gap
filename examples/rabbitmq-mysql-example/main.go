@@ -24,7 +24,7 @@ func main() {
 	defer stop()
 
 	pub := gap.NewPublisher[time.Time](
-		gap.WithContext(ctx),
+		gap.WithDrain(ctx, 5),
 		xrabbitmq.UseRabbitMQ(
 			xrabbitmq.URL(url),
 		),
@@ -34,14 +34,8 @@ func main() {
 	)
 
 	gap.Subscribe(
-		gap.WithContext(ctx),
+		gap.From(pub),
 		gap.ServiceName("rabbitmq-mysql-example.worker"),
-		xrabbitmq.UseRabbitMQ(
-			xrabbitmq.URL(url),
-		),
-		xmysql.UseMySQL(
-			xmysql.DSN(dsn),
-		),
 	)
 
 	db := must(sql.Open("mysql", dsn))

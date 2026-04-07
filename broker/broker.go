@@ -4,21 +4,18 @@ import (
 	"context"
 
 	"github.com/lopolopen/gap/internal/entity"
-	"github.com/lopolopen/gap/options/gap"
 )
 
-type Broker interface {
-	Send(ctx context.Context, envelope *entity.Envelope) error
+type Writer interface {
+	Write(ctx context.Context, envelope *entity.Envelope) error
+}
 
+type Reader interface {
 	Subscribe(ctx context.Context, topic string) error
 
-	Receive(ctx context.Context) (<-chan *entity.Envelope, error)
+	Read(ctx context.Context) (<-chan *entity.Envelope, error)
 
 	Commit(tag any) error
 
 	Reject(tag any) error
-}
-
-type Factory interface {
-	CreateBroker(opt *gap.Options) (Broker, error)
 }

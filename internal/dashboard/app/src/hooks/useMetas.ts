@@ -12,7 +12,7 @@ export const useMetas = () => {
       .then(resp => {
         setMetas(resp.data);
       }).catch(err => {
-        message.error(err);
+        message.error(err.message);
       }).finally(() => {
         setLoading(false);
       })

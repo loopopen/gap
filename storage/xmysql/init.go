@@ -5,9 +5,9 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/lopolopen/gap/internal"
 	"github.com/lopolopen/gap/internal/dashboard"
 	"github.com/lopolopen/gap/internal/enum"
+	"github.com/lopolopen/gap/internal/registry"
 	"github.com/lopolopen/gap/options/gap"
 	"github.com/lopolopen/gap/storage"
 )
@@ -39,6 +39,6 @@ func (f factory) CreateStorage(gapOpts *gap.Options) (storage.Storage, error) {
 }
 
 func init() {
-	internal.Register[storage.Factory](enum.MySQL, &factory{})
+	registry.Register[storage.FactoryIface](enum.MySQL, &factory{})
 	dashboard.AddMeta(enum.Storage, enum.MySQL, version)
 }

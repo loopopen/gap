@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/enum"
 	"github.com/lopolopen/gap/internal/errx"
-	"github.com/lopolopen/gap/internal/tx"
+	"github.com/lopolopen/gap/internal/txer"
 	"github.com/lopolopen/gap/options/gap"
 	"github.com/lopolopen/gap/storage"
 	"gorm.io/gorm"
@@ -33,13 +34,14 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 		return errx.ErrParamIsNil("envelope")
 	}
 
-	if _, ok := s.db.Statement.ConnPool.(gorm.TxCommitter); !ok {
-		slog.Warn("publishing does not work in transaction")
-	}
-
 	pub := new(Published).FromEntity(envelope)
 	err := s.db.Create(pub).Error
-	return err
+	if err != nil {
+		return err
+	}
+
+	slog.Debug("created published envelope", slog.Any("id", envelope.ID))
+	return nil
 }
 
 func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope) error {
@@ -49,7 +51,12 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 
 	rec := new(Received).FromEntity(envelope)
 	err := s.db.Create(rec).Error
-	return err
+	if err != nil {
+		return err
+	}
+
+	slog.Debug("created received envelope", slog.Any("id", envelope.ID))
+	return nil
 }
 
 func NewStorage(gapOpts *gap.Options, db *gorm.DB) *Storage {
@@ -87,7 +94,7 @@ func (s *Storage) init() error {
 	)
 }
 
-func (s *Storage) Bind(txer tx.Txer) (storage.Storage, error) {
+func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
 	db, ok := txer.Tx().(*gorm.DB)
 	if !ok {
 		return nil, errx.ErrInvalidGormTx
@@ -100,11 +107,31 @@ func (s *Storage) Bind(txer tx.Txer) (storage.Storage, error) {
 	return &newStor, nil
 }
 
-func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, status enum.Status) error {
-	return s.db.WithContext(ctx).
-		Model(&Published{}).
-		Where("`id` = ?", id).
-		Update("`status`", status).Error
+func (s *Storage) InTx() bool {
+	if s.db == nil {
+		return false
+	}
+	_, ok := s.db.Statement.ConnPool.(gorm.TxCommitter)
+	return ok
+}
+
+func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, src enum.Status, status enum.Status) error {
+	db := s.db.WithContext(ctx).Model(&Published{})
+	if id != 0 {
+		db.Where("`id` = ?", id)
+	} else {
+		db.Where("`status` = ?", src)
+	}
+
+	err := db.Update("`status`", status).Error
+	if err != nil {
+		return err
+	}
+
+	if id != 0 {
+		slog.Debug("updated published status", slog.Any("id", id), slog.String("status", status.String()))
+	}
+	return nil
 }
 
 func migrateWithComment(db *gorm.DB, models ...any) error {
@@ -140,15 +167,16 @@ func migrateWithComment(db *gorm.DB, models ...any) error {
 
 func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*entity.Envelope, error) {
 	o := s.gapOpts
+	minutsAge := time.Now().Add(-o.Lookback())
+
 	var pubs []*Published
-	// ago := time.Now().Add(-time.Second * o.Lookback())
 	s.db.Transaction(func(tx *gorm.DB) error {
 		err := tx.WithContext(ctx).
 			Model(&Published{}).
 			Where("`version` = ?", o.Version).
 			Where("`status` IN ?", []enum.Status{enum.StatusPending, enum.StatusFailed}).
 			Where("`retries` < ?", o.MaxRetries).
-			// Where("created_at > ?", ago).
+			Where("created_at < ?", minutsAge).
 			Limit(batchSize).
 			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Scan(&pubs).Error
@@ -180,16 +208,16 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 
 func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*entity.Envelope, error) {
 	o := s.gapOpts
+	minutsAge := time.Now().Add(-o.Lookback())
+
 	var recs []*Received
-	// ago := time.Now().Add(-time.Second * o.Lookback())
 	s.db.Transaction(func(tx *gorm.DB) error {
 		err := tx.WithContext(ctx).
 			Model(&Received{}).
 			Where("`version` = ?", o.Version).
-			Where("`group` = ?", o.Group).
 			Where("`status` IN ?", []enum.Status{enum.StatusPending, enum.StatusFailed}).
 			Where("`retries` < ?", o.MaxRetries).
-			// Where("created_at > ?", ago).
+			Where("created_at < ?", minutsAge).
 			Limit(batchSize).
 			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Scan(&recs).Error
@@ -219,9 +247,21 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 	return es, nil
 }
 
-func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, status enum.Status) error {
-	return s.db.WithContext(ctx).
-		Model(&Received{}).
-		Where("`id` = ?", id).
-		Update("`status`", status).Error
+func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.Status, status enum.Status) error {
+	db := s.db.WithContext(ctx).Model(&Received{})
+	if id != 0 {
+		db.Where("`id` = ?", id)
+	} else {
+		db.Where("`status` = ?", src)
+	}
+
+	err := db.Update("`status`", status).Error
+	if err != nil {
+		return err
+	}
+
+	if id != 0 {
+		slog.Debug("updated received status", slog.Any("id", id), slog.String("status", status.String()))
+	}
+	return nil
 }

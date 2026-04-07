@@ -2,7 +2,9 @@
 
 package xmysql
 
-import "github.com/lopolopen/shoot"
+import (
+	"github.com/lopolopen/shoot"
+)
 
 // NewOptions constructs a new instance of type Options
 func NewOptions(schema string, dsn string) *Options {

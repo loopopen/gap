@@ -9,31 +9,32 @@ import (
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/enum"
 	"github.com/lopolopen/gap/internal/errx"
+	"github.com/lopolopen/gap/internal/pump"
 	"github.com/lopolopen/gap/options/gap"
 	"github.com/lopolopen/gap/storage"
 )
 
 type Sub struct {
-	opts     *gap.Options
-	group    string
-	storage  storage.Storage
-	broker   broker.Broker
-	handlers map[string]gap.Handler[[]byte]
-	pump     *Pump
+	opts      *gap.Options
+	groupOpts *gap.GroupOptions
+	storage   storage.Storage
+	reader    broker.Reader
+	handlers  map[string]gap.Handler[[]byte]
+	pump      *pump.Pump
 }
 
 // Subscribe implements [Subscriber].
 func (s *Sub) Subscribe(topic string, handler gap.Handler[[]byte]) error {
 	_, ok := s.handlers[topic]
 	if ok {
-		return errx.ErrMultiHandlers(topic, s.group)
+		return errx.ErrMultiHandlers(topic, s.groupOpts.Group)
 	}
 	s.handlers[topic] = handler
 
-	slog.Debug(fmt.Sprintf("subscribe: topic(%s) -> group(%s)", topic, s.group))
+	slog.Debug(fmt.Sprintf("subscribe: topic(%s) -> group(%s:%d)", topic, s.groupOpts.Group, s.groupOpts.IngestConcurrency))
 
-	ctx := context.Background()
-	err := s.broker.Subscribe(ctx, topic)
+	ctx := s.opts.Context
+	err := s.reader.Subscribe(ctx, topic)
 	if err != nil {
 		return err
 	}
@@ -41,62 +42,134 @@ func (s *Sub) Subscribe(topic string, handler gap.Handler[[]byte]) error {
 	return nil
 }
 
-func NewSub(opts *gap.Options, broker broker.Broker, storage storage.Storage) *Sub {
-	if broker == nil {
+func NewSub(opts *gap.Options, groupOpts *gap.GroupOptions, reader broker.Reader, storage storage.Storage) *Sub {
+	if reader == nil {
 		panic(errx.ErrNoBroker)
 	}
 
 	sub := &Sub{
-		opts:     opts,
-		group:    opts.Group,
-		storage:  storage,
-		broker:   broker,
-		handlers: make(map[string]gap.Handler[[]byte]),
+		opts:      opts,
+		groupOpts: groupOpts,
+		storage:   storage,
+		reader:    reader,
+		handlers:  make(map[string]gap.Handler[[]byte]),
 	}
+
 	if storage != nil {
-		sub.pump = NewPump(opts, storage, broker)
+		pump := pump.Singleton(opts)
+		pump.SetHandler(groupOpts.Group, sub)
+		sub.pump = pump
 	} else {
-		slog.Debug("working on no-persistence mode")
+		slog.Debug("sub works on no-persistence mode")
 	}
 	return sub
 }
 
 func (s *Sub) Listening() error {
-	ctx := s.opts.Context
-	enCh, err := s.broker.Receive(ctx)
+	ctx := s.opts.DrainContext
+	enCh, err := s.reader.Read(ctx)
 	if err != nil {
 		return err
 	}
 
-	if s.pump != nil {
-		enCh = s.pump.PollingHandle(enCh)
+	if s.storage != nil {
+		concurrency := s.groupOpts.IngestConcurrency
+		go s.listening(ctx, enCh, concurrency)
+		return nil
 	}
 
 	go func() {
-		for en := range enCh {
-			err := s.handleAndUpdateStatues(ctx, en)
-			if en.Tag == nil {
-				continue
-			}
-			if err != nil {
-				if err := s.broker.Reject(en.Tag); err != nil {
-					slog.Error("failed to reject message", slog.Any("err", err))
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case en, ok := <-enCh:
+				if !ok {
+					return
 				}
-				continue
-			}
-			if err := s.broker.Commit(en.Tag); err != nil {
-				slog.Error("failed to commit message", slog.Any("err", err))
+
+				slog.Warn("hande message without persistence")
+				err := s.handle(ctx, en)
+				if err != nil {
+					s.reader.Reject(en.Tag)
+				} else {
+					s.reader.Commit(en.Tag)
+				}
 			}
 		}
 	}()
-
 	return nil
+}
+
+func (s *Sub) listening(ctx context.Context, enCh <-chan *entity.Envelope, concurrency int) {
+	if concurrency < 1 {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case en, ok := <-enCh:
+				if !ok {
+					return
+				}
+				s.ingestSerial(ctx, en)
+			}
+		}
+		//return
+	}
+
+	sem := make(chan struct{}, concurrency)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case en, ok := <-enCh:
+			if !ok {
+				return
+			}
+			s.ingestParallel(ctx, en, sem)
+		}
+	}
+}
+
+func (s *Sub) ingestParallel(ctx context.Context, envelope *entity.Envelope, sem chan struct{}) {
+	select {
+	case <-ctx.Done():
+		return
+	case sem <- struct{}{}:
+	}
+
+	go func() {
+		defer func() { <-sem }()
+		s.ingestSerial(ctx, envelope)
+	}()
+}
+
+func (s *Sub) ingestSerial(ctx context.Context, envelope *entity.Envelope) {
+	s.pump.AddOne()
+	defer s.pump.Done()
+
+	err := s.storage.CreateReceived(ctx, envelope)
+	if err != nil {
+		slog.Error("failed to create received record", slog.Any("err", err))
+		if err := s.reader.Reject(envelope.Tag); err != nil {
+			slog.Error("failed to reject message", slog.Any("err", err))
+		}
+		return
+	}
+	if err := s.reader.Commit(envelope.Tag); err != nil {
+		slog.Error("failed to commit message", slog.Any("err", err))
+		return
+	}
+
+	s.dispatch(ctx, envelope)
 }
 
 func (s *Sub) handle(ctx context.Context, envelope *entity.Envelope) error {
 	handler, ok := s.handlers[envelope.Topic]
 	if !ok {
-		return errx.ErrHandlerNotFound(envelope.Topic, s.group)
+		return errx.ErrHandlerNotFound(envelope.Topic, s.groupOpts.Group)
 	}
 	payload, err := envelope.PayloadBytes()
 	if err != nil {
@@ -109,24 +182,31 @@ func (s *Sub) handle(ctx context.Context, envelope *entity.Envelope) error {
 	return nil
 }
 
-func (s *Sub) handleAndUpdateStatues(ctx context.Context, envelope *entity.Envelope) error {
+func (s *Sub) HandleAndUpdate(ctx context.Context, envelope *entity.Envelope) error {
 	err := s.handle(ctx, envelope)
 	if err != nil {
 		slog.Error("failed to handle message", slog.Any("err", err))
-	}
-	if s.storage == nil {
-		return err
-	}
 
-	if err != nil {
-		if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, enum.StatusFailed); err != nil {
+		if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, 0, enum.StatusFailed); err != nil {
 			slog.Error("failed to set received status to Failed", slog.Any("err", err))
 			return err
 		}
 		return err
 	}
-	if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, enum.StatusSucceeded); err != nil {
+
+	if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, 0, enum.StatusSucceeded); err != nil {
 		slog.Warn("falied to set received status to Succeeded", slog.Any("err", err))
+		return err
 	}
 	return nil
+}
+
+func (s *Sub) dispatch(ctx context.Context, envelope *entity.Envelope) {
+	err := s.pump.DispatchToHandle(ctx, envelope)
+	if err != nil {
+		slog.Warn("failed to dispatch envelope to handler, falling back to db polling",
+			slog.Any("err", err),
+			slog.String("id", envelope.IDString()),
+		)
+	}
 }

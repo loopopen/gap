@@ -8,19 +8,21 @@ import (
 	"log/slog"
 
 	"github.com/lopolopen/gap"
+	"github.com/lopolopen/gap/storage/xgorm"
+	"gorm.io/gorm"
 )
 
 //go:generate go run github.com/lopolopen/gap/cmd/gapc -file=$GOFILE
 
 type MySvc struct {
-	tx        gap.Tx
+	db        *gorm.DB
 	pub       gap.EventPublisher
 	orderRepo repo.OrderRepo
 }
 
-func NewMySvc(tx gap.Tx, pub gap.EventPublisher) *MySvc {
+func NewMySvc(db *gorm.DB, pub gap.EventPublisher) *MySvc {
 	return &MySvc{
-		tx:        tx,
+		db:        db,
 		pub:       pub,
 		orderRepo: nil,
 	}
@@ -28,7 +30,7 @@ func NewMySvc(tx gap.Tx, pub gap.EventPublisher) *MySvc {
 
 func (svc *MySvc) CreateOrder() {
 	ctx := context.Background()
-	svc.tx.DoInTx(ctx, func(ctx context.Context, txer gap.Txer) error {
+	xgorm.DoInTx(ctx, func(ctx context.Context, txer gap.Txer) error {
 		var err error
 		pub := must(svc.pub.Bind(txer))
 		// orderRepo := must(s.orderRepo.Bind(txer))
@@ -44,7 +46,7 @@ func (svc *MySvc) CreateOrder() {
 		}
 
 		return nil
-	})
+	}, svc.db)
 }
 
 // @subscribe

@@ -50,14 +50,15 @@ package main
 
 import (
     "context"
+    "fmt"
     "log/slog"
     "os/signal"
     "syscall"
     "time"
 
     "github.com/lopolopen/gap"
-    optgorm "github.com/lopolopen/gap/options/gorm"
-    "github.com/lopolopen/gap/options/rabbitmq"
+    "github.com/lopolopen/gap/storage/xgorm"
+    "github.com/lopolopen/gap/broker/xrabbitmq"
     "gorm.io/driver/mysql"
     "gorm.io/gorm"
     "gorm.io/gorm/logger"
@@ -70,31 +71,23 @@ func main() {
     ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
     defer stop()
 
-    db := must(gorm.Open(mysql.Open(dsn)))
+    db, _ := gorm.Open(mysql.Open(dsn))
 
     // Create publisher
     pub := gap.NewEventPublisher(
-        gap.WithContext(ctx),
-        gap.UseRabbitMQ(
-            rabbitmq.URL(url),
+        gap.WithDrain(ctx, 5),
+        xrabbitmq.UseRabbitMQ(
+            xrabbitmq.URL(url),
         ),
-        gap.UseGorm(
-            optgorm.DB(db),
+        xgorm.UseGorm(
+            xgorm.DB(db),
         ),
     )
 
     // Set up subscriber
     gap.Subscribe(
-        gap.WithContext(ctx),
+        gap.From(pub),
         gap.ServiceName("my-service.worker"),
-        gap.UseRabbitMQ(
-            rabbitmq.URL(url),
-        ),
-        gap.UseGorm(
-            optgorm.MySQL(&optgorm.MySQLConf{
-                DSN: dsn,
-            }),
-        ),
         gap.Inject(/*handler_dependencies*/),
     )
 
@@ -118,12 +111,34 @@ func main() {
     stop()
 }
 
-func must[T any](v T, err error) T {
-    if err != nil {
-        panic(err)
-    }
-    return v
-}
+### Graceful Shutdown
+
+The library supports graceful shutdown through context cancellation and the built-in drain helper.
+
+- `signal.NotifyContext` watches `SIGINT` / `SIGTERM`
+- `gap.WithDrain(ctx, seconds)` gives the publisher/subscriber time to finish in-flight messages before exiting
+
+Example:
+
+```go
+ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+defer stop()
+
+pub := gap.NewEventPublisher(
+    gap.WithDrain(ctx, 5),
+    xrabbitmq.UseRabbitMQ(xrabbitmq.URL(url)),
+    xgorm.UseGorm(xgorm.DB(db)),
+)
+
+gap.Subscribe(
+    gap.From(pub),
+    gap.ServiceName("my-service.worker"),
+    gap.Inject(/* handler deps */),
+)
+
+<-ctx.Done()
+```
+
 
 //go:generate go run github.com/lopolopen/gap/cmd/gapc -file=$GOFILE
 
@@ -176,15 +191,15 @@ go run .
 ### Options
 
 #### RabbitMQ Options
-- `rabbitmq.URL(url string)`: Set RabbitMQ connection URL
+- `xrabbitmq.URL(url string)`: Set RabbitMQ connection URL
 
 #### GORM Options
-- `optgorm.DB(db *gorm.DB)`: Use existing GORM DB instance
-- `optgorm.MySQL(conf *MySQLConf)`: Configure MySQL connection
-- `optgorm.LogLevel(level logger.LogLevel)`: Set GORM log level
+- `xgorm.DB(db *gorm.DB)`: Use existing GORM DB instance
+- `xgorm.MySQL(conf *MySQLConf)`: Configure MySQL connection
+- `xgorm.LogLevel(level logger.LogLevel)`: Set GORM log level
 
 #### General Options
-- `gap.WithContext(ctx context.Context)`: Set context
+- `gap.WithDrain(ctx context.Context, timeoutSeconds int)`: Enable drain mode for graceful shutdown
 - `gap.ServiceName(name string)`: Set service name
 - `gap.Inject(deps...)`: Inject dependencies into handlers
 

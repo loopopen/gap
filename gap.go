@@ -4,8 +4,10 @@ import (
 	"github.com/lopolopen/gap/internal"
 	"github.com/lopolopen/gap/internal/dashboard"
 	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/tx"
+	"github.com/lopolopen/gap/internal/pump"
+	"github.com/lopolopen/gap/internal/txer"
 	"github.com/lopolopen/gap/options/gap"
+	"github.com/lopolopen/shoot"
 )
 
 const version = "v0.0.2-alpha.5"
@@ -19,9 +21,7 @@ const (
 
 var Pair = internal.Pair
 
-type Tx = tx.Tx
-
-type Txer = tx.Txer
+type Txer = txer.Txer
 
 type Publisher[T any] = internal.Publisher[T]
 
@@ -32,6 +32,15 @@ type EventPublisher = internal.EventPublisher
 type Handler[T any] = gap.Handler[T]
 
 type Options = gap.Options
+
+var WaitDrain = pump.WaitDrain
+
+func From(pub internal.OptsHolder) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		opts := pub.Options()
+		*o = *opts
+	}
+}
 
 func init() {
 	dashboard.AddMeta(enum.Self, 0, version)

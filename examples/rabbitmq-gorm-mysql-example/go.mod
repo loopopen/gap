@@ -20,11 +20,11 @@ require (
 	github.com/lopolopen/shoot v0.7.1 // indirect
 	github.com/rabbitmq/amqp091-go v1.10.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/text v0.33.0 // indirect
 )
 
-replace github.com/lopolopen/gap => ../../../gap
+// replace github.com/lopolopen/gap => ../../../gap
 
-replace github.com/lopolopen/gap/storage/xgorm => ../../../gap/storage/xgorm
+// replace github.com/lopolopen/gap/storage/xgorm => ../../../gap/storage/xgorm
 
-replace github.com/lopolopen/gap/broker/xrabbitmq => ../../../gap/broker/xrabbitmq
+// replace github.com/lopolopen/gap/broker/xrabbitmq => ../../../gap/broker/xrabbitmq

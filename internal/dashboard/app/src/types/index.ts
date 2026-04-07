@@ -38,10 +38,10 @@ export interface Msg {
   createdAt: string;
   version: string;
   topic: string;
-  group: string;
   status: MsgStatus;
   headers: string;
   payload: string;
   retries: number;
+  group: string;
 }
 

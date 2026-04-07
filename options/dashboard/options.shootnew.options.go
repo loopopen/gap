@@ -9,7 +9,7 @@ import (
 )
 
 // NewOptions constructs a new instance of type Options
-func NewOptions(pathPrefix string, route func(method string, path string, hander http.Handler)) *Options {
+func NewOptions(pathPrefix string, route func(method string, path string, handler http.Handler)) *Options {
 	return &Options{
 		PathPrefix: pathPrefix,
 		Route:      route,
@@ -33,7 +33,7 @@ func PathPrefix(pathPrefix_ string) shoot.Option[Options, *Options] {
 }
 
 // Route is a configuration for the filed Route
-func Route(route_ func(method string, path string, hander http.Handler)) shoot.Option[Options, *Options] {
+func Route(route_ func(method string, path string, handler http.Handler)) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		o.Route = route_
 	}

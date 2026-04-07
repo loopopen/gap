@@ -1,11 +1,18 @@
 package gap
 
 import (
+	"sync"
+
 	"github.com/lopolopen/gap/internal"
+	"github.com/lopolopen/gap/internal/enum"
 	"github.com/lopolopen/gap/internal/errx"
+	"github.com/lopolopen/gap/internal/pump"
+	"github.com/lopolopen/gap/internal/registry"
 	"github.com/lopolopen/gap/options/gap"
 	"github.com/lopolopen/shoot"
 )
+
+var fixSubOnce sync.Once
 
 type groupedSubs struct {
 	subMap      map[string]*internal.Sub
@@ -18,11 +25,11 @@ var subs *groupedSubs
 func Subscribe(opts ...shoot.Option[Options, *Options]) {
 	gapOpts := new(Options).With(opts...)
 
-	ds := gapOpts.Dependencies()
+	dps := gapOpts.Dependencies()
 	if subs == nil {
 		subs = &groupedSubs{}
 	}
-	subs.diOtps = append(subs.diOtps, ds...)
+	subs.diOtps = append(subs.diOtps, dps...)
 	hs := gapOpts.Handlers()
 	subs.handlerOtps = append(subs.handlerOtps, hs...)
 
@@ -37,7 +44,7 @@ func Subscribe(opts ...shoot.Option[Options, *Options]) {
 		dep.Resolve(gapOpts.Values())
 	}
 
-	err := subs.subscribe(gapOpts)
+	err := subs.subscribeAll(gapOpts)
 	if err != nil {
 		panic(err)
 	}
@@ -46,9 +53,12 @@ func Subscribe(opts ...shoot.Option[Options, *Options]) {
 	if err != nil {
 		panic(err)
 	}
+
+	pump.StartHandler()
 }
 
-func (g *groupedSubs) subscribe(gapOpts *Options) error {
+func (g *groupedSubs) subscribeAll(gapOpts *Options) error {
+	//todo: IngestConcurrency
 	for _, o := range g.handlerOtps {
 		if o.Handler == nil {
 			return errx.ErrNilHandler
@@ -56,8 +66,7 @@ func (g *groupedSubs) subscribe(gapOpts *Options) error {
 		if o.Topic == "" {
 			return errx.ErrEmptyTopic
 		}
-		optsClone := *gapOpts
-		err := g.subscribeOne(&optsClone, o)
+		err := g.subscribeOne(gapOpts, &o)
 		if err != nil {
 			return err
 		}
@@ -65,28 +74,32 @@ func (g *groupedSubs) subscribe(gapOpts *Options) error {
 	return nil
 }
 
-func (g *groupedSubs) subscribeOne(optsClone *Options, hOpts gap.HandlerOptions) error {
-	group := hOpts.Group
-	if group == "" {
-		group = optsClone.DefaultGroup
-	}
-	optsClone.Group = group
+func (g *groupedSubs) subscribeOne(gapOpts *Options, opts *gap.HandlerOptions) error {
+	group := opts.Group
 
 	if g.subMap == nil {
 		g.subMap = make(map[string]*internal.Sub)
 	}
 	sub, ok := g.subMap[group]
 	if !ok {
-		brok := internal.MustGetBroker(optsClone)
-		if brok == nil {
-			panic("broker must not be nil")
+		reader := registry.MustGetRBroker(gapOpts, group)
+		if reader == nil {
+			panic("reader broker must not be nil")
 		}
-		stor := internal.MustGetStorage(optsClone)
+		stor := registry.MustGetStorage(gapOpts)
+		if stor != nil {
+			fixSubOnce.Do(func() {
+				err := stor.UpdateStatusReceived(gapOpts.Context, 0, enum.StatusProcessing, enum.StatusFailed)
+				if err != nil {
+					panic(err)
+				}
+			})
+		}
 
-		sub = internal.NewSub(optsClone, brok, stor)
+		sub = internal.NewSub(gapOpts, &opts.GroupOptions, reader, stor)
 		g.subMap[group] = sub
 	}
-	err := sub.Subscribe(hOpts.Topic, hOpts.Handler)
+	err := sub.Subscribe(opts.Topic, opts.Handler)
 	if err != nil {
 		return err
 	}

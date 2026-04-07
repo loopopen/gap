@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"examples/rabbitmq-gorm-mysql-example/gormtx"
 	"examples/rabbitmq-gorm-mysql-example/service"
 	"log/slog"
 	"os/signal"
@@ -29,7 +28,7 @@ func main() {
 	}))
 
 	pub := gap.NewEventPublisher(
-		gap.WithContext(ctx),
+		gap.WithDrain(ctx, 5),
 		xrabbitmq.UseRabbitMQ(
 			xrabbitmq.URL(url),
 		),
@@ -38,18 +37,10 @@ func main() {
 		),
 	)
 
-	mySvc := service.NewMySvc(gormtx.New(db), pub)
+	mySvc := service.NewMySvc(db, pub)
 
 	gap.Subscribe(
-		gap.WithContext(ctx),
-		xrabbitmq.UseRabbitMQ(
-			xrabbitmq.URL(url),
-		),
-		xgorm.UseGorm(
-			xgorm.MySQL(&xgorm.MySQLConf{
-				DSN: dsn,
-			}),
-		),
+		gap.From(pub),
 		gap.Inject(mySvc),
 	)
 

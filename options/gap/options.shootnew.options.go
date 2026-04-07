@@ -4,26 +4,29 @@ package gap
 
 import (
 	"context"
+	"runtime"
 
 	"github.com/lopolopen/shoot"
 )
 
 // NewOptions constructs a new instance of type Options
-func NewOptions(context context.Context, serviceName string, version string, defaultGroup string, group string, claimBatchSize int, maxRetries int, lookbackSeconds int, pumpingIntervalSeconds int, maxPublishConcurrency int32, workerId int64, storagePlugin PluginOptions, brokerPlugin PluginOptions) *Options {
+func NewOptions(context context.Context, drainContext context.Context, serviceName string, version string, defaultGroup string, claimBatchSize int, maxRetries int, lookbackSeconds int, pumpIntervalSeconds int, maxPublishConcurrency int, workerId int64, storagePlugin PluginOptions, brokerPlugin PluginOptions, publishBufferSize int, workConcurrencyFactor int) *Options {
 	return &Options{
-		Context:                context,
-		ServiceName:            serviceName,
-		Version:                version,
-		DefaultGroup:           defaultGroup,
-		Group:                  group,
-		ClaimBatchSize:         claimBatchSize,
-		MaxRetries:             maxRetries,
-		LookbackSeconds:        lookbackSeconds,
-		PumpingIntervalSeconds: pumpingIntervalSeconds,
-		MaxPublishConcurrency:  maxPublishConcurrency,
-		WorkerID:               workerId,
-		StoragePlugin:          storagePlugin,
-		BrokerPlugin:           brokerPlugin,
+		Context:               context,
+		DrainContext:          drainContext,
+		ServiceName:           serviceName,
+		Version:               version,
+		DefaultGroup:          defaultGroup,
+		ClaimBatchSize:        claimBatchSize,
+		MaxRetries:            maxRetries,
+		LookbackSeconds:       lookbackSeconds,
+		PumpIntervalSeconds:   pumpIntervalSeconds,
+		MaxPublishConcurrency: maxPublishConcurrency,
+		WorkerID:              workerId,
+		StoragePlugin:         storagePlugin,
+		BrokerPlugin:          brokerPlugin,
+		PublishBufferSize:     publishBufferSize,
+		WorkConcurrencyFactor: workConcurrencyFactor,
 	}
 }
 
@@ -40,6 +43,13 @@ func (o *Options) With(opts ...shoot.Option[Options, *Options]) *Options {
 func Context(context_ context.Context) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		o.Context = context_
+	}
+}
+
+// DrainContext is a configuration for the filed DrainContext
+func DrainContext(drainContext_ context.Context) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.DrainContext = drainContext_
 	}
 }
 
@@ -64,13 +74,6 @@ func DefaultGroup(defaultGroup_ string) shoot.Option[Options, *Options] {
 	}
 }
 
-// Group is a configuration for the filed Group
-func Group(group_ string) shoot.Option[Options, *Options] {
-	return func(o *Options) {
-		o.Group = group_
-	}
-}
-
 // ClaimBatchSize is a configuration for the filed ClaimBatchSize
 func ClaimBatchSize(claimBatchSize_ int) shoot.Option[Options, *Options] {
 	return func(o *Options) {
@@ -92,15 +95,15 @@ func LookbackSeconds(lookbackSeconds_ int) shoot.Option[Options, *Options] {
 	}
 }
 
-// PumpingIntervalSeconds is a configuration for the filed PumpingIntervalSeconds
-func PumpingIntervalSeconds(pumpingIntervalSeconds_ int) shoot.Option[Options, *Options] {
+// PumpIntervalSeconds is a configuration for the filed PumpIntervalSeconds
+func PumpIntervalSeconds(pumpIntervalSeconds_ int) shoot.Option[Options, *Options] {
 	return func(o *Options) {
-		o.PumpingIntervalSeconds = pumpingIntervalSeconds_
+		o.PumpIntervalSeconds = pumpIntervalSeconds_
 	}
 }
 
 // MaxPublishConcurrency is a configuration for the filed MaxPublishConcurrency
-func MaxPublishConcurrency(maxPublishConcurrency_ int32) shoot.Option[Options, *Options] {
+func MaxPublishConcurrency(maxPublishConcurrency_ int) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		o.MaxPublishConcurrency = maxPublishConcurrency_
 	}
@@ -127,17 +130,33 @@ func BrokerPlugin(brokerPlugin_ PluginOptions) shoot.Option[Options, *Options] {
 	}
 }
 
+// PublishBufferSize is a configuration for the filed PublishBufferSize
+func PublishBufferSize(publishBufferSize_ int) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.PublishBufferSize = publishBufferSize_
+	}
+}
+
+// WorkConcurrencyFactor is a configuration for the filed WorkConcurrencyFactor
+func WorkConcurrencyFactor(workConcurrencyFactor_ int) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.WorkConcurrencyFactor = workConcurrencyFactor_
+	}
+}
+
 // SetDefault sets the default values
 func (o *Options) SetDefault() {
 	o.Context = context.Background()
+	o.DrainContext = context.Background()
 	o.Version = "v1"
 	o.DefaultGroup = "default"
 	o.ClaimBatchSize = 200
 	o.MaxRetries = 30
 	o.LookbackSeconds = 180
-	o.PumpingIntervalSeconds = 1
-	o.MaxPublishConcurrency = 1
+	o.PumpIntervalSeconds = 1
 	o.WorkerID = -1
+	o.PublishBufferSize = runtime.GOMAXPROCS(0) * 512
+	o.WorkConcurrencyFactor = 1
 }
 
 // ShootNew exists solely to fulfill the NewShooter interface contract

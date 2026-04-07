@@ -1,77 +1,35 @@
 package xrabbitmq
 
 import (
-	"fmt"
-
+	"github.com/lopolopen/gap/broker"
+	"github.com/lopolopen/gap/broker/xrabbitmq/internal"
+	"github.com/lopolopen/gap/internal/dashboard"
 	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/options/gap"
-	"github.com/lopolopen/shoot"
+	"github.com/lopolopen/gap/internal/registry"
 )
 
 const version = "v0.0.1-alpha.3"
 
-//go:generate go tool shoot new -opt -short -type=Options,QueueOptions
+var (
+	UseRabbitMQ   = internal.UseRabbitMQ
+	Password      = internal.Password
+	UserName      = internal.UserName
+	VirtualHost   = internal.VirtualHost
+	Exchange      = internal.Exchange
+	Endpoint      = internal.Endpoint
+	URL           = internal.URL
+	ConfirmMode   = internal.ConfirmMode
+	PrefetchCount = internal.PrefetchCount
+)
 
-const ExchangeKind = "topic"
+var (
+	ConfigQueue = internal.ConfigQueue
+	Durable     = internal.Durable
+	Exclusive   = internal.Exclusive
+	AutoDelete  = internal.AutoDelete
+)
 
-type Options struct {
-	//shoot: def="guest"
-	Password string `yaml:"password"`
-
-	//shoot: def="guest"
-	UserName string `yaml:"username"`
-
-	//shoot: def="/"
-	VirtualHost string `yaml:"virtual_host"`
-
-	//shoot: def="default"
-	Exchange string `yaml:"exchange"`
-
-	//shoot: def="localhost:5672"
-	Endpoint string `yaml:"endpoint"`
-
-	URL string `yaml:"url"`
-
-	ConfirmMode bool `yaml:"confirm_mode"`
-
-	//shoot: def=new(QueueOptions).With()
-	QueueOpts *QueueOptions
-}
-
-func (o *Options) PluginType() enum.PluginType {
-	return enum.RabbitMQ
-}
-
-type QueueOptions struct {
-	//shoot: def=true
-	Durable bool
-
-	Exclusive bool
-
-	AutoDelete bool
-}
-
-func (o *Options) AmqpURL() string {
-	if o.URL != "" {
-		return o.URL
-	}
-	return fmt.Sprintf("amqp://%s:%s@%s%s", o.UserName, o.Password, o.Endpoint, o.VirtualHost)
-}
-
-// func (o *Options) QueueOptions() *QueueOptions {
-// 	return o._queueOpts
-// }
-
-func ConfigQueue(opts ...shoot.Option[QueueOptions, *QueueOptions]) shoot.Option[Options, *Options] {
-	return func(o *Options) {
-		options := new(QueueOptions).With(opts...)
-		o.QueueOpts = options
-	}
-}
-
-func UseRabbitMQ(opts ...shoot.Option[Options, *Options]) shoot.Option[gap.Options, *gap.Options] {
-	return func(o *gap.Options) {
-		options := new(Options).With(opts...)
-		o.BrokerPlugin = options
-	}
+func init() {
+	registry.Register[broker.FactoryIface](enum.RabbitMQ, broker.NewFactory(&internal.Factory{}))
+	dashboard.AddMeta(enum.Broker, enum.RabbitMQ, version)
 }

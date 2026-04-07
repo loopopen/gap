@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/enum"
 	"github.com/lopolopen/gap/internal/errx"
-	"github.com/lopolopen/gap/internal/tx"
+	"github.com/lopolopen/gap/internal/txer"
 	"github.com/lopolopen/gap/options/gap"
 	"github.com/lopolopen/gap/storage"
 )
@@ -31,7 +32,7 @@ func (s *Storage) execer() Execer {
 }
 
 // Bind implements [storage.Storage].
-func (s *Storage) Bind(txer tx.Txer) (storage.Storage, error) {
+func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
 	tx, ok := txer.Tx().(*sql.Tx)
 	if !ok {
 		return nil, errx.ErrInvalidSQLTx
@@ -45,12 +46,22 @@ func (s *Storage) Bind(txer tx.Txer) (storage.Storage, error) {
 	return &newS, nil
 }
 
+func (s *Storage) InTx() bool {
+	return s.tx != nil
+}
+
 // ClaimPublishedBatch implements [storage.Storage].
 func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []*entity.Envelope, err error) {
 	o := s.gapOpts
+	minutesAgo := time.Now().Add(-o.Lookback())
+
 	var pubs []*Published
-	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` " +
-		"FROM `%s_published` WHERE `version` = ? AND `status` IN (?, ?) AND `retries` < ? LIMIT ? FOR UPDATE SKIP LOCKED"
+	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` FROM `%s_published` " +
+		"WHERE `version` = ? " +
+		"AND `status` IN (?, ?) " +
+		"AND `retries` < ? " +
+		"AND `created_at` < ? " +
+		"LIMIT ? FOR UPDATE SKIP LOCKED"
 	const script2 = "UPDATE `%s_published` SET `status` = ? WHERE `id` IN (%s)"
 
 	var tx *sql.Tx
@@ -70,6 +81,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 		enum.StatusPending,
 		enum.StatusFailed,
 		o.MaxRetries,
+		minutesAgo,
 		batchSize,
 	)
 	if err != nil {
@@ -115,12 +127,14 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 // ClaimReceivedBatch implements [storage.Storage].
 func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*entity.Envelope, err error) {
 	o := s.gapOpts
+	minutesAgo := time.Now().Add(-o.Lookback())
+
 	var recs []*Received
 	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` FROM `%s_received` " +
 		"WHERE `version` = ? " +
-		"AND `group` = ? " +
 		"AND `status` IN (?, ?) " +
 		"AND `retries` < ? " +
+		"AND `created_at` < ? " +
 		"LIMIT ? FOR UPDATE SKIP LOCKED"
 	const script2 = "UPDATE `%s_received` SET `status` = ? WHERE `id` IN (%s)"
 
@@ -131,17 +145,17 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback()
+			err = tx.Rollback()
 		} else {
 			err = tx.Commit()
 		}
 	}()
 	rows, err := tx.QueryContext(ctx, fmt.Sprintf(script1, s.opts.Schema),
 		o.Version,
-		o.Group,
 		enum.StatusPending,
 		enum.StatusFailed,
 		o.MaxRetries,
+		minutesAgo,
 		batchSize,
 	)
 	if err != nil {
@@ -191,10 +205,6 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 		return errx.ErrParamIsNil("envelope")
 	}
 
-	if s.tx == nil {
-		slog.Warn("publishing does not work in transaction")
-	}
-
 	pub := new(Published).FromEntity(envelope)
 	const script = "INSERT INTO `%s_published` (" +
 		"`id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`" +
@@ -211,7 +221,12 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 		pub.Retries,
 		pub.ExpiredAt,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	slog.Debug("created published envelope", slog.Any("id", envelope.ID))
+	return nil
 }
 
 // CreateReceived implements [storage.Storage].
@@ -236,25 +251,54 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 		rec.ExpiredAt,
 		rec.Group,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	slog.Debug("created received envelope", slog.Any("id", envelope.ID))
+	return nil
 }
 
 // UpdateStatusPublished implements [storage.Storage].
-func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, status enum.Status) error {
-	const script = "UPDATE `%s_published` SET `status` = ? WHERE `id` = ?"
-	_, err := s.db.ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema), status, id)
+func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, src enum.Status, status enum.Status) error {
+	var script = "UPDATE `%s_published` SET `status` = ? WHERE "
+	args := []any{status}
+	if id != 0 {
+		script += "`id` = ?"
+		args = append(args, id)
+	} else {
+		script += "`status` = ?"
+		args = append(args, src)
+	}
+	_, err := s.db.ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema), args...)
 	if err != nil {
 		return err
+	}
+
+	if id != 0 {
+		slog.Debug("updated published status", slog.Any("id", id), slog.String("status", status.String()))
 	}
 	return nil
 }
 
 // UpdateStatusReceived implements [storage.Storage].
-func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, status enum.Status) error {
-	const script = "UPDATE `%s_received` SET `status` = ? WHERE `id` = ?"
-	_, err := s.db.ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema), status, id)
+func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.Status, status enum.Status) error {
+	var script = "UPDATE `%s_received` SET `status` = ? WHERE "
+	args := []any{status}
+	if id != 0 {
+		script += "`id` = ?"
+		args = append(args, id)
+	} else {
+		script += "`status` = ?"
+		args = append(args, src)
+	}
+	_, err := s.db.ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema), args...)
 	if err != nil {
 		return err
+	}
+
+	if id != 0 {
+		slog.Debug("updated received status", slog.Any("id", id), slog.String("status", status.String()))
 	}
 	return nil
 }

@@ -5,16 +5,16 @@ import (
 
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/tx"
+	"github.com/lopolopen/gap/internal/txer"
 	"github.com/lopolopen/gap/options/gap"
 )
 
 type Storage interface {
-	Bind(txer tx.Txer) (Storage, error)
+	Bind(txer txer.Txer) (Storage, error)
 
 	CreatePublished(ctx context.Context, envelope *entity.Envelope) error
 
-	UpdateStatusPublished(ctx context.Context, id uint, status enum.Status) error
+	UpdateStatusPublished(ctx context.Context, id uint, src enum.Status, status enum.Status) error
 
 	ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*entity.Envelope, error)
 
@@ -22,17 +22,19 @@ type Storage interface {
 
 	ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*entity.Envelope, error)
 
-	UpdateStatusReceived(ctx context.Context, id uint, status enum.Status) error
+	UpdateStatusReceived(ctx context.Context, id uint, src enum.Status, status enum.Status) error
 
 	StorageX
 }
 
 type StorageX interface {
-	QueryPublished(ctx context.Context, ids []uint, status enum.Status, topic string, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error)
+	GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error)
 
-	QueryReceived(ctx context.Context, ids []uint, status enum.Status, topic string, group string, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error)
+	QueryPublished(ctx context.Context, status enum.Status, topic string, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error)
+
+	QueryReceived(ctx context.Context, status enum.Status, topic string, group string, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error)
 }
 
-type Factory interface {
+type FactoryIface interface {
 	CreateStorage(opts *gap.Options) (Storage, error)
 }

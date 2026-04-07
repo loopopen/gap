@@ -4,9 +4,9 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/lopolopen/gap/internal"
 	"github.com/lopolopen/gap/internal/dashboard"
 	"github.com/lopolopen/gap/internal/enum"
+	"github.com/lopolopen/gap/internal/registry"
 	"github.com/lopolopen/gap/options/gap"
 	"github.com/lopolopen/gap/storage"
 	"gorm.io/driver/mysql"
@@ -57,6 +57,6 @@ func makeDB(opts *Options) (*gorm.DB, error) {
 }
 
 func init() {
-	internal.Register[storage.Factory](enum.GORM, &factory{})
+	registry.Register[storage.FactoryIface](enum.GORM, &factory{})
 	dashboard.AddMeta(enum.Storage, enum.GORM, version)
 }

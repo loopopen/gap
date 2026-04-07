@@ -3,13 +3,12 @@ package dashboard
 import (
 	"embed"
 	"io/fs"
+	"log/slog"
 	"net/http"
-	"path"
 	"strings"
 	"text/template"
 
-	"github.com/lopolopen/gap/broker"
-	"github.com/lopolopen/gap/internal"
+	"github.com/lopolopen/gap/internal/registry"
 	"github.com/lopolopen/gap/options/dashboard"
 	"github.com/lopolopen/gap/options/gap"
 	"github.com/lopolopen/gap/storage"
@@ -30,18 +29,15 @@ type BoardSvc struct {
 	gapOpts *gap.Options
 	opts    *dashboard.Options
 	routes  []RouteRecord
-	broker  broker.Broker
 	storage storage.Storage
 }
 
 func NewBoardSvc(gapOpts *gap.Options, opts *dashboard.Options) *BoardSvc {
-	brok := internal.MustGetBroker(gapOpts)
-	stor := internal.MustGetStorage(gapOpts)
+	stor := registry.MustGetStorage(gapOpts)
 
 	return &BoardSvc{
 		gapOpts: gapOpts,
 		opts:    opts,
-		broker:  brok,
 		storage: stor,
 	}
 }
@@ -69,9 +65,10 @@ func (s *BoardSvc) HandleSPA() http.Handler {
 		if isIndex || err != nil || info.IsDir() {
 			// fallback to index.html
 			w.Header().Set(ContentType, ContentTypeHTML)
+			slog.Info(prefix)
 			err = indexTmpl.Execute(w, map[string]any{
 				"Base":    prefix + "/",
-				"APIBase": path.Join(prefix, "api"),
+				"APIBase": s.opts.NormalAPIPrefix(),
 			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)

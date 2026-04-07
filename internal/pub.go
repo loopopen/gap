@@ -3,12 +3,15 @@ package internal
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"reflect"
 
 	"github.com/lopolopen/gap/broker"
 	"github.com/lopolopen/gap/internal/entity"
+	"github.com/lopolopen/gap/internal/enum"
 	"github.com/lopolopen/gap/internal/errx"
-	"github.com/lopolopen/gap/internal/tx"
+	"github.com/lopolopen/gap/internal/pump"
+	"github.com/lopolopen/gap/internal/txer"
 	"github.com/lopolopen/gap/options/gap"
 	"github.com/lopolopen/gap/storage"
 )
@@ -16,29 +19,44 @@ import (
 type Pub[T any] struct {
 	opts    *gap.Options
 	storage storage.Storage
-	broker  broker.Broker
+	writer  broker.Writer
+	pump    *pump.Pump
+	txer    txer.Txer
 }
 
-func NewPub[T any](opts *gap.Options, broker broker.Broker, storage storage.Storage) *Pub[T] {
-	if broker == nil {
+func NewPub[T any](opts *gap.Options, writer broker.Writer, storage storage.Storage) *Pub[T] {
+	if writer == nil {
 		panic(errx.ErrNoBroker)
 	}
 
 	pub := &Pub[T]{
 		opts:    opts,
 		storage: storage,
-		broker:  broker,
+		writer:  writer,
 	}
+
+	if storage != nil {
+		pump := pump.Singleton(opts)
+		pump.SetSender(pub)
+		pub.pump = pump
+	} else {
+		slog.Debug("pub works on no-persistence mode")
+	}
+
 	var _ Publisher[T] = pub
 	return pub
 }
 
 // Bind implements [Pub].
-func (p *Pub[T]) Bind(txer tx.Txer) (Publisher[T], error) {
-	return p.bind(txer)
+func (p *Pub[T]) Bind(txer txer.Txer) (Publisher[T], error) {
+	pub, err := p.bind(txer)
+	return pub, err
 }
 
-func (p *Pub[T]) bind(txer tx.Txer) (*Pub[T], error) {
+func (p *Pub[T]) bind(txer txer.Txer) (*Pub[T], error) {
+	if p.txer != nil {
+		return nil, fmt.Errorf("cannot bind txer: %w", errx.ErrTxMultiBinding)
+	}
 	if p.storage == nil {
 		return nil, fmt.Errorf("cannot bind txer: %v", errx.ErrNoStorage)
 	}
@@ -46,11 +64,17 @@ func (p *Pub[T]) bind(txer tx.Txer) (*Pub[T], error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Pub[T]{
+	pub := &Pub[T]{
 		opts:    p.opts,
 		storage: stor,
-		broker:  p.broker,
-	}, nil
+		writer:  p.writer,
+		pump:    p.pump,
+		txer:    txer,
+	}
+	txer.SetFlushHandler(func(e *entity.Envelope) {
+		pub.dispatch(pub.opts.DrainContext, e)
+	})
+	return pub, nil
 }
 
 // Publish implements [Pub].
@@ -74,22 +98,67 @@ func (p *Pub[T]) Publish(ctx context.Context, topic string, msg T, args ...any) 
 	if err := e.Verify(); err != nil {
 		return err
 	}
+
 	if p.storage != nil {
-		return p.storage.CreatePublished(ctx, e)
+		err := p.storage.CreatePublished(ctx, e)
+		if err != nil {
+			slog.Error("failed to create published record", slog.Any("err", err))
+			return err
+		}
+
+		if p.txer != nil {
+			p.txer.Append(e)
+		} else {
+			p.dispatch(ctx, e)
+		}
+		return nil
 	}
 
-	err := p.broker.Send(ctx, e)
+	slog.Warn("send message without persistence")
+	err := p.writer.Write(ctx, e)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
+func (p *Pub[T]) dispatch(ctx context.Context, envelope *entity.Envelope) {
+	err := p.pump.DispatchToSend(ctx, envelope)
+	if err != nil {
+		slog.Warn("failed to dispatch envelope to sender, falling back to db polling",
+			slog.Any("err", err),
+			slog.String("id", envelope.IDString()),
+		)
+	}
+}
+
+func (p *Pub[T]) SendAndUpdate(ctx context.Context, envelope *entity.Envelope) error {
+	err := p.writer.Write(ctx, envelope)
+	if err != nil {
+		slog.Debug("failed to send message", slog.Any("err", err))
+
+		if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, 0, enum.StatusFailed); err != nil {
+			slog.Error("falied to set published status to Failed", slog.Any("err", err))
+			return err
+		}
+		return err
+	}
+	if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, 0, enum.StatusSucceeded); err != nil {
+		slog.Debug("falied to set published status to Succeeded", slog.Any("err", err))
+		return err
+	}
+	return nil
+}
+
+func (p *Pub[T]) Options() *gap.Options {
+	return p.opts
+}
+
 type EventPub struct {
 	*Pub[Event]
 }
 
-func (e *EventPub) Bind(txer tx.Txer) (EventPublisher, error) {
+func (e *EventPub) Bind(txer txer.Txer) (EventPublisher, error) {
 	p, err := e.Pub.bind(txer)
 	if err != nil {
 		return nil, err
