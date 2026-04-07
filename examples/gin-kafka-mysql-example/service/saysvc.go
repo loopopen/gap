@@ -34,7 +34,6 @@ func (svc *SaySvc) Say(ctx context.Context, name string) error {
 // @subscribe
 func (svc *SaySvc) HandleSomethingSaid() gap.Handler[event.SomethingSaid] {
 	return func(ctx context.Context, msg event.SomethingSaid, headers map[string]string) error {
-
 		if strings.Contains(msg.Words, "error") {
 			time.Sleep(3 * time.Second)
 			return errors.New("test err")

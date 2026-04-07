@@ -46,16 +46,16 @@ func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelo
 // QueryPublished implements [storage.StorageX].
 func (s *Storage) QueryPublished(ctx context.Context, status enum.Status, topic string, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
 	var pubs []*Published
-	h := NewWhereHelper()
-	AddIfNotZero(h, "`status` = ?", status)
-	AddIfNotZero(h, "`topic` = ?", topic)
+	wh := NewWhereHelper()
+	AddIfNotZero(wh, "`status` = ?", status)
+	AddIfNotZero(wh, "`topic` = ?", topic)
 
 	const script2 = "SELECT COUNT(*) FROM `%s_published` %s"
 
 	var count int64
-	script := fmt.Sprintf(script2, s.opts.Schema, h.String())
+	script := fmt.Sprintf(script2, s.opts.Schema, wh.String())
 	slog.Info(script)
-	err := s.db.QueryRowContext(ctx, script, h.Params()...).Scan(&count)
+	err := s.db.QueryRowContext(ctx, script, wh.Params()...).Scan(&count)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -64,9 +64,9 @@ func (s *Storage) QueryPublished(ctx context.Context, status enum.Status, topic 
 		"FROM `%s_published` %s %s"
 
 	pg := page.Normalize()
-	script = fmt.Sprintf(script1, s.opts.Schema, h.String(), paginate(pg))
+	script = fmt.Sprintf(script1, s.opts.Schema, wh.String(), paginate(pg))
 	slog.Info(script)
-	rows, err := s.db.QueryContext(ctx, script, h.Params()...)
+	rows, err := s.db.QueryContext(ctx, script, wh.Params()...)
 	if err != nil {
 		return nil, nil, err
 	}

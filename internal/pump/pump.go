@@ -153,15 +153,15 @@ func (p *Pump) pollingSend(ctx context.Context) {
 				continue
 			}
 
-			es, err := p.storage.ClaimPublishedBatch(ctx, p.gapOpts.ClaimBatchSize)
+			ps, err := p.storage.ClaimPublishedBatch(ctx, p.gapOpts.ClaimBatchSize)
 			if err != nil {
 				slog.Error("failed to claim published messages", slog.Any("err", err))
 				wait(ctx, 10*time.Second)
 				continue
 			}
 
-			for _, e := range es {
-				err := p.sender.SendAndUpdate(ctx, e)
+			for _, en := range ps {
+				err := p.sender.SendAndUpdate(ctx, en)
 				if err != nil {
 					wait(ctx, 10*time.Second)
 				}
@@ -217,10 +217,7 @@ func (p *Pump) sendParallel(ctx context.Context, envelope *entity.Envelope, sem 
 		}()
 		err := p.sender.SendAndUpdate(ctx, envelope)
 		if err != nil {
-			slog.Warn("failing back to db polling",
-				slog.Any("err", err),
-				slog.String("id", envelope.IDString()),
-			)
+			envelope.Log().Warn("failing back to db polling", slog.Any("err", err))
 		}
 	}()
 }
@@ -231,10 +228,7 @@ func (p *Pump) sendSerial(ctx context.Context, envelope *entity.Envelope) {
 
 	err := p.sender.SendAndUpdate(ctx, envelope)
 	if err != nil {
-		slog.Warn("failing back to db polling",
-			slog.Any("err", err),
-			slog.String("id", envelope.IDString()),
-		)
+		envelope.Log().Warn("failing back to db polling", slog.Any("err", err))
 	}
 }
 
@@ -274,16 +268,13 @@ func (p *Pump) handleParallel(ctx context.Context, envelope *entity.Envelope, se
 
 		h, ok := p.handlers.Load(envelope.Group)
 		if !ok {
-			slog.Error("no handler found", slog.String("group", envelope.Group))
+			envelope.Log().Error("no handler found in pump", slog.String("group", envelope.Group))
 			return
 		}
 		handler := h.(Handler)
 		err := handler.HandleAndUpdate(ctx, envelope)
 		if err != nil {
-			slog.Warn("falling back to db polling",
-				slog.Any("err", err),
-				slog.String("id", envelope.IDString()),
-			)
+			envelope.Log().Warn("falling back to db polling", slog.Any("err", err))
 		}
 	}()
 }
@@ -306,21 +297,21 @@ func (p *Pump) pollingHandle(ctx context.Context) {
 			return
 
 		case <-ticker.C:
-			es, err := p.storage.ClaimReceivedBatch(ctx, p.gapOpts.ClaimBatchSize)
+			rs, err := p.storage.ClaimReceivedBatch(ctx, p.gapOpts.ClaimBatchSize)
 			if err != nil {
 				slog.Error("failed to claim received messages", slog.Any("err", err))
 				wait(ctx, 10*time.Second)
 				continue
 			}
 
-			for _, e := range es {
-				h, ok := p.handlers.Load(e.Group)
+			for _, en := range rs {
+				h, ok := p.handlers.Load(en.Group)
 				if !ok {
-					slog.Error("no handler found", slog.String("group", e.Group))
+					en.Log().Error("no handler found in pump", slog.String("group", en.Group))
 					continue
 				}
 				handler := h.(Handler)
-				err := handler.HandleAndUpdate(ctx, e)
+				err := handler.HandleAndUpdate(ctx, en)
 				if err != nil {
 					wait(ctx, 10*time.Second)
 				}

@@ -3,6 +3,7 @@ package xgorm
 import (
 	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"github.com/lopolopen/gap/internal/entity"
@@ -41,6 +42,7 @@ func (p *Published) writeEntity(e *entity.Envelope) {
 	e.Message = nil
 	e.Group = ""
 	e.Tag = nil
+	e.Logger = slog.With("id", e.ID)
 }
 
 func (p *Published) readEntity(e *entity.Envelope) {
@@ -72,6 +74,7 @@ func (r *Received) writeEntity(e *entity.Envelope) {
 	}
 	e.Message = nil
 	e.Tag = nil
+	e.Logger = slog.With("id", e.ID)
 }
 
 func (r *Received) readEntity(e *entity.Envelope) {

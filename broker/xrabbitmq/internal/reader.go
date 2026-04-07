@@ -103,12 +103,11 @@ func (r *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
 				false, false, false, false, nil,
 			)
 			if err != nil {
-				slog.Error("consume failed", slog.Any("err", err))
+				slog.Error("rabbitmq: consume failed", slog.Any("err", err))
 				goto RETRY
 			}
 
 			for deli := range deliCh {
-				slog.Info(string(deli.Body))
 				en := entity.NewEnvelope(r.gapOpts.Version, deli.RoutingKey, nil).
 					WithPayload(deli.Body).
 					WithGroup(r.group).
@@ -118,11 +117,7 @@ func (r *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
 					en.AddHeader(k, fmt.Sprintf("%v", v))
 				}
 
-				slog.Debug("rabbitmq: received a message",
-					slog.String("topic", en.Topic),
-					slog.String("id", en.IDString()),
-					slog.String(corrid, en.Headers[corrid]),
-				)
+				en.Log().Debug("rabbitmq: received a message")
 
 				select {
 				case <-ctx.Done():

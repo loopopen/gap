@@ -127,7 +127,7 @@ func (r *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
 			}
 
 			msg, err := r.reader.FetchMessage(ctx)
-			slog.Debug("fetched a message from kafka",
+			slog.Debug("kafka: fetched a message",
 				slog.String("topic", msg.Topic),
 				slog.Int64("offset", msg.Offset),
 				slog.String("group.id", r.groupID),
@@ -135,7 +135,7 @@ func (r *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
 
 			if err != nil {
 				if !errors.Is(err, context.Canceled) {
-					slog.Error("broker read message failed", slog.Any("err", err))
+					slog.Error("kafka: read message failed", slog.Any("err", err))
 				}
 				select {
 				case <-ctx.Done():
@@ -154,11 +154,7 @@ func (r *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
 				en.AddHeader(h.Key, string(h.Value))
 			}
 
-			slog.Debug("kafka: received a message",
-				slog.String("topic", en.Topic),
-				slog.String("id", en.IDString()),
-				slog.String(corrid, en.Headers[corrid]),
-			)
+			en.Log().Debug("kafka: received a message")
 
 			select {
 			case <-ctx.Done():

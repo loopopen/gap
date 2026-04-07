@@ -40,7 +40,7 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 		return err
 	}
 
-	slog.Debug("created published envelope", slog.Any("id", envelope.ID))
+	envelope.Log().Debug("created published envelope")
 	return nil
 }
 
@@ -55,7 +55,7 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 		return err
 	}
 
-	slog.Debug("created received envelope", slog.Any("id", envelope.ID))
+	envelope.Log().Debug("created received envelope")
 	return nil
 }
 
@@ -129,7 +129,7 @@ func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, src enum.S
 	}
 
 	if id != 0 {
-		slog.Debug("updated published status", slog.Any("id", id), slog.String("status", status.String()))
+		slog.Debug("updated status published", slog.Any("id", id), slog.String("status", status.String()))
 	}
 	return nil
 }
@@ -261,7 +261,7 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.St
 	}
 
 	if id != 0 {
-		slog.Debug("updated received status", slog.Any("id", id), slog.String("status", status.String()))
+		slog.Debug("updated status of received", slog.Any("id", id), slog.String("status", status.String()))
 	}
 	return nil
 }

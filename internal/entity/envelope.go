@@ -39,6 +39,7 @@ type Envelope struct {
 	Payload   []byte
 	Retries   int
 	Tag       any
+	Logger    *slog.Logger
 }
 
 func NewEnvelope(version string, topic string, msg any) *Envelope {
@@ -48,6 +49,7 @@ func NewEnvelope(version string, topic string, msg any) *Envelope {
 		Version: version,
 		Topic:   topic,
 		Message: msg,
+		Logger:  slog.With("id", id),
 	}
 }
 
@@ -104,4 +106,11 @@ func (e *Envelope) Verify() error {
 		return errx.ErrEmptyTopic
 	}
 	return nil
+}
+
+func (e *Envelope) Log() *slog.Logger {
+	if e == nil || e.Logger == nil {
+		return slog.Default()
+	}
+	return e.Logger
 }

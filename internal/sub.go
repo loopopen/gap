@@ -237,21 +237,31 @@ func (s *Sub) ingestSerial(ctx context.Context, envelope *entity.Envelope) {
 
 	err := s.storage.CreateReceived(ctx, envelope)
 	if err != nil {
-		slog.Error("failed to create received record", slog.Any("err", err))
+		envelope.Log().Error("failed to create received record", slog.Any("err", err))
 		if err := s.reader.Reject(envelope.Tag); err != nil {
-			slog.Error("failed to reject message", slog.Any("err", err))
+			envelope.Log().Error("failed to reject message", slog.Any("err", err))
 		}
 		return
 	}
 	if err := s.reader.Commit(envelope.Tag); err != nil {
-		slog.Error("failed to commit message", slog.Any("err", err))
+		envelope.Log().Error("failed to commit message", slog.Any("err", err))
 		return
 	}
 
 	s.dispatch(ctx, envelope)
 }
 
-func (s *Sub) handle(ctx context.Context, envelope *entity.Envelope) error {
+func (s *Sub) handle(ctx context.Context, envelope *entity.Envelope) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			if err, ok = r.(error); !ok {
+				envelope.Log().Error("recovered from panic when handling", slog.Any("err", r))
+				err = fmt.Errorf("%v", r)
+			}
+		}
+	}()
+
 	handler, ok := s.handlers[envelope.Topic]
 	if !ok {
 		return errx.ErrHandlerNotFound(envelope.Topic, s.groupOpts.Group)
@@ -270,17 +280,17 @@ func (s *Sub) handle(ctx context.Context, envelope *entity.Envelope) error {
 func (s *Sub) HandleAndUpdate(ctx context.Context, envelope *entity.Envelope) error {
 	err := s.handle(ctx, envelope)
 	if err != nil {
-		slog.Error("failed to handle message", slog.Any("err", err))
+		envelope.Log().Error("failed to handle message", slog.Any("err", err))
 
 		if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, 0, enum.StatusFailed); err != nil {
-			slog.Error("failed to set received status to Failed", slog.Any("err", err))
+			envelope.Log().Error("failed to set received status to Failed", slog.Any("err", err))
 			return err
 		}
 		return err
 	}
 
 	if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, 0, enum.StatusSucceeded); err != nil {
-		slog.Warn("falied to set received status to Succeeded", slog.Any("err", err))
+		envelope.Log().Warn("falied to set received status to Succeeded", slog.Any("err", err))
 		return err
 	}
 	return nil
@@ -289,9 +299,6 @@ func (s *Sub) HandleAndUpdate(ctx context.Context, envelope *entity.Envelope) er
 func (s *Sub) dispatch(ctx context.Context, envelope *entity.Envelope) {
 	err := s.pump.DispatchToHandle(ctx, envelope)
 	if err != nil {
-		slog.Warn("failed to dispatch envelope to handler, falling back to db polling",
-			slog.Any("err", err),
-			slog.String("id", envelope.IDString()),
-		)
+		envelope.Log().Warn("failed to dispatch envelope to handler, falling back to db polling", slog.Any("err", err))
 	}
 }

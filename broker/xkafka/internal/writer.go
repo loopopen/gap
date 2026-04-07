@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"log/slog"
 	"sync"
 	"time"
 
@@ -89,10 +88,7 @@ func (w *Writer) Write(ctx context.Context, envelope *entity.Envelope) error {
 		return err
 	}
 
-	slog.Debug("kafka: send the message",
-		slog.String("topic", envelope.Topic),
-		slog.String("id", envelope.IDString()),
-	)
+	envelope.Log().Debug("kafka: send the message")
 	return w.send(ctx, envelope.Topic, envelope.Headers, body)
 }
 
