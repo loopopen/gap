@@ -44,6 +44,12 @@ github.com/klauspost/cpuid/v2 v2.3.0 h1:S4CRMLnYUhGeDFDqkGriYKdfoFlDnMtqTiI/sFzh
 github.com/klauspost/cpuid/v2 v2.3.0/go.mod h1:hqwkgyIinND0mEev00jJYCxPNVRVXFQeu1XKlok6oO0=
 github.com/leodido/go-urn v1.4.0 h1:WT9HwE9SGECu3lg4d/dIA+jxlljEa1/ffXKmRjqdmIQ=
 github.com/leodido/go-urn v1.4.0/go.mod h1:bvxc+MVxLKB4z00jd1z+Dvzr47oO32F/QSNjSBOlFxI=
+github.com/lopolopen/gap v0.1.0-beta.1 h1:XSgdua9JvNy+E6567ie8+UnicdrOcpkbEkqzihr8b30=
+github.com/lopolopen/gap v0.1.0-beta.1/go.mod h1:QEPlHGJhtwJ/IYTexO3rg+qdwHHk3/MSFsdB/IOqNlA=
+github.com/lopolopen/gap/broker/xkafka v0.1.0-beta.1 h1:Dry3Ep0dHPrLQrAkgcdTkeEx0BlDitdXoJLbRoeUFg8=
+github.com/lopolopen/gap/broker/xkafka v0.1.0-beta.1/go.mod h1:upxfey8s2F4roNRBiov9MT9s4pglYjxwJLKdkkIlPYs=
+github.com/lopolopen/gap/storage/xmysql v0.1.0-beta.1 h1:MeCgL0UnXPc02X7LdE3G4IdIPDdLGiucwgsysq5UbFE=
+github.com/lopolopen/gap/storage/xmysql v0.1.0-beta.1/go.mod h1:wSbKzga8eWsGyUapf1WCiOLqwzKgEDKakgO6F/KQegE=
 github.com/lopolopen/shoot v0.7.1 h1:oOFRa2Z1zjVW2lF9Dwqre3Yxr1FM4NV8ZsC305qA/Jg=
 github.com/lopolopen/shoot v0.7.1/go.mod h1:SeFIk1jt9F1Q4Q8IBst2bAh/LA2ijIFKDU4sBOcbA/g=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
@@ -83,11 +89,13 @@ github.com/ugorji/go/codec v1.3.1/go.mod h1:pRBVtBSKl77K30Bv8R2P+cLSGaTtex6fsA2W
 github.com/xdg-go/pbkdf2 v1.0.0 h1:Su7DPu48wXMwC3bs7MCNG+z4FhcyEuz5dlvchbq0B0c=
 github.com/xdg-go/pbkdf2 v1.0.0/go.mod h1:jrpuAogTd400dnrH08LKmI/xc1MbPOebTwRqcT5RDeI=
 github.com/xdg-go/scram v1.2.0 h1:bYKF2AEwG5rqd1BumT4gAnvwU/M9nBp2pTSxeZw7Wvs=
+github.com/xdg-go/scram v1.2.0/go.mod h1:3dlrS0iBaWKYVt2ZfA4cj48umJZ+cAEbR6/SjLA88I8=
 github.com/xdg-go/stringprep v1.0.4 h1:XLI/Ng3O1Atzq0oBs3TWm+5ZVgkq2aqdlvP9JtoZ6c8=
 github.com/xdg-go/stringprep v1.0.4/go.mod h1:mPGuuIYwz7CmR2bT9j4GbQqutWS1zV24gijq1dTyGkM=
 go.mongodb.org/mongo-driver/v2 v2.5.0 h1:yXUhImUjjAInNcpTcAlPHiT7bIXhshCTL3jVBkF3xaE=
 go.mongodb.org/mongo-driver/v2 v2.5.0/go.mod h1:yOI9kBsufol30iFsl1slpdq1I0eHPzybRWdyYUs8K/0=
 go.uber.org/mock v0.6.0 h1:hyF9dfmbgIX5EfOdasqLsWD6xqpNZlXblLB/Dbnwv3Y=
+go.uber.org/mock v0.6.0/go.mod h1:KiVJ4BqZJaMj4svdfmHM0AUx4NJYO8ZNpPnZn1Z+BBU=
 golang.org/x/arch v0.25.0 h1:qnk6Ksugpi5Bz32947rkUgDt9/s5qvqDPl/gBKdMJLE=
 golang.org/x/arch v0.25.0/go.mod h1:0X+GdSIP+kL5wPmpK7sdkEVTt2XoYP0cSjQSbZBwOi8=
 golang.org/x/crypto v0.49.0 h1:+Ng2ULVvLHnJ/ZFEq4KdcDd/cfjrrjjNSXNzxg0Y4U4=

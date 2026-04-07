@@ -5,8 +5,8 @@ go 1.25.0
 require (
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/lopolopen/gap v0.1.0-beta.1
-	github.com/lopolopen/gap/broker/xkafka v0.0.1-alpha.1
-	github.com/lopolopen/gap/storage/xmysql v0.0.1-alpha.1
+	github.com/lopolopen/gap/broker/xkafka v0.1.0-beta.1
+	github.com/lopolopen/gap/storage/xmysql v0.1.0-beta.1
 )
 
 require (

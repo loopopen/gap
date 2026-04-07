@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/lopolopen/gap v0.1.0-beta.1
-	github.com/lopolopen/gap/broker/xkafka v0.0.0
+	github.com/lopolopen/gap/broker/xkafka v0.1.0-beta.1
 	github.com/lopolopen/gap/storage/xmysql v0.1.0-beta.1
 	golang.org/x/sync v0.20.0
 )
@@ -49,8 +49,8 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
-replace github.com/lopolopen/gap => ../../../gap
+// replace github.com/lopolopen/gap => ../../../gap
 
-replace github.com/lopolopen/gap/storage/xmysql => ../../../gap/storage/xmysql
+// replace github.com/lopolopen/gap/storage/xmysql => ../../../gap/storage/xmysql
 
-replace github.com/lopolopen/gap/broker/xkafka => ../../../gap/broker/xkafka
+// replace github.com/lopolopen/gap/broker/xkafka => ../../../gap/broker/xkafka
