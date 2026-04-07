@@ -9,7 +9,7 @@ import (
 	"github.com/lopolopen/gap/internal"
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/errx"
-	"github.com/lopolopen/gap/options/gap"
+	"github.com/lopolopen/gap/internal/gap"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -24,27 +24,26 @@ type Writer struct {
 }
 
 func NewWriter(gapOpts *gap.Options) *Writer {
-	bp := gapOpts.BrokerPlugin
-	opts := bp.(*Options)
+	opts := gapOpts.BrokerOptions.(*Options)
 
-	b := &Writer{
+	w := &Writer{
 		gapOpts: gapOpts,
 		opts:    opts,
 		chPool:  NewDefaultPool(gapOpts.DrainContext, opts),
 	}
 
-	var _ broker.Writer = b
-	return b
+	var _ broker.Writer = w
+	return w
 }
 
-func (b *Writer) init() error {
-	ch, err := b.chPool.Rent()
+func (w *Writer) init() error {
+	ch, err := w.chPool.Rent()
 	if err != nil {
 		return err
 	}
 	defer ch.Close()
 
-	err = ch.ExchangeDeclare(b.exchange(), ExchangeKind, true, false, false, false, nil)
+	err = ch.ExchangeDeclare(w.exchange(), ExchangeKind, true, false, false, false, nil)
 	if err != nil {
 		return err
 	}
@@ -53,7 +52,7 @@ func (b *Writer) init() error {
 }
 
 // Pub implements [gap.Writer].
-func (b *Writer) Write(ctx context.Context, envelope *entity.Envelope) error {
+func (w *Writer) Write(ctx context.Context, envelope *entity.Envelope) error {
 	routingKey := envelope.Topic
 	body, err := envelope.PayloadBytes()
 	if err != nil {
@@ -62,15 +61,15 @@ func (b *Writer) Write(ctx context.Context, envelope *entity.Envelope) error {
 	if len(body) == 0 {
 		return errx.ErrNilPayload
 	}
-	return b.send(ctx, routingKey, envelope.Headers, envelope.Payload)
+	return w.send(ctx, routingKey, envelope.Headers, envelope.Payload)
 }
 
-func (b *Writer) send(ctx context.Context, routingKey string, headers map[string]string, body []byte) error {
-	ch, err := b.chPool.Rent()
+func (w *Writer) send(ctx context.Context, routingKey string, headers map[string]string, body []byte) error {
+	ch, err := w.chPool.Rent()
 	if err != nil {
 		return err
 	}
-	defer b.chPool.Return(ch)
+	defer w.chPool.Return(ch)
 
 	tbl := make(map[string]any)
 	for k, v := range headers {
@@ -81,8 +80,8 @@ func (b *Writer) send(ctx context.Context, routingKey string, headers map[string
 	// In this case:
 	// The message will be discarded by the broker.
 	// The message in the database will be marked as successfully sent if persistence is enabled.
-	if !b.opts.ConfirmMode {
-		err := ch.PublishWithContext(ctx, b.exchange(), routingKey, false, false, amqp.Publishing{
+	if !w.opts.ConfirmMode {
+		err := ch.PublishWithContext(ctx, w.exchange(), routingKey, false, false, amqp.Publishing{
 			Headers:      tbl,
 			MessageId:    headers[internal.KeysMessageID],
 			DeliveryMode: amqp.Persistent,
@@ -92,7 +91,7 @@ func (b *Writer) send(ctx context.Context, routingKey string, headers map[string
 			return err
 		}
 	} else {
-		confirm, err := ch.PublishWithDeferredConfirmWithContext(ctx, b.exchange(), routingKey, false, false, amqp.Publishing{
+		confirm, err := ch.PublishWithDeferredConfirmWithContext(ctx, w.exchange(), routingKey, false, false, amqp.Publishing{
 			Headers:      tbl,
 			MessageId:    headers[internal.KeysMessageID],
 			DeliveryMode: amqp.Persistent,
@@ -116,9 +115,9 @@ func (b *Writer) send(ctx context.Context, routingKey string, headers map[string
 	return nil
 }
 
-func (b *Writer) exchange() string {
-	if b.x == "" {
-		b.x = fmt.Sprintf("gap.%s.x.%s", b.gapOpts.Version, b.opts.Exchange)
+func (w *Writer) exchange() string {
+	if w.x == "" {
+		w.x = fmt.Sprintf("gap.%s.x.%s", w.gapOpts.Version, w.opts.Exchange)
 	}
-	return b.x
+	return w.x
 }

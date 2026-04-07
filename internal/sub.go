@@ -4,15 +4,100 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/lopolopen/gap/broker"
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/enum"
 	"github.com/lopolopen/gap/internal/errx"
+	"github.com/lopolopen/gap/internal/gap"
+	"github.com/lopolopen/gap/internal/plugin"
 	"github.com/lopolopen/gap/internal/pump"
-	"github.com/lopolopen/gap/options/gap"
 	"github.com/lopolopen/gap/storage"
 )
+
+var groupedSubs *GroupedSubs
+var newOnce sync.Once
+var fixOnce sync.Once
+
+type GroupedSubs struct {
+	subs              map[string]*Sub
+	HandlerOtpsLst    []gap.HandlerOptions
+	DependencyOtpsLst []gap.DependencyOptions
+}
+
+func SingleGroupedSubs() *GroupedSubs {
+	newOnce.Do(func() {
+		groupedSubs = &GroupedSubs{
+			subs: make(map[string]*Sub),
+		}
+	})
+	return groupedSubs
+}
+
+func (g *GroupedSubs) AddDependencyOtps(lst []gap.DependencyOptions) {
+	g.DependencyOtpsLst = append(g.DependencyOtpsLst, lst...)
+}
+
+func (g *GroupedSubs) AddHandlerOtps(lst []gap.HandlerOptions) {
+	g.HandlerOtpsLst = append(g.HandlerOtpsLst, lst...)
+}
+
+func (g *GroupedSubs) SubscribeAll(gapOpts *gap.Options) error {
+	//todo: IngestConcurrency
+	for _, o := range g.HandlerOtpsLst {
+		if o.Handler == nil {
+			return errx.ErrNilHandler
+		}
+		if o.Topic == "" {
+			return errx.ErrEmptyTopic
+		}
+		err := g.subscribeOne(gapOpts, &o)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (g *GroupedSubs) subscribeOne(gapOpts *gap.Options, opts *gap.HandlerOptions) error {
+	group := opts.Group
+
+	sub, ok := g.subs[group]
+	if !ok {
+		reader := plugin.MustGetRBroker(gapOpts, group)
+		if reader == nil {
+			panic("reader broker must not be nil")
+		}
+		stor := plugin.MustGetStorage(gapOpts)
+		if stor != nil {
+			fixOnce.Do(func() {
+				err := stor.UpdateStatusReceived(gapOpts.Context, 0, enum.StatusProcessing, enum.StatusFailed)
+				if err != nil {
+					panic(err)
+				}
+			})
+		}
+
+		sub = NewSub(gapOpts, &opts.GroupOptions, reader, stor)
+		g.subs[group] = sub
+	}
+	err := sub.Subscribe(opts.Topic, opts.Handler)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (g *GroupedSubs) ListeningAll() error {
+	for _, sub := range g.subs {
+		err := sub.Listening()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 type Sub struct {
 	opts      *gap.Options

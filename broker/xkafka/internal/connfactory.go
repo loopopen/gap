@@ -6,7 +6,7 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/lopolopen/gap/options/gap"
+	"github.com/lopolopen/gap/internal/gap"
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl/plain"
 )

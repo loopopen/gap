@@ -43,7 +43,7 @@ func HandleTopicWithinGroupRaw(handler Handler[[]byte], topic string, group stri
 		panic(errx.ErrParamIsNil("handler"))
 	}
 	return func(o *Options) {
-		o._handlers = append(o._handlers, HandlerOptions{
+		o.HandlerOptsLst = append(o.HandlerOptsLst, HandlerOptions{
 			GroupOptions: GroupOptions{
 				Group:             group,
 				IngestConcurrency: 0,

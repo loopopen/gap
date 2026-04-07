@@ -9,8 +9,8 @@ import (
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/enum"
 	"github.com/lopolopen/gap/internal/errx"
+	"github.com/lopolopen/gap/internal/gap"
 	"github.com/lopolopen/gap/internal/txer"
-	"github.com/lopolopen/gap/options/gap"
 	"github.com/lopolopen/gap/storage"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -60,7 +60,7 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 }
 
 func NewStorage(gapOpts *gap.Options, db *gorm.DB) *Storage {
-	sp := gapOpts.StoragePlugin
+	sp := gapOpts.StorageOptions
 	stor := &Storage{
 		gapOpts: gapOpts,
 		opts:    sp.(*Options),

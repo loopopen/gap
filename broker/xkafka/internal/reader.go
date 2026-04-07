@@ -11,7 +11,7 @@ import (
 
 	"github.com/lopolopen/gap/broker"
 	"github.com/lopolopen/gap/internal/entity"
-	"github.com/lopolopen/gap/options/gap"
+	"github.com/lopolopen/gap/internal/gap"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -45,8 +45,7 @@ func NewReader(gapOpts *gap.Options, group string) *Reader {
 		panic("group should not be empty")
 	}
 
-	bp := gapOpts.BrokerPlugin
-	opts := bp.(*Options)
+	opts := gapOpts.BrokerOptions.(*Options)
 
 	reader := &Reader{
 		gapOpts:     gapOpts,
@@ -61,8 +60,8 @@ func NewReader(gapOpts *gap.Options, group string) *Reader {
 	return reader
 }
 
-func (b *Reader) init() error {
-	_, err := b.connFactory.CreateConn(false)
+func (r *Reader) init() error {
+	_, err := r.connFactory.CreateConn(false)
 	if err != nil {
 		return err
 	}
@@ -70,50 +69,50 @@ func (b *Reader) init() error {
 }
 
 // Subscribe implements [gap.Reader].
-func (b *Reader) Subscribe(ctx context.Context, topic string) error {
+func (r *Reader) Subscribe(ctx context.Context, topic string) error {
 	ctx, cancel := context.WithTimeout(ctx, topicCreateTimeout)
 	defer cancel()
 
-	if err := b.ensurer.ensureTopic(ctx, topic); err != nil {
+	if err := r.ensurer.ensureTopic(ctx, topic); err != nil {
 		return err
 	}
 
-	b.topicMu.Lock()
-	defer b.topicMu.Unlock()
+	r.topicMu.Lock()
+	defer r.topicMu.Unlock()
 
-	if slices.Contains(b.topics, topic) {
+	if slices.Contains(r.topics, topic) {
 		return nil
 	}
 
-	b.topics = append(b.topics, topic)
-	slog.Debug(fmt.Sprintf("subscribed to topic: %s (%s)", topic, b.group))
+	r.topics = append(r.topics, topic)
+	slog.Debug(fmt.Sprintf("subscribed to topic: %s (%s)", topic, r.group))
 	return nil
 }
 
-func (b *Reader) renewReader() {
-	b.readerMu.Lock()
-	defer b.readerMu.Unlock()
+func (r *Reader) renewReader() {
+	r.readerMu.Lock()
+	defer r.readerMu.Unlock()
 
-	if b.reader != nil {
-		b.reader.Close()
+	if r.reader != nil {
+		r.reader.Close()
 	}
-	b.reader = kafka.NewReader(kafka.ReaderConfig{
-		Brokers:          b.opts.Brokers,
-		GroupID:          b.groupID,
-		GroupTopics:      b.topics,
-		StartOffset:      b.opts.StartOffset,
+	r.reader = kafka.NewReader(kafka.ReaderConfig{
+		Brokers:          r.opts.Brokers,
+		GroupID:          r.groupID,
+		GroupTopics:      r.topics,
+		StartOffset:      r.opts.StartOffset,
 		CommitInterval:   0,
 		ReadBatchTimeout: 3 * time.Second,
 	})
 }
 
 // Read implements [gap.Reader].
-func (b *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
-	if len(b.topics) == 0 {
+func (r *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
+	if len(r.topics) == 0 {
 		return nil, fmt.Errorf("no topics subscribed")
 	}
 
-	b.renewReader()
+	r.renewReader()
 
 	enCh := make(chan *entity.Envelope)
 
@@ -127,11 +126,11 @@ func (b *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
 			default:
 			}
 
-			msg, err := b.reader.FetchMessage(ctx)
+			msg, err := r.reader.FetchMessage(ctx)
 			slog.Debug("fetched a message from kafka",
 				slog.String("topic", msg.Topic),
 				slog.Int64("offset", msg.Offset),
-				slog.String("group.id", b.groupID),
+				slog.String("group.id", r.groupID),
 			)
 
 			if err != nil {
@@ -146,9 +145,9 @@ func (b *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
 				}
 			}
 
-			en := entity.NewEnvelope(b.gapOpts.Version, msg.Topic, nil).
+			en := entity.NewEnvelope(r.gapOpts.Version, msg.Topic, nil).
 				WithPayload(msg.Value).
-				WithGroup(b.group).
+				WithGroup(r.group).
 				WithTag(msg)
 
 			for _, h := range msg.Headers {
@@ -173,17 +172,17 @@ func (b *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
 }
 
 // Commit implements [gap.Reader].
-func (b *Reader) Commit(tag any) error {
+func (r *Reader) Commit(tag any) error {
 	msg := tag.(kafka.Message)
 	slog.Debug("kafka: commit a message",
 		slog.String("topic", msg.Topic),
 		slog.Int64("offset", msg.Offset),
 	)
-	return b.reader.CommitMessages(context.Background(), msg)
+	return r.reader.CommitMessages(context.Background(), msg)
 }
 
 // Reject implements [gap.Reader].
-func (b *Reader) Reject(tag any) error {
-	b.renewReader()
+func (r *Reader) Reject(tag any) error {
+	r.renewReader()
 	return nil
 }

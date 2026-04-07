@@ -34,15 +34,15 @@ func SingleEnsurer(opts *Options) *Ensurer {
 
 // ensureTopic creates a topic if it doesn't exist, with production-grade error handling and retries.
 // It uses a cache to avoid redundant create attempts within the same broker instance.
-func (b *Ensurer) ensureTopic(ctx context.Context, topic string) error {
-	if b.topicsCache[topic] {
+func (e *Ensurer) ensureTopic(ctx context.Context, topic string) error {
+	if e.topicsCache[topic] {
 		return nil
 	}
 
-	b.cacheMu.Lock()
-	defer b.cacheMu.Unlock()
+	e.cacheMu.Lock()
+	defer e.cacheMu.Unlock()
 
-	if b.topicsCache[topic] {
+	if e.topicsCache[topic] {
 		return nil
 	}
 
@@ -56,33 +56,33 @@ func (b *Ensurer) ensureTopic(ctx context.Context, topic string) error {
 		}
 
 		// Try each broker until one succeeds
-		conn, err := b.connFactory.CreateConn(true)
+		conn, err := e.connFactory.CreateConn(true)
 		if err != nil {
 			continue
 		}
 
 		err = conn.CreateTopics(kafka.TopicConfig{
 			Topic:             topic,
-			NumPartitions:     b.topicOpts.NumPartitions,
-			ReplicationFactor: b.topicOpts.ReplicationFactor,
+			NumPartitions:     e.topicOpts.NumPartitions,
+			ReplicationFactor: e.topicOpts.ReplicationFactor,
 		})
 		conn.Close()
 		if err != nil {
 			continue
 		}
 
-		err = b.waitTopicReady(ctx, topic)
+		err = e.waitTopicReady(ctx, topic)
 		if err != nil {
 			continue
 		}
 
 		// Topic created successfully, mark in cache
-		b.topicsCache[topic] = true
+		e.topicsCache[topic] = true
 
 		slog.Debug("successfully created kafka topic",
 			slog.String("topic", topic),
-			slog.Int("partitions", b.topicOpts.NumPartitions),
-			slog.Int("replication_factor", b.topicOpts.ReplicationFactor),
+			slog.Int("partitions", e.topicOpts.NumPartitions),
+			slog.Int("replication_factor", e.topicOpts.ReplicationFactor),
 		)
 		return nil
 	}
@@ -93,7 +93,7 @@ func (b *Ensurer) ensureTopic(ctx context.Context, topic string) error {
 }
 
 // waitTopicReady waits for a topic to be fully replicated and ready for use.
-func (b *Ensurer) waitTopicReady(ctx context.Context, topic string) error {
+func (e *Ensurer) waitTopicReady(ctx context.Context, topic string) error {
 	const maxWaitTime = 30 * time.Second
 	ctx, cancel := context.WithTimeout(ctx, maxWaitTime)
 	defer cancel()
@@ -106,7 +106,7 @@ func (b *Ensurer) waitTopicReady(ctx context.Context, topic string) error {
 		case <-ctx.Done():
 			return fmt.Errorf("timeout waiting for topic to be ready: %w", ctx.Err())
 		case <-ticker.C:
-			conn, err := b.connFactory.CreateConn(false)
+			conn, err := e.connFactory.CreateConn(false)
 			if err != nil {
 				continue
 			}

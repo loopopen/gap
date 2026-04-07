@@ -10,13 +10,21 @@ import (
 
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/errx"
-	"github.com/lopolopen/gap/internal/registry"
-	"github.com/lopolopen/gap/options/gap"
+	"github.com/lopolopen/gap/internal/gap"
+	"github.com/lopolopen/gap/internal/plugin"
 	"github.com/lopolopen/gap/storage"
 )
 
 var pump *Pump
-var once sync.Once
+var newOnce sync.Once
+
+type Sender interface {
+	SendAndUpdate(ctx context.Context, envelope *entity.Envelope) error
+}
+
+type Handler interface {
+	HandleAndUpdate(ctx context.Context, envelope *entity.Envelope) error
+}
 
 type Pump struct {
 	gapOpts  *gap.Options
@@ -29,12 +37,12 @@ type Pump struct {
 }
 
 func Singleton(gapOpts *gap.Options) *Pump {
-	stor := registry.MustGetStorage(gapOpts)
+	stor := plugin.MustGetStorage(gapOpts)
 	if stor == nil {
 		panic(errx.ErrNoStorage)
 	}
 
-	once.Do(func() {
+	newOnce.Do(func() {
 		pump = &Pump{
 			gapOpts:  gapOpts,
 			storage:  stor,

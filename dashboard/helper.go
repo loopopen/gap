@@ -14,7 +14,3 @@ func GinPath(path string) string {
 	path = re.ReplaceAllString(path, ":$1")
 	return path
 }
-
-// func FiberPath(path string) string {
-
-// }

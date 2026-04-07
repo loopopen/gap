@@ -6,17 +6,17 @@ import (
 	"github.com/lopolopen/shoot"
 )
 
-//go:generate go tool shoot new -opt -short -type=HandlerDepsOptions
+//go:generate go tool shoot new -opt -short -file=$GOFILE
 
-type HandlerDepsOptions struct {
+type DependencyOptions struct {
 	FileName   string
 	PkgPath    string
 	FuncName   string
 	_resolvers []func(values []any) string
 }
 
-func ResolveType[T any](typeName string, resolve func(v T)) shoot.Option[HandlerDepsOptions, *HandlerDepsOptions] {
-	return func(o *HandlerDepsOptions) {
+func ResolveType[T any](typeName string, resolve func(v T)) shoot.Option[DependencyOptions, *DependencyOptions] {
+	return func(o *DependencyOptions) {
 		o._resolvers = append(o._resolvers, func(values []any) string {
 			var dep T
 			var resolved bool
@@ -36,14 +36,14 @@ func ResolveType[T any](typeName string, resolve func(v T)) shoot.Option[Handler
 	}
 }
 
-func Resolve(opts ...shoot.Option[HandlerDepsOptions, *HandlerDepsOptions]) shoot.Option[Options, *Options] {
+func Resolve(opts ...shoot.Option[DependencyOptions, *DependencyOptions]) shoot.Option[Options, *Options] {
 	return func(o *Options) {
-		options := new(HandlerDepsOptions).With(opts...)
-		o._dependencies = append(o._dependencies, *options)
+		options := new(DependencyOptions).With(opts...)
+		o.DependencyOptsLst = append(o.DependencyOptsLst, *options)
 	}
 }
 
-func (d *HandlerDepsOptions) Resolve(values []any) {
+func (d *DependencyOptions) Resolve(values []any) {
 	var unresolved string
 	for _, r := range d._resolvers {
 		tname := r(values)

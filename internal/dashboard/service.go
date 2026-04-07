@@ -3,14 +3,13 @@ package dashboard
 import (
 	"embed"
 	"io/fs"
-	"log/slog"
 	"net/http"
 	"strings"
 	"text/template"
 
-	"github.com/lopolopen/gap/internal/registry"
-	"github.com/lopolopen/gap/options/dashboard"
-	"github.com/lopolopen/gap/options/gap"
+	"github.com/lopolopen/gap/dashboard"
+	"github.com/lopolopen/gap/internal/gap"
+	"github.com/lopolopen/gap/internal/plugin"
 	"github.com/lopolopen/gap/storage"
 )
 
@@ -33,7 +32,7 @@ type BoardSvc struct {
 }
 
 func NewBoardSvc(gapOpts *gap.Options, opts *dashboard.Options) *BoardSvc {
-	stor := registry.MustGetStorage(gapOpts)
+	stor := plugin.MustGetStorage(gapOpts)
 
 	return &BoardSvc{
 		gapOpts: gapOpts,
@@ -63,9 +62,7 @@ func (s *BoardSvc) HandleSPA() http.Handler {
 			info, err = fs.Stat(sub, relPath)
 		}
 		if isIndex || err != nil || info.IsDir() {
-			// fallback to index.html
 			w.Header().Set(ContentType, ContentTypeHTML)
-			slog.Info(prefix)
 			err = indexTmpl.Execute(w, map[string]any{
 				"Base":    prefix + "/",
 				"APIBase": s.opts.NormalAPIPrefix(),

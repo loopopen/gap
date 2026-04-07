@@ -6,11 +6,12 @@ import (
 	"context"
 	"runtime"
 
+	"github.com/lopolopen/gap/dashboard"
 	"github.com/lopolopen/shoot"
 )
 
 // NewOptions constructs a new instance of type Options
-func NewOptions(context context.Context, drainContext context.Context, serviceName string, version string, defaultGroup string, claimBatchSize int, maxRetries int, lookbackSeconds int, pumpIntervalSeconds int, maxPublishConcurrency int, workerId int64, storagePlugin PluginOptions, brokerPlugin PluginOptions, publishBufferSize int, workConcurrencyFactor int) *Options {
+func NewOptions(context context.Context, drainContext context.Context, serviceName string, version string, defaultGroup string, claimBatchSize int, maxRetries int, lookbackSeconds int, pumpIntervalSeconds int, maxPublishConcurrency int, workerId int64, publishBufferSize int, workConcurrencyFactor int, dashboardOptions *dashboard.Options, storageOptions PluginOptions, brokerOptions PluginOptions, handlerOptsLst []HandlerOptions, dependencyOptsLst []DependencyOptions, dependencies []any) *Options {
 	return &Options{
 		Context:               context,
 		DrainContext:          drainContext,
@@ -23,10 +24,14 @@ func NewOptions(context context.Context, drainContext context.Context, serviceNa
 		PumpIntervalSeconds:   pumpIntervalSeconds,
 		MaxPublishConcurrency: maxPublishConcurrency,
 		WorkerID:              workerId,
-		StoragePlugin:         storagePlugin,
-		BrokerPlugin:          brokerPlugin,
 		PublishBufferSize:     publishBufferSize,
 		WorkConcurrencyFactor: workConcurrencyFactor,
+		DashboardOptions:      dashboardOptions,
+		StorageOptions:        storageOptions,
+		BrokerOptions:         brokerOptions,
+		HandlerOptsLst:        handlerOptsLst,
+		DependencyOptsLst:     dependencyOptsLst,
+		Dependencies:          dependencies,
 	}
 }
 
@@ -116,20 +121,6 @@ func WorkerID(workerID_ int64) shoot.Option[Options, *Options] {
 	}
 }
 
-// StoragePlugin is a configuration for the filed StoragePlugin
-func StoragePlugin(storagePlugin_ PluginOptions) shoot.Option[Options, *Options] {
-	return func(o *Options) {
-		o.StoragePlugin = storagePlugin_
-	}
-}
-
-// BrokerPlugin is a configuration for the filed BrokerPlugin
-func BrokerPlugin(brokerPlugin_ PluginOptions) shoot.Option[Options, *Options] {
-	return func(o *Options) {
-		o.BrokerPlugin = brokerPlugin_
-	}
-}
-
 // PublishBufferSize is a configuration for the filed PublishBufferSize
 func PublishBufferSize(publishBufferSize_ int) shoot.Option[Options, *Options] {
 	return func(o *Options) {
@@ -141,6 +132,48 @@ func PublishBufferSize(publishBufferSize_ int) shoot.Option[Options, *Options] {
 func WorkConcurrencyFactor(workConcurrencyFactor_ int) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		o.WorkConcurrencyFactor = workConcurrencyFactor_
+	}
+}
+
+// DashboardOptions is a configuration for the filed DashboardOptions
+func DashboardOptions(dashboardOptions_ *dashboard.Options) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.DashboardOptions = dashboardOptions_
+	}
+}
+
+// StorageOptions is a configuration for the filed StorageOptions
+func StorageOptions(storageOptions_ PluginOptions) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.StorageOptions = storageOptions_
+	}
+}
+
+// BrokerOptions is a configuration for the filed BrokerOptions
+func BrokerOptions(brokerOptions_ PluginOptions) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.BrokerOptions = brokerOptions_
+	}
+}
+
+// HandlerOptsLst is a configuration for the filed HandlerOptsLst
+func HandlerOptsLst(handlerOptsLst_ []HandlerOptions) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.HandlerOptsLst = handlerOptsLst_
+	}
+}
+
+// DependencyOptsLst is a configuration for the filed DependencyOptsLst
+func DependencyOptsLst(dependencyOptsLst_ []DependencyOptions) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.DependencyOptsLst = dependencyOptsLst_
+	}
+}
+
+// Dependencies is a configuration for the filed Dependencies
+func Dependencies(dependencies_ []any) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.Dependencies = dependencies_
 	}
 }
 

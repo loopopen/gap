@@ -5,8 +5,8 @@ import (
 
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/enum"
+	"github.com/lopolopen/gap/internal/gap"
 	"github.com/lopolopen/gap/internal/txer"
-	"github.com/lopolopen/gap/options/gap"
 )
 
 type Storage interface {

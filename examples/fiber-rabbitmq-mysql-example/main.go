@@ -15,7 +15,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/lopolopen/gap"
 	"github.com/lopolopen/gap/broker/xrabbitmq"
-	"github.com/lopolopen/gap/options/dashboard"
+	"github.com/lopolopen/gap/dashboard"
 	"golang.org/x/sync/errgroup"
 )
 

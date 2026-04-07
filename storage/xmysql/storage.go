@@ -12,8 +12,8 @@ import (
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/enum"
 	"github.com/lopolopen/gap/internal/errx"
+	"github.com/lopolopen/gap/internal/gap"
 	"github.com/lopolopen/gap/internal/txer"
-	"github.com/lopolopen/gap/options/gap"
 	"github.com/lopolopen/gap/storage"
 )
 
@@ -304,7 +304,7 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.St
 }
 
 func NewStorage(gapOpts *gap.Options, db *sql.DB) *Storage {
-	sp := gapOpts.StoragePlugin
+	sp := gapOpts.StorageOptions
 	s := &Storage{
 		gapOpts: gapOpts,
 		opts:    sp.(*Options),

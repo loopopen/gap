@@ -10,7 +10,7 @@ import (
 	"github.com/lopolopen/gap/internal"
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/errx"
-	"github.com/lopolopen/gap/options/gap"
+	"github.com/lopolopen/gap/internal/gap"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -39,8 +39,7 @@ type Writer struct {
 
 // NewWriter creates a new Kafka writer broker instance.
 func NewWriter(gapOpts *gap.Options) *Writer {
-	bp := gapOpts.BrokerPlugin
-	opts := bp.(*Options)
+	opts := gapOpts.BrokerOptions.(*Options)
 
 	writer := &Writer{
 		gapOpts:     gapOpts,
@@ -53,15 +52,15 @@ func NewWriter(gapOpts *gap.Options) *Writer {
 	return writer
 }
 
-func (b *Writer) init() error {
-	_, err := b.connFactory.CreateConn(false)
+func (w *Writer) init() error {
+	_, err := w.connFactory.CreateConn(false)
 	if err != nil {
 		return err
 	}
 
-	b.writer = kafka.NewWriter(kafka.WriterConfig{
-		Brokers:      b.opts.Brokers,
-		Dialer:       b.connFactory.CreaterDialer(),
+	w.writer = kafka.NewWriter(kafka.WriterConfig{
+		Brokers:      w.opts.Brokers,
+		Dialer:       w.connFactory.CreaterDialer(),
 		Balancer:     &kafka.LeastBytes{},
 		ReadTimeout:  3 * time.Second,
 		WriteTimeout: 3 * time.Second,
@@ -71,7 +70,7 @@ func (b *Writer) init() error {
 }
 
 // Write implements [gap.Writer].
-func (b *Writer) Write(ctx context.Context, envelope *entity.Envelope) error {
+func (w *Writer) Write(ctx context.Context, envelope *entity.Envelope) error {
 	if envelope == nil {
 		return errx.ErrParamIsNil("envelope")
 	}
@@ -86,7 +85,7 @@ func (b *Writer) Write(ctx context.Context, envelope *entity.Envelope) error {
 		return errx.ErrNilPayload
 	}
 
-	if err := b.ensurer.ensureTopic(ctx, envelope.Topic); err != nil {
+	if err := w.ensurer.ensureTopic(ctx, envelope.Topic); err != nil {
 		return err
 	}
 
@@ -94,10 +93,10 @@ func (b *Writer) Write(ctx context.Context, envelope *entity.Envelope) error {
 		slog.String("topic", envelope.Topic),
 		slog.String("id", envelope.IDString()),
 	)
-	return b.send(ctx, envelope.Topic, envelope.Headers, body)
+	return w.send(ctx, envelope.Topic, envelope.Headers, body)
 }
 
-func (b *Writer) send(ctx context.Context, topic string, headers map[string]string, body []byte) error {
+func (w *Writer) send(ctx context.Context, topic string, headers map[string]string, body []byte) error {
 	hds := make([]kafka.Header, 0, len(headers))
 	for k, v := range headers {
 		hds = append(hds, kafka.Header{Key: k, Value: []byte(v)})
@@ -109,5 +108,5 @@ func (b *Writer) send(ctx context.Context, topic string, headers map[string]stri
 		Headers: hds,
 	}
 
-	return b.writer.WriteMessages(ctx, msg)
+	return w.writer.WriteMessages(ctx, msg)
 }

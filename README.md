@@ -211,11 +211,20 @@ Use the `gapc` tool to generate handler boilerplate:
 go run github.com/lopolopen/gap/cmd/gapc -file=main.go
 ```
 
-Add annotations to your handler functions:
+Add annotations to your handler functions: (topic;group)
 
 ```go
 // @subscribe: topic="my.topic"
-func myHandler(/*dependency-list*/) gap.Handler[MyMessage] {
+func MyHandler(/*dependency-list*/) gap.Handler[MyMessage] {
+    // handler implementation
+}
+```
+
+If `MyMessage` implements the `gap.Event` interface, the topic can be omitted:
+
+```go
+// @subscribe
+func MyHandler(/*dependency-list*/) gap.Handler[MyEvent] {
     // handler implementation
 }
 ```
@@ -224,7 +233,7 @@ Or use receiver as a dependency:
 
 ```go
 // @subscribe: topic="my.topic"
-func (svc *MySvc) myHandler(/*other-dependencies*/) gap.Handler[MyMessage] {
+func (svc *MySvc) MyHandler(/*other-dependencies*/) gap.Handler[MyMessage] {
     // handler implementation
 }
 ```

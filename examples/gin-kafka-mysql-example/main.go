@@ -14,7 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lopolopen/gap"
 	"github.com/lopolopen/gap/broker/xkafka"
-	"github.com/lopolopen/gap/options/dashboard"
+	"github.com/lopolopen/gap/dashboard"
 	"github.com/lopolopen/gap/storage/xmysql"
 	"golang.org/x/sync/errgroup"
 )

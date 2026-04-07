@@ -4,7 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/lopolopen/gap/options/dashboard"
+	"github.com/lopolopen/gap/dashboard"
+	"github.com/lopolopen/gap/internal/enum"
 	"github.com/lopolopen/shoot"
 )
 
@@ -42,21 +43,23 @@ type Options struct {
 	//shoot: def=-1
 	WorkerID int64
 
-	StoragePlugin PluginOptions
-
-	BrokerPlugin PluginOptions
-
 	//shoot: def=runtime.GOMAXPROCS(0)*512
 	PublishBufferSize int
 
 	//shoot: def=1
 	WorkConcurrencyFactor int
 
-	_dashboard           *dashboard.Options
-	_handlers            []HandlerOptions
-	_dependencies        []HandlerDepsOptions
-	_values              []any
+	DashboardOptions     *dashboard.Options
+	StorageOptions       PluginOptions
+	BrokerOptions        PluginOptions
+	HandlerOptsLst       []HandlerOptions
+	DependencyOptsLst    []DependencyOptions
+	Dependencies         []any
 	_registerHandlerOnly bool
+}
+
+type PluginOptions interface {
+	PluginType() enum.PluginType
 }
 
 type HandlerOptions struct {
@@ -78,32 +81,16 @@ func (o *Options) PumpInterval() time.Duration {
 	return time.Second * (time.Duration(o.PumpIntervalSeconds))
 }
 
-func (o *Options) Dashboard() *dashboard.Options {
-	return o._dashboard
-}
-
-func (o *Options) Handlers() []HandlerOptions {
-	return o._handlers
-}
-
-func (o *Options) Dependencies() []HandlerDepsOptions {
-	return o._dependencies
-}
-
-func (o *Options) Values() []any {
-	return o._values
-}
-
 func UseDashboard(opts ...shoot.Option[dashboard.Options, *dashboard.Options]) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		options := new(dashboard.Options).With(opts...)
-		o._dashboard = options
+		o.DashboardOptions = options
 	}
 }
 
 func Inject(values ...any) shoot.Option[Options, *Options] {
 	return func(o *Options) {
-		o._values = append(o._values, values...)
+		o.Dependencies = append(o.Dependencies, values...)
 	}
 }
 

@@ -4,13 +4,13 @@ import (
 	"github.com/lopolopen/gap/internal"
 	"github.com/lopolopen/gap/internal/dashboard"
 	"github.com/lopolopen/gap/internal/enum"
+	"github.com/lopolopen/gap/internal/gap"
 	"github.com/lopolopen/gap/internal/pump"
 	"github.com/lopolopen/gap/internal/txer"
-	"github.com/lopolopen/gap/options/gap"
 	"github.com/lopolopen/shoot"
 )
 
-const version = "v0.0.2-alpha.5"
+const version = "v0.1.0-beta.1"
 
 const (
 	KeysMessageID     = internal.KeysMessageID

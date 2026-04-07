@@ -1,24 +1,24 @@
-package gap
+package dashboard
 
 import (
 	"net/http"
 	"path"
 	"sync"
 
-	"github.com/lopolopen/gap/internal/dashboard"
+	"github.com/lopolopen/gap/internal/gap"
 )
 
-var boardSvc *dashboard.BoardSvc
+var boardSvc *BoardSvc
 var initOnce sync.Once
 
-func initDashboard(gapOpts *Options) {
-	opts := gapOpts.Dashboard()
+func InitDashboard(gapOpts *gap.Options) {
+	opts := gapOpts.DashboardOptions
 	if opts == nil {
 		return
 	}
 
 	initOnce.Do(func() {
-		boardSvc = dashboard.NewBoardSvc(gapOpts, opts)
+		boardSvc = NewBoardSvc(gapOpts, opts)
 
 		if opts.Route == nil {
 			panic("mount func is nil; you need to call dashboard.Mount when UseDashboard")

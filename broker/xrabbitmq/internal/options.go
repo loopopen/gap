@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/options/gap"
+	"github.com/lopolopen/gap/internal/gap"
 	"github.com/lopolopen/shoot"
 )
 
@@ -69,6 +69,6 @@ func ConfigQueue(opts ...shoot.Option[QueueOptions, *QueueOptions]) shoot.Option
 func UseRabbitMQ(opts ...shoot.Option[Options, *Options]) shoot.Option[gap.Options, *gap.Options] {
 	return func(o *gap.Options) {
 		options := new(Options).With(opts...)
-		o.BrokerPlugin = options
+		o.BrokerOptions = options
 	}
 }

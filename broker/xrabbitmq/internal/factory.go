@@ -4,7 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/lopolopen/gap/broker"
-	"github.com/lopolopen/gap/options/gap"
+	"github.com/lopolopen/gap/internal/gap"
 )
 
 type Factory struct{}

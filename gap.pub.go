@@ -8,9 +8,10 @@ import (
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/lopolopen/gap/internal"
+	"github.com/lopolopen/gap/internal/dashboard"
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/registry"
+	"github.com/lopolopen/gap/internal/plugin"
 	"github.com/lopolopen/gap/internal/workerid"
 	"github.com/lopolopen/shoot"
 )
@@ -20,11 +21,11 @@ var fixPubOnce sync.Once
 func NewPublisher[T any](opts ...shoot.Option[Options, *Options]) Publisher[T] {
 	gapOpts := new(Options).With(opts...)
 
-	brok := registry.MustGetWBroker(gapOpts)
+	brok := plugin.MustGetWBroker(gapOpts)
 	if brok == nil {
 		panic("writer broker must not be nil")
 	}
-	stor := registry.MustGetStorage(gapOpts)
+	stor := plugin.MustGetStorage(gapOpts)
 	if stor != nil {
 		fixPubOnce.Do(func() {
 			err := stor.UpdateStatusPublished(gapOpts.Context, 0, enum.StatusProcessing, enum.StatusFailed)
@@ -35,7 +36,7 @@ func NewPublisher[T any](opts ...shoot.Option[Options, *Options]) Publisher[T] {
 	}
 
 	initSnowflake(gapOpts.WorkerID)
-	initDashboard(gapOpts)
+	dashboard.InitDashboard(gapOpts)
 
 	pub := internal.NewPub[T](gapOpts, brok, stor)
 	return pub

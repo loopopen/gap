@@ -6,17 +6,17 @@ import (
 
 	"github.com/lopolopen/gap/internal/dashboard"
 	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/registry"
-	"github.com/lopolopen/gap/options/gap"
+	"github.com/lopolopen/gap/internal/gap"
+	"github.com/lopolopen/gap/internal/plugin"
 	"github.com/lopolopen/gap/storage"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
-type factory struct{}
+type Factory struct{}
 
-func (f *factory) CreateStorage(gapOpts *gap.Options) (storage.Storage, error) {
-	sp := gapOpts.StoragePlugin
+func (f *Factory) CreateStorage(gapOpts *gap.Options) (storage.Storage, error) {
+	sp := gapOpts.StorageOptions
 	if sp == nil {
 		return nil, errors.New("no storage plugin configured")
 	}
@@ -57,6 +57,6 @@ func makeDB(opts *Options) (*gorm.DB, error) {
 }
 
 func init() {
-	registry.Register[storage.FactoryIface](enum.GORM, &factory{})
+	plugin.Register[storage.FactoryIface](enum.GORM, &Factory{})
 	dashboard.AddMeta(enum.Storage, enum.GORM, version)
 }

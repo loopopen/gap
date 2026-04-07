@@ -4,12 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/lopolopen/gap/options/gap"
+	"github.com/lopolopen/gap/internal/gap"
 	"github.com/lopolopen/shoot"
 )
 
 var (
-	UseDashboard          = gap.UseDashboard
 	Version               = gap.Version
 	ServiceName           = gap.ServiceName
 	DefaultGroup          = gap.DefaultGroup
@@ -21,8 +20,8 @@ var (
 	MaxPublishConcurrency = gap.MaxPublishConcurrency
 	PublishBufferSize     = gap.PublishBufferSize
 	WorkConcurrencyFactor = gap.WorkConcurrencyFactor
-
-	Inject = gap.Inject
+	UseDashboard          = gap.UseDashboard
+	Inject                = gap.Inject
 )
 
 func WithDrain(ctx context.Context, timeoutSeconds int) shoot.Option[Options, *Options] {
