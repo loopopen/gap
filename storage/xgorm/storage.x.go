@@ -39,7 +39,9 @@ func (s *Storage) QueryPublished(ctx context.Context, status enum.Status, topic 
 	}
 
 	pg := page.Normalize()
-	err = db.Scopes(paginate(pg)).Scan(&pubs).Error
+	err = db.Order("`id`").
+		Scopes(paginate(pg)).
+		Scan(&pubs).Error
 	if err != nil {
 		return nil, nil, err
 	}
@@ -72,7 +74,8 @@ func (s *Storage) QueryReceived(ctx context.Context, status enum.Status, topic s
 	}
 
 	pg := page.Normalize()
-	err = db.Scopes(paginate(pg)).
+	err = db.Order("`id`").
+		Scopes(paginate(pg)).
 		Scan(&recs).Error
 	if err != nil {
 		return nil, nil, err

@@ -16,6 +16,7 @@ import (
 	"github.com/lopolopen/gap"
 	"github.com/lopolopen/gap/broker/xrabbitmq"
 	"github.com/lopolopen/gap/dashboard"
+	"github.com/lopolopen/gap/storage/xmysql"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -74,7 +75,7 @@ func main() {
 }
 
 func initSvc(ctx context.Context, app *fiber.App) *service.SvcContext {
-	// dsn := "root:root@tcp(127.0.0.1:3306)/example2?charset=utf8mb4&parseTime=True&loc=Local"
+	dsn := "root:root@tcp(127.0.0.1:3306)/example2?charset=utf8mb4&parseTime=True&loc=Local"
 
 	pub := gap.NewEventPublisher(
 		gap.WithDrain(ctx, 5),
@@ -84,9 +85,9 @@ func initSvc(ctx context.Context, app *fiber.App) *service.SvcContext {
 			}),
 		),
 		xrabbitmq.UseRabbitMQ(),
-		// xmysql.UseMySQL(
-		// 	xmysql.DSN(dsn),
-		// ),
+		xmysql.UseMySQL(
+			xmysql.DSN(dsn),
+		),
 	)
 
 	svcCtx := service.NewSvcContext(pub)

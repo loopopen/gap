@@ -19,7 +19,6 @@ func (tx *TxerBase) SetFlushHandler(handler func(*entity.Envelope)) {
 
 func (tx *TxerBase) Flush() {
 	if tx.flushHandler == nil {
-		slog.Error("flush handler is not set")
 		return
 	}
 

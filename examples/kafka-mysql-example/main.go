@@ -20,7 +20,11 @@ func main() {
 	// slog.SetLogLoggerLevel(slog.LevelDebug)
 
 	dsn := "root:root@tcp(127.0.0.1:3306)/example?charset=utf8mb4&parseTime=True&loc=Local"
-	brokers := []string{"127.0.0.1:9092"}
+	brokers := []string{
+		"127.0.0.1:9092",
+		"127.0.0.1:9094",
+		"127.0.0.1:9095",
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -29,6 +33,10 @@ func main() {
 		gap.WithDrain(ctx, 5),
 		xkafka.UseKafka(
 			xkafka.Brokers(brokers),
+			xkafka.ConfigTopic(
+				xkafka.NumPartitions(4),
+				xkafka.ReplicationFactor(3),
+			),
 		),
 		xmysql.UseMySQL(
 			xmysql.DSN(dsn),
@@ -84,7 +92,7 @@ func must[T any](v T, err error) T {
 // @subscribe: topic="topic.time.now"
 func handle() gap.Handler[time.Time] {
 	return func(ctx context.Context, msg time.Time, headers map[string]string) error {
-		slog.Info(fmt.Sprintf("received message: %v", msg))
+		slog.Info(fmt.Sprintf("📌 received message: %v", msg))
 		for k, v := range headers {
 			slog.Info("headers", slog.String(k, v))
 		}

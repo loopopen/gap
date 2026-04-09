@@ -267,8 +267,8 @@ func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, src enum.S
 		script += "`id` = ?"
 		args = append(args, id)
 	} else {
-		script += "`status` = ?"
-		args = append(args, src)
+		script += "`version` = ? AND `status` = ?"
+		args = append(args, s.gapOpts.Version, src)
 	}
 	_, err := s.db.ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema), args...)
 	if err != nil {
@@ -289,8 +289,8 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.St
 		script += "`id` = ?"
 		args = append(args, id)
 	} else {
-		script += "`status` = ?"
-		args = append(args, src)
+		script += "`version` = ? AND `status` = ?"
+		args = append(args, s.gapOpts.Version, src)
 	}
 	_, err := s.db.ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema), args...)
 	if err != nil {

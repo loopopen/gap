@@ -60,10 +60,10 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 }
 
 func NewStorage(gapOpts *gap.Options, db *gorm.DB) *Storage {
-	sp := gapOpts.StorageOptions
+	opts := gapOpts.StorageOptions
 	stor := &Storage{
 		gapOpts: gapOpts,
-		opts:    sp.(*Options),
+		opts:    opts.(*Options),
 	}
 	stor.setDB(db)
 
@@ -76,9 +76,14 @@ func (s *Storage) setDB(db *gorm.DB) {
 	namer := schema.NamingStrategy{
 		SingularTable: true,
 	}
-	if db.Dialector.Name() == "mysql" {
+
+	switch db.Dialector.Name() {
+	case "mysql":
 		namer.TablePrefix = s.opts.Schema + "_"
+	case "postgres":
+		namer.TablePrefix = s.opts.Schema + "."
 	}
+
 	conf.NamingStrategy = namer
 	if s.opts.LogLevel != 0 {
 		conf.Logger = logger.Default.LogMode(logger.LogLevel(s.opts.LogLevel))
@@ -88,6 +93,15 @@ func (s *Storage) setDB(db *gorm.DB) {
 }
 
 func (s *Storage) init() error {
+	if s.opts.Schema != "" {
+		switch s.db.Dialector.Name() {
+		case "postgres":
+			if err := s.db.Exec(fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS "%s"`, s.opts.Schema)).Error; err != nil {
+				return err
+			}
+		}
+	}
+
 	return migrateWithComment(s.db,
 		&Published{},
 		&Received{},
@@ -120,7 +134,7 @@ func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, src enum.S
 	if id != 0 {
 		db.Where("`id` = ?", id)
 	} else {
-		db.Where("`status` = ?", src)
+		db.Where("`version` = ? AND `status` = ?", s.gapOpts.Version, src)
 	}
 
 	err := db.Update("`status`", status).Error
@@ -176,7 +190,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 			Where("`version` = ?", o.Version).
 			Where("`status` IN ?", []enum.Status{enum.StatusPending, enum.StatusFailed}).
 			Where("`retries` < ?", o.MaxRetries).
-			Where("created_at < ?", minutsAge).
+			Where("`created_at` < ?", minutsAge).
 			Limit(batchSize).
 			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Scan(&pubs).Error
@@ -217,7 +231,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 			Where("`version` = ?", o.Version).
 			Where("`status` IN ?", []enum.Status{enum.StatusPending, enum.StatusFailed}).
 			Where("`retries` < ?", o.MaxRetries).
-			Where("created_at < ?", minutsAge).
+			Where("`created_at` < ?", minutsAge).
 			Limit(batchSize).
 			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Scan(&recs).Error
@@ -252,7 +266,7 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.St
 	if id != 0 {
 		db.Where("`id` = ?", id)
 	} else {
-		db.Where("`status` = ?", src)
+		db.Where("`version` = ? AND `status` = ?", s.gapOpts.Version, src)
 	}
 
 	err := db.Update("`status`", status).Error

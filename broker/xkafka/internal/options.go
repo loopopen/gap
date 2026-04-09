@@ -10,27 +10,27 @@ import (
 
 type Options struct {
 	//shoot: def=""
-	Password string
+	Password string `yaml:"password"`
 
 	//shoot: def=""
-	UserName string
+	UserName string `yaml:"username"`
 
 	//shoot: def=[]string{"localhost:9092"}
-	Brokers []string
+	Brokers []string `yaml:"brokers"`
 
 	//shoot: def=new(TopicOptions).With()
-	TopicOpts *TopicOptions
+	TopicOpts *TopicOptions `yaml:"topicOpts"`
 
 	//shoot: def=kafka.LastOffset
-	StartOffset int64
+	StartOffset int64 `yaml:"startOffset"`
 }
 
 type TopicOptions struct {
 	//shoot: def=-1
-	NumPartitions int
+	NumPartitions int `yaml:"numPartitions"`
 
 	//shoot: def=-1
-	ReplicationFactor int
+	ReplicationFactor int `yaml:"replicationFactor"`
 }
 
 func (o *Options) PluginType() enum.PluginType {

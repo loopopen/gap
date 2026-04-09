@@ -15,28 +15,17 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-const (
-// // Topic creation default timeouts
-// topicCreateTimeout = 30 * time.Second
-// topicCreateRetries = 5
-
-// // Topic validation retry backoff
-// topicValidateDelay = 500 * time.Millisecond
-
-// corrid = internal.KeysCorrelationID
-)
-
 type Reader struct {
-	gapOpts     *gap.Options
-	opts        *Options
-	group       string
-	connFactory *ConnFactory
-	reader      *kafka.Reader
-	readerMu    sync.Mutex
-	groupID     string
-	topics      []string
-	topicMu     sync.Mutex
-	ensurer     *Ensurer
+	gapOpts  *gap.Options
+	opts     *Options
+	client   *kafka.Client
+	group    string
+	reader   *kafka.Reader
+	readerMu sync.Mutex
+	groupID  string
+	topics   []string
+	topicMu  sync.Mutex
+	ensurer  *Ensurer
 }
 
 // NewReader creates a new Kafka reader broker instance.
@@ -48,12 +37,12 @@ func NewReader(gapOpts *gap.Options, group string) *Reader {
 	opts := gapOpts.BrokerOptions.(*Options)
 
 	reader := &Reader{
-		gapOpts:     gapOpts,
-		opts:        opts,
-		connFactory: NewConnFactory(opts),
-		groupID:     fmt.Sprintf("gap.%s.g.%s", gapOpts.Version, group),
-		group:       group,
-		ensurer:     SingleEnsurer(opts),
+		gapOpts: gapOpts,
+		opts:    opts,
+		client:  SingleClient(opts),
+		groupID: fmt.Sprintf("gap.%s.g.%s", gapOpts.Version, group),
+		group:   group,
+		ensurer: SingleEnsurer(opts),
 	}
 
 	var _ broker.Reader = reader
@@ -61,18 +50,11 @@ func NewReader(gapOpts *gap.Options, group string) *Reader {
 }
 
 func (r *Reader) init() error {
-	_, err := r.connFactory.CreateConn(false)
-	if err != nil {
-		return err
-	}
-	return nil
+	return r.ensurer.ensure(r.gapOpts.Context)
 }
 
 // Subscribe implements [gap.Reader].
 func (r *Reader) Subscribe(ctx context.Context, topic string) error {
-	ctx, cancel := context.WithTimeout(ctx, topicCreateTimeout)
-	defer cancel()
-
 	if err := r.ensurer.ensureTopic(ctx, topic); err != nil {
 		return err
 	}
@@ -130,7 +112,7 @@ func (r *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
 			slog.Debug("kafka: fetched a message",
 				slog.String("topic", msg.Topic),
 				slog.Int64("offset", msg.Offset),
-				slog.String("group.id", r.groupID),
+				slog.String("group_id", r.groupID),
 			)
 
 			if err != nil {

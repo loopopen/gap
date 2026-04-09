@@ -35,8 +35,8 @@ func (svc *SaySvc) Say(ctx context.Context, name string) error {
 func (svc *SaySvc) HandleSomethingSaid() gap.Handler[event.SomethingSaid] {
 	return func(ctx context.Context, msg event.SomethingSaid, headers map[string]string) error {
 		if strings.Contains(msg.Words, "error") {
-			time.Sleep(3 * time.Second)
-			return errors.New("test err")
+			time.Sleep(2 * time.Second)
+			return errors.New("test error")
 		}
 
 		slog.Info(fmt.Sprintf("📌 He said: %s", msg.Words))

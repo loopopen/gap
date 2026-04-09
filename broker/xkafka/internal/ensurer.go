@@ -11,12 +11,19 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
+const (
+	topicEnsureTimeout = 30 * time.Second
+	topicCreateRetries = 5
+	topicValidateDelay = 500 * time.Millisecond
+)
+
 var ensurerOnce sync.Once
 var ensurer *Ensurer
 
 type Ensurer struct {
-	connFactory *ConnFactory
+	opts        *Options
 	topicOpts   *TopicOptions
+	client      *kafka.Client
 	topicsCache map[string]bool
 	cacheMu     sync.Mutex
 }
@@ -24,12 +31,25 @@ type Ensurer struct {
 func SingleEnsurer(opts *Options) *Ensurer {
 	ensurerOnce.Do(func() {
 		ensurer = &Ensurer{
-			connFactory: NewConnFactory(opts),
+			opts:        opts,
 			topicOpts:   opts.TopicOpts,
+			client:      SingleClient(opts),
 			topicsCache: make(map[string]bool),
 		}
 	})
 	return ensurer
+}
+
+func (e *Ensurer) ensure(ctx context.Context) error {
+	_, err := e.client.Metadata(ctx, &kafka.MetadataRequest{})
+	if err != nil {
+		slog.Error("kafka: failed to connect to brokers",
+			slog.Any("brokers", e.opts.Brokers),
+			slog.Any("err", err),
+		)
+		return err
+	}
+	return nil
 }
 
 // ensureTopic creates a topic if it doesn't exist, with production-grade error handling and retries.
@@ -46,6 +66,9 @@ func (e *Ensurer) ensureTopic(ctx context.Context, topic string) error {
 		return nil
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, topicEnsureTimeout)
+	defer cancel()
+
 	for try := 0; try < topicCreateRetries; try++ {
 		if try > 0 {
 			select {
@@ -55,18 +78,15 @@ func (e *Ensurer) ensureTopic(ctx context.Context, topic string) error {
 			}
 		}
 
-		// Try each broker until one succeeds
-		conn, err := e.connFactory.CreateConn(true)
-		if err != nil {
-			continue
-		}
-
-		err = conn.CreateTopics(kafka.TopicConfig{
-			Topic:             topic,
-			NumPartitions:     e.topicOpts.NumPartitions,
-			ReplicationFactor: e.topicOpts.ReplicationFactor,
+		_, err := client.CreateTopics(context.Background(), &kafka.CreateTopicsRequest{
+			Topics: []kafka.TopicConfig{
+				{
+					Topic:             topic,
+					NumPartitions:     e.topicOpts.NumPartitions,
+					ReplicationFactor: e.topicOpts.ReplicationFactor,
+				},
+			},
 		})
-		conn.Close()
 		if err != nil {
 			continue
 		}
@@ -94,36 +114,47 @@ func (e *Ensurer) ensureTopic(ctx context.Context, topic string) error {
 
 // waitTopicReady waits for a topic to be fully replicated and ready for use.
 func (e *Ensurer) waitTopicReady(ctx context.Context, topic string) error {
-	const maxWaitTime = 30 * time.Second
-	ctx, cancel := context.WithTimeout(ctx, maxWaitTime)
-	defer cancel()
-
 	ticker := time.NewTicker(topicValidateDelay)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for topic to be ready: %w", ctx.Err())
+			return fmt.Errorf("timeout waiting for topic %s to be ready: %w", topic, ctx.Err())
 		case <-ticker.C:
-			conn, err := e.connFactory.CreateConn(false)
+			// Fetch metadata for the specific topic using the client.
+			// Unlike Conn, the Client manages its own connection pool via Transport.
+			resp, err := e.client.Metadata(ctx, &kafka.MetadataRequest{
+				Topics: []string{topic},
+			})
+
 			if err != nil {
+				// Network errors or broker unavailability; retry in the next tick
 				continue
 			}
 
-			partitions, err := conn.ReadPartitions(topic)
-			conn.Close()
+			for _, t := range resp.Topics {
+				if t.Name != topic {
+					continue
+				}
 
-			if err == nil && len(partitions) > 0 {
-				// Verify all replicas are available
+				// If the topic has metadata errors (e.g., LeaderNotAvailable)
+				// or no partitions exist yet, it is not ready.
+				if t.Error != nil || len(t.Partitions) == 0 {
+					break
+				}
+
 				allReady := true
-				for _, partition := range partitions {
-					// Check if leader is valid (Leader.ID should be >= 0)
-					if len(partition.Replicas) == 0 || partition.Leader.ID < 0 {
+				for _, p := range t.Partitions {
+					// A partition is considered 'ready' when:
+					// 1. It has a valid Leader (ID >= 0)
+					// 2. The replica list is populated
+					if p.Leader.ID < 0 || len(p.Replicas) == 0 {
 						allReady = false
 						break
 					}
 				}
+
 				if allReady {
 					return nil
 				}

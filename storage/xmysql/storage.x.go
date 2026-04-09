@@ -61,7 +61,7 @@ func (s *Storage) QueryPublished(ctx context.Context, status enum.Status, topic 
 	}
 
 	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` " +
-		"FROM `%s_published` %s %s"
+		"FROM `%s_published` %s ORDER BY `id` %s"
 
 	pg := page.Normalize()
 	script = fmt.Sprintf(script1, s.opts.Schema, wh.String(), paginate(pg))
@@ -116,7 +116,7 @@ func (s *Storage) QueryReceived(ctx context.Context, status enum.Status, topic s
 	}
 
 	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` " +
-		"FROM `%s_received` %s %s"
+		"FROM `%s_received` %s ORDER BY `id` %s"
 
 	pg := page.Normalize()
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(script1, s.opts.Schema, h.String(), paginate(pg)), h.Params()...)

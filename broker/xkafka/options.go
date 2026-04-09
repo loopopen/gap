@@ -10,6 +10,8 @@ import (
 
 const version = "v0.1.0-beta.1"
 
+type Options = internal.Options
+
 var (
 	UseKafka    = internal.UseKafka
 	Password    = internal.Password

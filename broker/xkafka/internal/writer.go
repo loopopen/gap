@@ -6,34 +6,22 @@ import (
 	"time"
 
 	"github.com/lopolopen/gap/broker"
-	"github.com/lopolopen/gap/internal"
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/errx"
 	"github.com/lopolopen/gap/internal/gap"
 	"github.com/segmentio/kafka-go"
 )
 
-const (
-	// Topic creation default timeouts
-	topicCreateTimeout = 30 * time.Second
-	topicCreateRetries = 5
-
-	// Topic validation retry backoff
-	topicValidateDelay = 500 * time.Millisecond
-
-	corrid = internal.KeysCorrelationID
-)
-
 type Writer struct {
-	gapOpts     *gap.Options
-	opts        *Options
-	group       string
-	connFactory *ConnFactory
-	writer      *kafka.Writer
-	groupID     string
-	topics      []string
-	topicMu     sync.Mutex
-	ensurer     *Ensurer
+	gapOpts *gap.Options
+	opts    *Options
+	client  *kafka.Client
+	group   string
+	writer  *kafka.Writer
+	groupID string
+	topics  []string
+	topicMu sync.Mutex
+	ensurer *Ensurer
 }
 
 // NewWriter creates a new Kafka writer broker instance.
@@ -41,10 +29,10 @@ func NewWriter(gapOpts *gap.Options) *Writer {
 	opts := gapOpts.BrokerOptions.(*Options)
 
 	writer := &Writer{
-		gapOpts:     gapOpts,
-		opts:        opts,
-		connFactory: NewConnFactory(opts),
-		ensurer:     SingleEnsurer(opts),
+		gapOpts: gapOpts,
+		opts:    opts,
+		client:  SingleClient(opts),
+		ensurer: SingleEnsurer(opts),
 	}
 
 	var _ broker.Writer = writer
@@ -52,14 +40,13 @@ func NewWriter(gapOpts *gap.Options) *Writer {
 }
 
 func (w *Writer) init() error {
-	_, err := w.connFactory.CreateConn(false)
+	err := w.ensurer.ensure(w.gapOpts.Context)
 	if err != nil {
 		return err
 	}
 
 	w.writer = kafka.NewWriter(kafka.WriterConfig{
 		Brokers:      w.opts.Brokers,
-		Dialer:       w.connFactory.CreaterDialer(),
 		Balancer:     &kafka.LeastBytes{},
 		ReadTimeout:  3 * time.Second,
 		WriteTimeout: 3 * time.Second,
