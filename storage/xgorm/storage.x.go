@@ -6,6 +6,7 @@ import (
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/enum"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -26,10 +27,10 @@ func (s *Storage) QueryPublished(ctx context.Context, status enum.Status, topic 
 	var pubs []*Published
 	db := s.db.WithContext(ctx).Model(&Published{})
 	if status != 0 {
-		db.Where("`status` = ?", status)
+		db.Where(&Model{Status: status})
 	}
 	if topic != "" {
-		db.Where("`topic` = ?", topic)
+		db.Where(&Model{Topic: topic})
 	}
 
 	var count int64
@@ -39,7 +40,7 @@ func (s *Storage) QueryPublished(ctx context.Context, status enum.Status, topic 
 	}
 
 	pg := page.Normalize()
-	err = db.Order("`id`").
+	err = db.Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}}).
 		Scopes(paginate(pg)).
 		Scan(&pubs).Error
 	if err != nil {
@@ -58,13 +59,13 @@ func (s *Storage) QueryReceived(ctx context.Context, status enum.Status, topic s
 	var recs []*Received
 	db := s.db.WithContext(ctx).Model(&Received{})
 	if status != 0 {
-		db.Where("`status` = ?", status)
+		db.Where(&Model{Status: status})
 	}
 	if topic != "" {
-		db.Where("`topic` = ?", topic)
+		db.Where(&Model{Topic: topic})
 	}
 	if group != "" {
-		db.Where("`group` = ?", group)
+		db.Where(&Received{Group: group})
 	}
 
 	var count int64
@@ -74,7 +75,7 @@ func (s *Storage) QueryReceived(ctx context.Context, status enum.Status, topic s
 	}
 
 	pg := page.Normalize()
-	err = db.Order("`id`").
+	err = db.Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}}).
 		Scopes(paginate(pg)).
 		Scan(&recs).Error
 	if err != nil {

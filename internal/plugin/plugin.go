@@ -11,10 +11,10 @@ import (
 	"github.com/lopolopen/gap/storage"
 )
 
-var registries = make(map[enum.PluginType]any)
+var registries = make(map[enum.Plugin]any)
 var regMu sync.Mutex
 
-func Register[T any](typ enum.PluginType, value T) {
+func Register[T any](typ enum.Plugin, value T) {
 	regMu.Lock()
 	defer regMu.Unlock()
 
@@ -24,9 +24,9 @@ func Register[T any](typ enum.PluginType, value T) {
 	registries[typ] = value
 }
 
-func mustGet[T any](typ enum.PluginType) T {
+func mustGet[T any](typ enum.Plugin) T {
 	var zero T
-	if typ == enum.None {
+	if typ == enum.PluginNone {
 		return zero
 	}
 	v, _ := registries[typ]

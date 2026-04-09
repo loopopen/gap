@@ -17,9 +17,9 @@ type Model struct {
 	CreatedAt time.Time   `gorm:"not null"`
 	Version   string      `gorm:"not null;size:16"`
 	Topic     string      `gorm:"not null;size:256"`
-	Status    enum.Status `gorm:"not null;type:ENUM('Pending','Processing','Succeeded','Failed')"`
+	Status    enum.Status `gorm:"not null;mysql:type:ENUM('Pending','Processing','Succeeded','Failed')"`
 	Headers   string      `gorm:"type:text"`
-	Payload   string      `gorm:"type:longtext"`
+	Payload   string      `gorm:"mysql:type:longtext;postgres:type:text"`
 	Retries   int         `gorm:"default:0"`
 	ExpiredAt sql.Null[time.Time]
 }

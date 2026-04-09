@@ -9,27 +9,25 @@ import (
 	"github.com/lopolopen/gap/internal/gap"
 	"github.com/lopolopen/gap/internal/plugin"
 	"github.com/lopolopen/gap/storage"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
 )
 
 type Factory struct{}
 
 func (f *Factory) CreateStorage(gapOpts *gap.Options) (storage.Storage, error) {
-	sp := gapOpts.StorageOptions
-	if sp == nil {
+	o := gapOpts.StorageOptions
+	if o == nil {
 		return nil, errors.New("no storage plugin configured")
 	}
-	if sp.PluginType() != enum.GORM {
+	if o.PluginType() != enum.PluginGORM {
 		return nil, errors.New("storage plugin does not match")
 	}
-	db, err := makeDB(sp.(*Options))
-	if err != nil {
-		return nil, err
+	opts := o.(*Options)
+	if opts.DB == nil {
+		return nil, errors.New("gorm db is nil")
 	}
 
-	stor := NewStorage(gapOpts, db)
-	err = stor.init()
+	stor := NewStorage(gapOpts, opts.DB)
+	err := stor.init()
 	if err != nil {
 		slog.Error("failed to init storage", slog.Any("err", err))
 		return nil, err
@@ -37,26 +35,7 @@ func (f *Factory) CreateStorage(gapOpts *gap.Options) (storage.Storage, error) {
 	return stor, nil
 }
 
-func makeDB(opts *Options) (*gorm.DB, error) {
-	if opts.DB != nil {
-		db := *opts.DB
-		return &db, nil
-	}
-	var dial gorm.Dialector
-	if opts.MySQL != nil {
-		dial = mysql.Open(opts.MySQL.DSN)
-	}
-
-	db, err := gorm.Open(dial)
-	if err != nil {
-		slog.Error("failed to connect database", slog.Any("err", err))
-		panic(err)
-	}
-
-	return db, nil
-}
-
 func init() {
-	plugin.Register[storage.FactoryIface](enum.GORM, &Factory{})
-	dashboard.AddMeta(enum.Storage, enum.GORM, version)
+	plugin.Register[storage.FactoryIface](enum.PluginGORM, &Factory{})
+	dashboard.AddMeta(enum.PluginKindStorage, enum.PluginGORM, version)
 }

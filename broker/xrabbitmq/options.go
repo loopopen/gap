@@ -30,6 +30,6 @@ var (
 )
 
 func init() {
-	plugin.Register[broker.FactoryIface](enum.RabbitMQ, broker.NewFactory(&internal.Factory{}))
-	dashboard.AddMeta(enum.Broker, enum.RabbitMQ, version)
+	plugin.Register[broker.FactoryIface](enum.PluginRabbitMQ, broker.NewFactory(&internal.Factory{}))
+	dashboard.AddMeta(enum.PluginKindBroker, enum.PluginRabbitMQ, version)
 }

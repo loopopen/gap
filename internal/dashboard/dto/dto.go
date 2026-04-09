@@ -17,8 +17,8 @@ type PagedResult[T any] struct {
 }
 
 type Meta struct {
-	Typ     enum.MetaType `json:"type"`
-	Plugin  enum.PluginType
+	Typ     enum.PluginKind `json:"type"`
+	Plugin  enum.Plugin
 	Version string
 }
 

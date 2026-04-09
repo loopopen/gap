@@ -19,21 +19,11 @@ type Options struct {
 	LogLevel logger.LogLevel
 
 	DB *gorm.DB
-
-	MySQL *MySQLConf
-
-	PostgreSQL *PostgreSQLConf
 }
 
-func (o *Options) PluginType() enum.PluginType {
-	return enum.GORM
+func (o *Options) PluginType() enum.Plugin {
+	return enum.PluginGORM
 }
-
-type MySQLConf struct {
-	DSN string
-}
-
-type PostgreSQLConf struct{}
 
 func UseGorm(opts ...shoot.Option[Options, *Options]) shoot.Option[gap.Options, *gap.Options] {
 	return func(o *gap.Options) {

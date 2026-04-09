@@ -75,7 +75,7 @@ func main() {
 }
 
 func initSvc(ctx context.Context, app *fiber.App) *service.SvcContext {
-	dsn := "root:root@tcp(127.0.0.1:3306)/example2?charset=utf8mb4&parseTime=True&loc=Local"
+	dsn := "root:root@tcp(127.0.0.1:3306)/example?charset=utf8mb4&parseTime=True&loc=Local"
 
 	pub := gap.NewEventPublisher(
 		gap.WithDrain(ctx, 5),

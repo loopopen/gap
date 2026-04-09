@@ -29,7 +29,7 @@ func init() {
 				return nil
 			},
 			"topic.time.now",
-			"examples.kafka-mysql-example",
+			"examples.kafka-gorm-postgres-example",
 		),
 	)
 }

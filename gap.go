@@ -43,5 +43,5 @@ func From(pub internal.OptsHolder) shoot.Option[Options, *Options] {
 }
 
 func init() {
-	dashboard.AddMeta(enum.Self, 0, version)
+	dashboard.AddMeta(enum.PluginKindSelf, 0, version)
 }

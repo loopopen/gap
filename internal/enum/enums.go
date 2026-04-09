@@ -8,29 +8,29 @@ const StatusInvalid = -2
 
 const (
 	StatusFailed  Status = -1
-	StatusPending Status = iota //1
+	StatusPending Status = iota //1; not use 0
 	StatusProcessing
 	StatusSucceeded
 )
 
-//go:generate go tool shoot enum -json -type=MetaType
+//go:generate go tool shoot enum -json -type=PluginKind
 
-type MetaType int32
+type PluginKind int32
 
 const (
-	Self MetaType = iota
-	Storage
-	Broker
+	PluginKindSelf PluginKind = iota
+	PluginKindStorage
+	PluginKindBroker
 )
 
-//go:generate go tool shoot enum -json -type=PluginType
+//go:generate go tool shoot enum -json -type=Plugin
 
-type PluginType int32
+type Plugin int32
 
 const (
-	None PluginType = iota
-	MySQL
-	GORM
-	RabbitMQ
-	Kafka
+	PluginNone Plugin = iota
+	PluginMySQL
+	PluginGORM
+	PluginRabbitMQ
+	PluginKafka
 )

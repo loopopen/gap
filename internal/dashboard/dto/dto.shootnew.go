@@ -47,7 +47,7 @@ func (p *PagedResult[T]) UnmarshalJSON(data []byte) error {
 func (p PagedResult[T]) ShootNew() { /*noop*/ }
 
 // NewMeta constructs a new instance of type Meta
-func NewMeta(typ enum.MetaType, plugin enum.PluginType, version string) *Meta {
+func NewMeta(typ enum.PluginKind, plugin enum.Plugin, version string) *Meta {
 	return &Meta{
 		Typ:     typ,
 		Plugin:  plugin,
@@ -56,8 +56,8 @@ func NewMeta(typ enum.MetaType, plugin enum.PluginType, version string) *Meta {
 }
 
 type _json_Meta struct {
-	Typ     enum.MetaType   `json:"type"`
-	Plugin  enum.PluginType `json:"plugin"`
+	Typ     enum.PluginKind `json:"type"`
+	Plugin  enum.Plugin     `json:"plugin"`
 	Version string          `json:"version"`
 }
 

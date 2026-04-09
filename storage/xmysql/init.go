@@ -19,7 +19,7 @@ func (f Factory) CreateStorage(gapOpts *gap.Options) (storage.Storage, error) {
 	if sp == nil {
 		return nil, errors.New("no storage plugin configured")
 	}
-	if sp.PluginType() != enum.MySQL {
+	if sp.PluginType() != enum.PluginMySQL {
 		return nil, errors.New("storage plugin does not match")
 	}
 
@@ -39,6 +39,6 @@ func (f Factory) CreateStorage(gapOpts *gap.Options) (storage.Storage, error) {
 }
 
 func init() {
-	plugin.Register[storage.FactoryIface](enum.MySQL, &Factory{})
-	dashboard.AddMeta(enum.Storage, enum.MySQL, version)
+	plugin.Register[storage.FactoryIface](enum.PluginMySQL, &Factory{})
+	dashboard.AddMeta(enum.PluginKindStorage, enum.PluginMySQL, version)
 }

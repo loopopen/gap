@@ -9,13 +9,11 @@ import (
 )
 
 // NewOptions constructs a new instance of type Options
-func NewOptions(schema string, logLevel logger.LogLevel, db *gorm.DB, mySql *MySQLConf, postgreSql *PostgreSQLConf) *Options {
+func NewOptions(schema string, logLevel logger.LogLevel, db *gorm.DB) *Options {
 	return &Options{
-		Schema:     schema,
-		LogLevel:   logLevel,
-		DB:         db,
-		MySQL:      mySql,
-		PostgreSQL: postgreSql,
+		Schema:   schema,
+		LogLevel: logLevel,
+		DB:       db,
 	}
 }
 
@@ -46,20 +44,6 @@ func LogLevel(logLevel_ logger.LogLevel) shoot.Option[Options, *Options] {
 func DB(db_ *gorm.DB) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		o.DB = db_
-	}
-}
-
-// MySQL is a configuration for the filed MySQL
-func MySQL(mySQL_ *MySQLConf) shoot.Option[Options, *Options] {
-	return func(o *Options) {
-		o.MySQL = mySQL_
-	}
-}
-
-// PostgreSQL is a configuration for the filed PostgreSQL
-func PostgreSQL(postgreSQL_ *PostgreSQLConf) shoot.Option[Options, *Options] {
-	return func(o *Options) {
-		o.PostgreSQL = postgreSQL_
 	}
 }
 

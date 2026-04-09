@@ -28,6 +28,6 @@ var (
 )
 
 func init() {
-	plugin.Register[broker.FactoryIface](enum.Kafka, broker.NewFactory(&internal.Factory{}))
-	dashboard.AddMeta(enum.Broker, enum.Kafka, version)
+	plugin.Register[broker.FactoryIface](enum.PluginKafka, broker.NewFactory(&internal.Factory{}))
+	dashboard.AddMeta(enum.PluginKindBroker, enum.PluginKafka, version)
 }

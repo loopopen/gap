@@ -2,24 +2,24 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"os/signal"
 	"syscall"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/lopolopen/gap"
 	"github.com/lopolopen/gap/broker/xkafka"
-	"github.com/lopolopen/gap/storage/xmysql"
-	"github.com/lopolopen/gap/storage/xsql"
+	"github.com/lopolopen/gap/storage/xgorm"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func main() {
 	// slog.SetLogLoggerLevel(slog.LevelDebug)
 
-	dsn := "root:root@tcp(127.0.0.1:3306)/example?charset=utf8mb4&parseTime=True&loc=Local"
+	dsn := "postgres://postgres:postgres@localhost/example?sslmode=disable"
 	brokers := []string{
 		"127.0.0.1:9092",
 		"127.0.0.1:9094",
@@ -28,6 +28,10 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	db := must(gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	}))
 
 	pub := gap.NewPublisher[time.Time](
 		gap.WithDrain(ctx, 5),
@@ -38,31 +42,30 @@ func main() {
 				xkafka.ReplicationFactor(3),
 			),
 		),
-		xmysql.UseMySQL(
-			xmysql.DSN(dsn),
+		xgorm.UseGorm(
+			xgorm.DB(db),
 		),
 	)
 
 	gap.Subscribe(
 		gap.From(pub),
-		gap.ServiceName("kafka-mysql-example.worker"),
+		gap.ServiceName("kafka-gorm-postgres-example.worker"),
 	)
 
-	db := must(sql.Open("mysql", dsn))
 	go runjob(ctx, db, pub)
 
 	<-ctx.Done()
 	stop()
 }
 
-func runjob(ctx context.Context, db *sql.DB, pub gap.Publisher[time.Time]) {
+func runjob(ctx context.Context, db *gorm.DB, pub gap.Publisher[time.Time]) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		slog.Info("running job...")
 
-		err := xsql.DoInTx(ctx, func(ctx context.Context, txer gap.Txer) error {
+		err := xgorm.DoInTx(ctx, func(ctx context.Context, txer gap.Txer) error {
 			pub := must(pub.Bind(txer))
 
 			//do biz db change...

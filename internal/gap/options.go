@@ -59,7 +59,7 @@ type Options struct {
 }
 
 type PluginOptions interface {
-	PluginType() enum.PluginType
+	PluginType() enum.Plugin
 }
 
 type HandlerOptions struct {

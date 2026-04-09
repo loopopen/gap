@@ -14,7 +14,7 @@ import (
 
 var metas []*dto.Meta
 
-func AddMeta(metaType enum.MetaType, pluginType enum.PluginType, version string) {
+func AddMeta(metaType enum.PluginKind, pluginType enum.Plugin, version string) {
 	metas = append(metas, dto.NewMeta(metaType, pluginType, version))
 }
 

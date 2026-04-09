@@ -39,8 +39,8 @@ type Options struct {
 	QueueOpts *QueueOptions
 }
 
-func (o *Options) PluginType() enum.PluginType {
-	return enum.RabbitMQ
+func (o *Options) PluginType() enum.Plugin {
+	return enum.PluginRabbitMQ
 }
 
 type QueueOptions struct {

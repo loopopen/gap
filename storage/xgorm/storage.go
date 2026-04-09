@@ -93,19 +93,77 @@ func (s *Storage) setDB(db *gorm.DB) {
 }
 
 func (s *Storage) init() error {
-	if s.opts.Schema != "" {
-		switch s.db.Dialector.Name() {
-		case "postgres":
-			if err := s.db.Exec(fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS "%s"`, s.opts.Schema)).Error; err != nil {
-				return err
-			}
+	schema := s.opts.Schema
+
+	switch s.db.Dialector.Name() {
+	case "postgres":
+		if err := s.db.Exec(fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS "%s"`, schema)).Error; err != nil {
+			return err
+		}
+		if err := s.db.Exec(fmt.Sprintf(`
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_type t 
+        JOIN pg_namespace n ON n.oid = t.typnamespace 
+        WHERE t.typname = 'status_enum' 
+        AND n.nspname = '%s'
+    ) THEN
+        CREATE TYPE %s.status_enum AS ENUM ('Pending', 'Processing', 'Succeeded', 'Failed');
+    END IF;
+END
+$$;`, schema, schema)).Error; err != nil {
+			return err
 		}
 	}
 
-	return migrateWithComment(s.db,
-		&Published{},
-		&Received{},
-	)
+	return s.autoMigrate(&Published{}, &Received{})
+}
+
+func (s *Storage) autoMigrate(models ...any) error {
+	dname := s.db.Dialector.Name()
+	for _, model := range models {
+		if err := s.db.AutoMigrate(model); err != nil {
+			return err
+		}
+
+		stmt := &gorm.Statement{DB: s.db}
+		if err := stmt.Parse(model); err != nil {
+			return err
+		}
+		tableName := stmt.Schema.Table
+
+		if dname == "postgres" {
+			migrator := s.db.Table(tableName).Migrator()
+			if migrator.HasColumn(&Model{}, "status") {
+				sql := fmt.Sprintf(`
+ALTER TABLE %s 
+ALTER COLUMN "status" TYPE %s.status_enum
+USING "status"::%s.status_enum;`, tableName, s.opts.Schema, s.opts.Schema)
+				if err := s.db.Exec(sql).Error; err != nil {
+					return err
+				}
+			}
+		}
+
+		var tableComment string
+		if tc, ok := model.(TableCommentter); ok {
+			tableComment = tc.TableComment()
+		}
+
+		if tableComment != "" {
+			if dname == "mysql" {
+				sql := fmt.Sprintf("ALTER TABLE `%s` COMMENT = '%s'", tableName, tableComment)
+				if err := s.db.Exec(sql).Error; err != nil {
+					return err
+				}
+			} else {
+				panic("unimplemented")
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
@@ -132,49 +190,21 @@ func (s *Storage) InTx() bool {
 func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, src enum.Status, status enum.Status) error {
 	db := s.db.WithContext(ctx).Model(&Published{})
 	if id != 0 {
-		db.Where("`id` = ?", id)
+		db.Where(&Model{ID: id})
 	} else {
-		db.Where("`version` = ? AND `status` = ?", s.gapOpts.Version, src)
+		db.Where(&Model{
+			Version: s.gapOpts.Version,
+			Status:  src,
+		})
 	}
 
-	err := db.Update("`status`", status).Error
+	err := db.Updates(&Model{Status: status}).Error
 	if err != nil {
 		return err
 	}
 
 	if id != 0 {
 		slog.Debug("updated status published", slog.Any("id", id), slog.String("status", status.String()))
-	}
-	return nil
-}
-
-func migrateWithComment(db *gorm.DB, models ...any) error {
-	for _, model := range models {
-		stmt := &gorm.Statement{DB: db}
-		if err := stmt.Parse(model); err != nil {
-			return err
-		}
-		tableName := stmt.Schema.Table
-
-		if err := db.AutoMigrate(model); err != nil {
-			return err
-		}
-
-		var tableComment string
-		if tc, ok := model.(TableCommentter); ok {
-			tableComment = tc.TableComment()
-		}
-
-		if tableComment != "" {
-			if db.Dialector.Name() == "mysql" {
-				sql := fmt.Sprintf("ALTER TABLE `%s` COMMENT = '%s'", tableName, tableComment)
-				if err := db.Exec(sql).Error; err != nil {
-					return err
-				}
-			} else {
-				panic("unimplemented")
-			}
-		}
 	}
 	return nil
 }
@@ -187,10 +217,19 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 	s.db.Transaction(func(tx *gorm.DB) error {
 		err := tx.WithContext(ctx).
 			Model(&Published{}).
-			Where("`version` = ?", o.Version).
-			Where("`status` IN ?", []enum.Status{enum.StatusPending, enum.StatusFailed}).
-			Where("`retries` < ?", o.MaxRetries).
-			Where("`created_at` < ?", minutsAge).
+			Where(&Model{Version: o.Version}).
+			Where(clause.IN{
+				Column: "status",
+				Values: []any{enum.StatusPending, enum.StatusFailed},
+			}).
+			Where(clause.Lt{
+				Column: "retries",
+				Value:  o.MaxRetries,
+			}).
+			Where(clause.Lt{
+				Column: "created_at",
+				Value:  minutsAge,
+			}).
 			Limit(batchSize).
 			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Scan(&pubs).Error
@@ -200,14 +239,17 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 		if len(pubs) == 0 {
 			return nil
 		}
-		var ids []uint
+		var ids []any
 		for _, p := range pubs {
 			ids = append(ids, p.ID)
 		}
 		err = tx.WithContext(ctx).
 			Model(&Published{}).
-			Where("`id` IN ?", ids).
-			Update("`status`", enum.StatusProcessing).Error
+			Where(clause.IN{
+				Column: "id",
+				Values: ids,
+			}).
+			Updates(&Model{Status: enum.StatusProcessing}).Error
 		if err != nil {
 			return err
 		}
@@ -228,10 +270,19 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 	s.db.Transaction(func(tx *gorm.DB) error {
 		err := tx.WithContext(ctx).
 			Model(&Received{}).
-			Where("`version` = ?", o.Version).
-			Where("`status` IN ?", []enum.Status{enum.StatusPending, enum.StatusFailed}).
-			Where("`retries` < ?", o.MaxRetries).
-			Where("`created_at` < ?", minutsAge).
+			Where(&Model{Version: o.Version}).
+			Where(clause.IN{
+				Column: "status",
+				Values: []any{enum.StatusPending, enum.StatusFailed},
+			}).
+			Where(clause.Lt{
+				Column: "retries",
+				Value:  o.MaxRetries,
+			}).
+			Where(clause.Lt{
+				Column: "created_at",
+				Value:  minutsAge,
+			}).
 			Limit(batchSize).
 			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Scan(&recs).Error
@@ -241,14 +292,17 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 		if len(recs) == 0 {
 			return nil
 		}
-		var ids []uint
+		var ids []any
 		for _, p := range recs {
 			ids = append(ids, p.ID)
 		}
 		err = tx.WithContext(ctx).
 			Model(&Received{}).
-			Where("`id` IN ?", ids).
-			Update("`status`", enum.StatusProcessing).Error
+			Where(clause.IN{
+				Column: "id",
+				Values: ids,
+			}).
+			Updates(&Model{Status: enum.StatusProcessing}).Error
 		if err != nil {
 			return err
 		}
@@ -264,12 +318,12 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.Status, status enum.Status) error {
 	db := s.db.WithContext(ctx).Model(&Received{})
 	if id != 0 {
-		db.Where("`id` = ?", id)
+		db.Where(&Model{ID: id})
 	} else {
-		db.Where("`version` = ? AND `status` = ?", s.gapOpts.Version, src)
+		db.Where(&Model{Version: s.gapOpts.Version, Status: src})
 	}
 
-	err := db.Update("`status`", status).Error
+	err := db.Updates(&Model{Status: status}).Error
 	if err != nil {
 		return err
 	}

@@ -17,8 +17,8 @@ type Options struct {
 	DSN string
 }
 
-func (o *Options) PluginType() enum.PluginType {
-	return enum.MySQL
+func (o *Options) PluginType() enum.Plugin {
+	return enum.PluginMySQL
 }
 
 func UseMySQL(opts ...shoot.Option[Options, *Options]) shoot.Option[gap.Options, *gap.Options] {

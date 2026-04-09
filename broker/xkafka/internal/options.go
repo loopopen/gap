@@ -33,8 +33,8 @@ type TopicOptions struct {
 	ReplicationFactor int `yaml:"replicationFactor"`
 }
 
-func (o *Options) PluginType() enum.PluginType {
-	return enum.Kafka
+func (o *Options) PluginType() enum.Plugin {
+	return enum.PluginKafka
 }
 
 func ConfigTopic(opts ...shoot.Option[TopicOptions, *TopicOptions]) shoot.Option[Options, *Options] {
