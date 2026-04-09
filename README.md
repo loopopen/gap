@@ -1,5 +1,7 @@
 # gap
 
+[![Language](https://img.shields.io/badge/language-中文-blue.svg)](https://github.com/lopolopen/gap/blob/main/README.zh-cn.md)
+
 A lightweight, event-driven messaging library for Go. It provides outbox pattern implementation with support for RabbitMQ, Kafka and MySQL (or GORM-based storage), and is designed to support additional brokers and databases in the future.
 
 ## Features
@@ -111,35 +113,6 @@ func main() {
     stop()
 }
 
-### Graceful Shutdown
-
-The library supports graceful shutdown through context cancellation and the built-in drain helper.
-
-- `signal.NotifyContext` watches `SIGINT` / `SIGTERM`
-- `gap.WithDrain(ctx, seconds)` gives the publisher/subscriber time to finish in-flight messages before exiting
-
-Example:
-
-```go
-ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-defer stop()
-
-pub := gap.NewEventPublisher(
-    gap.WithDrain(ctx, 5),
-    xrabbitmq.UseRabbitMQ(xrabbitmq.URL(url)),
-    xgorm.UseGorm(xgorm.DB(db)),
-)
-
-gap.Subscribe(
-    gap.From(pub),
-    gap.ServiceName("my-service.worker"),
-    gap.Inject(/* handler deps */),
-)
-
-<-ctx.Done()
-```
-
-
 //go:generate go run github.com/lopolopen/gap/cmd/gapc -file=$GOFILE
 
 // @subscribe
@@ -160,6 +133,12 @@ go generate ./...
 ```
 
 This will generate the necessary handler code automatically.
+
+### 4. Graceful Shutdown
+
+The library supports graceful shutdown through context cancellation and the built-in drain helper.
+
+- `gap.WaitDrain(ctx context.Context)`  gives the publisher/subscriber time to finish in-flight messages before exiting
 
 ## Usage Examples
 
@@ -190,15 +169,6 @@ go run .
 
 ### Options
 
-#### RabbitMQ Options
-- `xrabbitmq.URL(url string)`: Set RabbitMQ connection URL
-
-#### GORM Options
-- `xgorm.DB(db *gorm.DB)`: Use existing GORM DB instance
-- `xgorm.MySQL(conf *MySQLConf)`: Configure MySQL connection
-- `xgorm.LogLevel(level logger.LogLevel)`: Set GORM log level
-
-#### General Options
 - `gap.WithDrain(ctx context.Context, timeoutSeconds int)`: Enable drain mode for graceful shutdown
 - `gap.ServiceName(name string)`: Set service name
 - `gap.Inject(deps...)`: Inject dependencies into handlers
@@ -247,4 +217,5 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
 See [LICENSE](./LICENSE) file for details.
 
 # Inspiring projects
+
 * [CAP](https://github.com/dotnetcore/CAP)
