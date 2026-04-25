@@ -93,6 +93,9 @@ func (e *Ensurer) ensureTopic(ctx context.Context, topic string) error {
 
 		err = e.waitTopicReady(ctx, topic)
 		if err != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				slog.Warn("waiting for topic ready timeout", slog.String("topic", topic))
+			}
 			continue
 		}
 

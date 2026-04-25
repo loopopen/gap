@@ -10,7 +10,7 @@ import (
 	"github.com/lopolopen/shoot"
 )
 
-const version = "v0.1.0-beta.1"
+const version = "v0.1.0-beta.2"
 
 const (
 	KeysMessageID     = internal.KeysMessageID
@@ -29,16 +29,17 @@ type Event = internal.Event
 
 type EventPublisher = internal.EventPublisher
 
+type OptionsGetter internal.OptionsGetter
+
 type Handler[T any] = gap.Handler[T]
 
 type Options = gap.Options
 
 var WaitDrain = pump.WaitDrain
 
-func From(pub internal.OptsHolder) shoot.Option[Options, *Options] {
+func From(opts OptionsGetter) shoot.Option[Options, *Options] {
 	return func(o *Options) {
-		opts := pub.Options()
-		*o = *opts
+		*o = *opts.Options()
 	}
 }
 

@@ -80,7 +80,7 @@ func (w *Writer) send(ctx context.Context, routingKey string, headers map[string
 	// In this case:
 	// The message will be discarded by the broker.
 	// The message in the database will be marked as successfully sent if persistence is enabled.
-	if !w.opts.ConfirmMode {
+	if !w.opts.PublisherConfirms {
 		err := ch.PublishWithContext(ctx, w.exchange(), routingKey, false, false, amqp.Publishing{
 			Headers:      tbl,
 			MessageId:    headers[internal.KeysMessageID],

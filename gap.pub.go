@@ -8,7 +8,6 @@ import (
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/lopolopen/gap/internal"
-	"github.com/lopolopen/gap/internal/dashboard"
 	"github.com/lopolopen/gap/internal/entity"
 	"github.com/lopolopen/gap/internal/enum"
 	"github.com/lopolopen/gap/internal/plugin"
@@ -36,7 +35,6 @@ func NewPublisher[T any](opts ...shoot.Option[Options, *Options]) Publisher[T] {
 	}
 
 	initSnowflake(gapOpts.WorkerID)
-	dashboard.InitDashboard(gapOpts)
 
 	pub := internal.NewPub[T](gapOpts, brok, stor)
 	return pub

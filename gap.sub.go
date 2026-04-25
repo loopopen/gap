@@ -2,13 +2,12 @@ package gap
 
 import (
 	"github.com/lopolopen/gap/internal"
-	"github.com/lopolopen/gap/internal/dashboard"
 	"github.com/lopolopen/gap/internal/gap"
 	"github.com/lopolopen/gap/internal/pump"
 	"github.com/lopolopen/shoot"
 )
 
-func Subscribe(opts ...shoot.Option[Options, *Options]) {
+func Subscribe(opts ...shoot.Option[Options, *Options]) OptionsGetter {
 	gapOpts := new(Options).With(opts...)
 
 	subs := internal.SingleGroupedSubs()
@@ -16,7 +15,7 @@ func Subscribe(opts ...shoot.Option[Options, *Options]) {
 	subs.AddHandlerOtps(gapOpts.HandlerOptsLst)
 
 	if gap.RegisterHandlerOnly(gapOpts) {
-		return
+		return &optionsGetter{gapOpts}
 	}
 
 	initSnowflake(gapOpts.WorkerID)
@@ -36,5 +35,14 @@ func Subscribe(opts ...shoot.Option[Options, *Options]) {
 	}
 
 	pump.StartHandler()
-	dashboard.InitDashboard(gapOpts)
+
+	return &optionsGetter{gapOpts}
+}
+
+type optionsGetter struct {
+	o *gap.Options
+}
+
+func (g *optionsGetter) Options() *gap.Options {
+	return g.o
 }

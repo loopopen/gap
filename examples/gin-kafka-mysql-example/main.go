@@ -16,6 +16,7 @@ import (
 	"github.com/lopolopen/gap/broker/xkafka"
 	"github.com/lopolopen/gap/dashboard"
 	"github.com/lopolopen/gap/storage/xmysql"
+	"github.com/segmentio/kafka-go"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -27,7 +28,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	svcCtx := initSvc(ctx, r)
+	svcCtx := initSvc(ctx)
+	r.Any("/gap/*any", func(c *gin.Context) {
+		gap.NewDashboardHandler(svcCtx.Pub).ServeHTTP(c.Writer, c.Request)
+	})
 	r.GET("/api/say", handlers.Say(svcCtx.SaySvc))
 
 	srv := &http.Server{
@@ -78,24 +82,21 @@ func main() {
 	}
 }
 
-func initSvc(ctx context.Context, r *gin.Engine) *service.SvcContext {
+func initSvc(ctx context.Context) *service.SvcContext {
 	dsn := "root:root@tcp(127.0.0.1:3306)/example?charset=utf8mb4&parseTime=True&loc=Local"
 	brokers := []string{"127.0.0.1:9092"}
 
 	pub := gap.NewEventPublisher(
 		gap.WithDrain(ctx, 5),
 		gap.UseDashboard(
-			dashboard.Route(func(method, path string, handler http.Handler) {
-				r.Handle(method, dashboard.GinPath(path), func(c *gin.Context) {
-					handler.ServeHTTP(c.Writer, c.Request)
-				})
-			}),
+			dashboard.PathPrefix("/gap"),
 		),
 		xkafka.UseKafka(
 			xkafka.Brokers(brokers),
 			// xkafka.ConfigTopic(
 			// 	xkafka.NumPartitions(2),
 			// ),
+			xkafka.StartOffset(kafka.FirstOffset),
 		),
 		xmysql.UseMySQL(
 			xmysql.DSN(dsn),

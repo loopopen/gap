@@ -64,7 +64,7 @@ func (p *DefaultPool) Rent() (*amqp.Channel, error) {
 		return nil, err
 	}
 
-	if p.opts.ConfirmMode {
+	if p.opts.PublisherConfirms {
 		err := ch.Confirm(false)
 		if err != nil {
 			return nil, err

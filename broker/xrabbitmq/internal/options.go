@@ -30,7 +30,7 @@ type Options struct {
 
 	URL string `yaml:"url"`
 
-	ConfirmMode bool `yaml:"confirm_mode"`
+	PublisherConfirms bool `yaml:"publisher_confirms"`
 
 	//shoot: def=runtime.GOMAXPROCS(0)*10
 	PrefetchCount int `yaml:"prefetch_count"`

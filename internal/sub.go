@@ -290,7 +290,7 @@ func (s *Sub) HandleAndUpdate(ctx context.Context, envelope *entity.Envelope) er
 	}
 
 	if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, 0, enum.StatusSucceeded); err != nil {
-		envelope.Log().Warn("falied to set received status to Succeeded", slog.Any("err", err))
+		envelope.Log().Warn("failed to set received status to Succeeded", slog.Any("err", err))
 		return err
 	}
 	return nil

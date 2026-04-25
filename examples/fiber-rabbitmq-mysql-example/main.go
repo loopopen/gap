@@ -5,7 +5,6 @@ import (
 	"examples/fiber-rabbitmq-mysql-example/handlers"
 	"examples/fiber-rabbitmq-mysql-example/service"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -15,7 +14,6 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/lopolopen/gap"
 	"github.com/lopolopen/gap/broker/xrabbitmq"
-	"github.com/lopolopen/gap/dashboard"
 	"github.com/lopolopen/gap/storage/xmysql"
 	"golang.org/x/sync/errgroup"
 )
@@ -28,7 +26,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	svcCtx := initSvc(ctx, app)
+	svcCtx := initSvc(ctx)
+	app.All("dashboard/*", adaptor.HTTPHandler(gap.NewDashboardHandler(svcCtx.Pub)))
 	app.Get("api/greet", handlers.Greet(svcCtx.GreetSvc))
 
 	go func() {
@@ -74,16 +73,12 @@ func main() {
 	}
 }
 
-func initSvc(ctx context.Context, app *fiber.App) *service.SvcContext {
+func initSvc(ctx context.Context) *service.SvcContext {
 	dsn := "root:root@tcp(127.0.0.1:3306)/example?charset=utf8mb4&parseTime=True&loc=Local"
 
 	pub := gap.NewEventPublisher(
 		gap.WithDrain(ctx, 5),
-		gap.UseDashboard(
-			dashboard.Route(func(method, path string, hander http.Handler) {
-				app.Add(method, path, adaptor.HTTPHandler(hander))
-			}),
-		),
+		gap.UseDashboard(),
 		xrabbitmq.UseRabbitMQ(),
 		xmysql.UseMySQL(
 			xmysql.DSN(dsn),

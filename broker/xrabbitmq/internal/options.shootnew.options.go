@@ -9,17 +9,17 @@ import (
 )
 
 // NewOptions constructs a new instance of type Options
-func NewOptions(password string, userName string, virtualHost string, exchange string, endpoint string, url string, confirmMode bool, prefetchCount int, queueOpts *QueueOptions) *Options {
+func NewOptions(password string, userName string, virtualHost string, exchange string, endpoint string, url string, publisherConfirms bool, prefetchCount int, queueOpts *QueueOptions) *Options {
 	return &Options{
-		Password:      password,
-		UserName:      userName,
-		VirtualHost:   virtualHost,
-		Exchange:      exchange,
-		Endpoint:      endpoint,
-		URL:           url,
-		ConfirmMode:   confirmMode,
-		PrefetchCount: prefetchCount,
-		QueueOpts:     queueOpts,
+		Password:          password,
+		UserName:          userName,
+		VirtualHost:       virtualHost,
+		Exchange:          exchange,
+		Endpoint:          endpoint,
+		URL:               url,
+		PublisherConfirms: publisherConfirms,
+		PrefetchCount:     prefetchCount,
+		QueueOpts:         queueOpts,
 	}
 }
 
@@ -74,10 +74,10 @@ func URL(url_ string) shoot.Option[Options, *Options] {
 	}
 }
 
-// ConfirmMode is a configuration for the filed ConfirmMode
-func ConfirmMode(confirmMode_ bool) shoot.Option[Options, *Options] {
+// PublisherConfirms is a configuration for the filed PublisherConfirms
+func PublisherConfirms(publisherConfirms_ bool) shoot.Option[Options, *Options] {
 	return func(o *Options) {
-		o.ConfirmMode = confirmMode_
+		o.PublisherConfirms = publisherConfirms_
 	}
 }
 

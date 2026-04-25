@@ -42,16 +42,13 @@ func NewBoardSvc(gapOpts *gap.Options, opts *dashboard.Options) *BoardSvc {
 }
 
 func (s *BoardSvc) HandleSPA() http.Handler {
-	prefix := s.opts.NormalPrefix()
-
 	sub := must(fs.Sub(StaticFiles, DistDir))
 
-	fileServer := http.StripPrefix(prefix, http.FileServer(http.FS(sub)))
+	fileServer := http.FileServer(http.FS(sub))
 	indexTmpl := template.Must(template.ParseFS(sub, "index.html"))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		relPath := strings.TrimPrefix(r.URL.Path, prefix)
-		relPath = strings.TrimPrefix(relPath, "/")
+		relPath := strings.TrimPrefix(r.URL.Path, "/")
 
 		var info fs.FileInfo
 		var err error
@@ -64,7 +61,7 @@ func (s *BoardSvc) HandleSPA() http.Handler {
 		if isIndex || err != nil || info.IsDir() {
 			w.Header().Set(ContentType, ContentTypeHTML)
 			err = indexTmpl.Execute(w, map[string]any{
-				"Base":    prefix + "/",
+				"Base":    s.opts.NormalPrefix() + "/",
 				"APIBase": s.opts.NormalAPIPrefix(),
 			})
 			if err != nil {

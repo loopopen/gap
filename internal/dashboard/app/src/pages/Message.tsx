@@ -160,25 +160,11 @@ const Message: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex' }}>
-      <div style={{ width: '100%' }}>
-        <Table<Msg>
-          columns={columns}
-          rowKey={(record) => record.id}
-          dataSource={msgs}
-          pagination={{
-            ...tableParams.pagination,
-            showSizeChanger: true,
-          }}
-          loading={loading}
-          onChange={handleTableChange}
-        />
-      </div>
-      <div style={{ width: '240px', marginLeft: 'auto', paddingLeft: 16 }}>
+    <div>
+      <div style={{ width: '240px', marginBottom: '12px' }}>
         <Flex vertical gap="medium">
           <Radio.Group defaultValue={msgType} buttonStyle="solid" onChange={(e) => {
             setMsgType(e.target.value);
-            debugger
             setTableParams({
               filters: {},
               pagination: {
@@ -191,6 +177,19 @@ const Message: React.FC = () => {
             <Radio.Button value="rec">Received</Radio.Button>
           </Radio.Group>
         </Flex>
+      </div>
+      <div>
+        <Table<Msg>
+          columns={columns}
+          rowKey={(record) => record.id}
+          dataSource={msgs}
+          pagination={{
+            ...tableParams.pagination,
+            showSizeChanger: true,
+          }}
+          loading={loading}
+          onChange={handleTableChange}
+        />
       </div>
     </div>
   );

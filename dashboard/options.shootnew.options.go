@@ -2,17 +2,13 @@
 
 package dashboard
 
-import (
-	"net/http"
-
-	"github.com/lopolopen/shoot"
-)
+import "github.com/lopolopen/shoot"
 
 // NewOptions constructs a new instance of type Options
-func NewOptions(pathPrefix string, route func(method string, path string, handler http.Handler)) *Options {
+func NewOptions(pathPrefix string, baseUrl string) *Options {
 	return &Options{
 		PathPrefix: pathPrefix,
-		Route:      route,
+		BaseURL:    baseUrl,
 	}
 }
 
@@ -32,16 +28,16 @@ func PathPrefix(pathPrefix_ string) shoot.Option[Options, *Options] {
 	}
 }
 
-// Route is a configuration for the filed Route
-func Route(route_ func(method string, path string, handler http.Handler)) shoot.Option[Options, *Options] {
+// BaseURL is a configuration for the filed BaseURL
+func BaseURL(baseURL_ string) shoot.Option[Options, *Options] {
 	return func(o *Options) {
-		o.Route = route_
+		o.BaseURL = baseURL_
 	}
 }
 
 // SetDefault sets the default values
 func (o *Options) SetDefault() {
-	o.PathPrefix = "/gap-dashboard"
+	o.PathPrefix = "/dashboard"
 }
 
 // ShootNew exists solely to fulfill the NewShooter interface contract

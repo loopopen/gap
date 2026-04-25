@@ -19,11 +19,10 @@ func AddMeta(metaType enum.PluginKind, pluginType enum.Plugin, version string) {
 }
 
 func (s *BoardSvc) HandleAPIs() []RouteRecord {
-	s.Get("metas", s.QueryMetas())
-	s.Get("messages/published", s.QueryPublished())
-	const pattern = "messages/published/{id}"
-	s.Get(pattern, s.GetPublishedByID(pattern))
-	s.Get("messages/received", s.QueryReceived())
+	s.Get("/api/metas", s.QueryMetas())
+	s.Get("/api/messages/published", s.QueryPublished())
+	s.Get("/api/messages/published/{id}", s.GetPublishedByID())
+	s.Get("/api/messages/received", s.QueryReceived())
 	return s.routes
 }
 
@@ -74,9 +73,9 @@ func (s *BoardSvc) QueryPublished() http.Handler {
 	})
 }
 
-func (s *BoardSvc) GetPublishedByID(pattern string) http.Handler {
+func (s *BoardSvc) GetPublishedByID() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		idStr := PathValue(pattern, r.URL.Path)
+		idStr := r.PathValue("id")
 		if idStr == "" {
 			http.Error(w, fmt.Sprintf("404 Get %s", r.URL.Path), http.StatusNotFound)
 			return

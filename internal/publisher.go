@@ -12,7 +12,7 @@ type Publisher[T any] interface {
 
 	Publish(ctx context.Context, topic string, msg T, args ...any) error
 
-	OptsHolder
+	OptionsGetter
 }
 
 type EventPublisher interface {
@@ -20,9 +20,9 @@ type EventPublisher interface {
 
 	Publish(ctx context.Context, event Event, args ...any) error
 
-	OptsHolder
+	OptionsGetter
 }
 
-type OptsHolder interface {
+type OptionsGetter interface {
 	Options() *gap.Options
 }
