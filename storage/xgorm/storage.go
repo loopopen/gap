@@ -88,8 +88,9 @@ func (s *Storage) setDB(db *gorm.DB) {
 	if s.opts.LogLevel != 0 {
 		conf.Logger = logger.Default.LogMode(logger.LogLevel(s.opts.LogLevel))
 	}
-	db.Config = &conf
-	s.db = db
+	dbClone := db.Session(&gorm.Session{NewDB: true})
+	dbClone.Config = &conf
+	s.db = dbClone
 }
 
 func (s *Storage) init() error {
