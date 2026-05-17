@@ -21,5 +21,11 @@ func NewHandler(gapOpts *gap.Options, opts *dashboard.Options) http.Handler {
 	h.Handle("GET /api/messages/received", svc.QueryReceived())
 	h.Handle("GET /{any...}", svc.HandleSPA())
 
-	return http.StripPrefix(opts.NormalPrefix(), h)
+	wrapped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "" {
+			r.URL.Path = "/"
+		}
+		h.ServeHTTP(w, r)
+	})
+	return http.StripPrefix(opts.NormalPrefix(), wrapped)
 }

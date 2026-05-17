@@ -27,8 +27,8 @@ func main() {
 	defer stop()
 
 	svcCtx := initSvc(ctx)
-	app.All("dashboard/*", adaptor.HTTPHandler(gap.NewDashboardHandler(svcCtx.Pub)))
-	app.Get("api/greet", handlers.Greet(svcCtx.GreetSvc))
+	app.All("/dashboard/*", adaptor.HTTPHandler(gap.NewDashboardHandler(svcCtx.Pub)))
+	app.Get("/api/greet", handlers.Greet(svcCtx.GreetSvc))
 
 	go func() {
 		err := app.Listen(":8080")
