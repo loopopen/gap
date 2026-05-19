@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.12
-	github.com/lopolopen/gap v0.1.0-beta.1
+	github.com/lopolopen/gap v0.1.1-beta.1
 	github.com/lopolopen/gap/broker/xrabbitmq v0.1.0-beta.1
 	github.com/lopolopen/gap/storage/xmysql v0.1.0-beta.1
 	golang.org/x/sync v0.20.0

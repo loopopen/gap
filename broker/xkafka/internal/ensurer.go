@@ -41,14 +41,19 @@ func SingleEnsurer(opts *Options) *Ensurer {
 }
 
 func (e *Ensurer) ensure(ctx context.Context) error {
-	_, err := e.client.Metadata(ctx, &kafka.MetadataRequest{})
+	meta, err := e.client.Metadata(ctx, &kafka.MetadataRequest{})
 	if err != nil {
-		slog.Error("kafka: failed to connect to brokers",
+		slog.Error("failed to connect to kafka server",
 			slog.Any("brokers", e.opts.Brokers),
 			slog.Any("err", err),
 		)
 		return err
 	}
+	var als []string
+	for _, b := range meta.Brokers {
+		als = append(als, fmt.Sprintf("%s:%d", b.Host, b.Port))
+	}
+	slog.Debug("succeeded to connect to kafka server", slog.Any("advertisedListerners", als))
 	return nil
 }
 
