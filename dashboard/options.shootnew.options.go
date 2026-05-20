@@ -5,10 +5,10 @@ package dashboard
 import "github.com/lopolopen/shoot"
 
 // NewOptions constructs a new instance of type Options
-func NewOptions(pathPrefix string, baseUrl string) *Options {
+func NewOptions(pathPrefix string, locationPath string) *Options {
 	return &Options{
-		PathPrefix: pathPrefix,
-		BaseURL:    baseUrl,
+		PathPrefix:   pathPrefix,
+		LocationPath: locationPath,
 	}
 }
 
@@ -28,10 +28,10 @@ func PathPrefix(pathPrefix_ string) shoot.Option[Options, *Options] {
 	}
 }
 
-// BaseURL is a configuration for the filed BaseURL
-func BaseURL(baseURL_ string) shoot.Option[Options, *Options] {
+// LocationPath is a configuration for the filed LocationPath
+func LocationPath(locationPath_ string) shoot.Option[Options, *Options] {
 	return func(o *Options) {
-		o.BaseURL = baseURL_
+		o.LocationPath = locationPath_
 	}
 }
 

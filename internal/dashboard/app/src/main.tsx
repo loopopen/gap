@@ -13,7 +13,7 @@ declare global {
 let baseURL = "";
 switch (import.meta.env.MODE) {
   case 'development':
-    baseURL = '/api/gap-dashboard';
+    baseURL = '/dashboard/api';
     break
   default:
     baseURL = window.baseUrl;

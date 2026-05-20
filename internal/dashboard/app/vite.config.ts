@@ -19,8 +19,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '^/api/gap.*/': {
-        target: 'http://localhost:8080',
+      '^/dashboard/api/': {
+        target: 'http://localhost:8084',
         changeOrigin: true
       }
     }
