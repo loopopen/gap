@@ -61,10 +61,10 @@ func (s *BoardSvc) HandleSPA() http.Handler {
 		}
 		if isIndex || err != nil || info.IsDir() {
 			w.Header().Set(ContentType, ContentTypeHTML)
-			base := path.Join(s.opts.LocationPath, s.opts.NormalPrefix()) + "/"
+			base := path.Join(s.opts.LocationPath, s.opts.NormalPrefix())
 			err = indexTmpl.Execute(w, map[string]any{
-				"Base":    base,
-				"APIBase": base + "/api",
+				"Base":    base + "/",
+				"APIBase": path.Join(base, "/api"),
 			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
