@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/lopolopen/gap"
-	"github.com/lopolopen/gap/gapc"
+	"github.com/loopopen/gap"
+	"github.com/loopopen/gap/gapc"
 )
 
 func init() {

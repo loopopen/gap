@@ -3,7 +3,7 @@ package gap
 import (
 	"fmt"
 
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/shoot"
 )
 
 //go:generate go tool shoot new -opt -short -file=$GOFILE

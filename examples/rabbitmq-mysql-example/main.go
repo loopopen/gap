@@ -11,9 +11,9 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/lopolopen/gap"
-	"github.com/lopolopen/gap/broker/xrabbitmq"
-	"github.com/lopolopen/gap/storage/xmysql"
+	"github.com/loopopen/gap"
+	"github.com/loopopen/gap/broker/xrabbitmq"
+	"github.com/loopopen/gap/storage/xmysql"
 )
 
 func main() {
@@ -85,7 +85,7 @@ func must[T any](v T, err error) T {
 	return v
 }
 
-//go:generate go run github.com/lopolopen/gap/cmd/gapc -file=$GOFILE
+//go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
 
 // @subscribe: topic="topic.time.now"
 func handle() gap.Handler[time.Time] {

@@ -3,8 +3,8 @@ package xgorm
 import (
 	"context"
 
-	"github.com/lopolopen/gap/internal/entity"
-	"github.com/lopolopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/enum"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

@@ -3,8 +3,8 @@ package internal
 import (
 	"log/slog"
 
-	"github.com/lopolopen/gap/broker"
-	"github.com/lopolopen/gap/internal/gap"
+	"github.com/loopopen/gap/broker"
+	"github.com/loopopen/gap/internal/gap"
 )
 
 type Factory struct{}

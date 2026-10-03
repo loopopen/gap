@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lopolopen/gap"
-	"github.com/lopolopen/gap/broker/xkafka"
-	"github.com/lopolopen/gap/dashboard"
-	"github.com/lopolopen/gap/storage/xmysql"
+	"github.com/loopopen/gap"
+	"github.com/loopopen/gap/broker/xkafka"
+	"github.com/loopopen/gap/dashboard"
+	"github.com/loopopen/gap/storage/xmysql"
 	"github.com/segmentio/kafka-go"
 	"golang.org/x/sync/errgroup"
 )

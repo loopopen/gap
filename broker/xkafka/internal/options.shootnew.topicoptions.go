@@ -3,7 +3,7 @@
 package internal
 
 import (
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/shoot"
 )
 
 // NewTopicOptions constructs a new instance of type TopicOptions

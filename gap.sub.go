@@ -1,10 +1,10 @@
 package gap
 
 import (
-	"github.com/lopolopen/gap/internal"
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/gap/internal/pump"
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/gap/internal"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/internal/pump"
+	"github.com/loopopen/shoot"
 )
 
 func Subscribe(opts ...shoot.Option[Options, *Options]) OptionsGetter {

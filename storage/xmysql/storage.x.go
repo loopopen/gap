@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/lopolopen/gap/internal/entity"
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/storage"
+	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/storage"
 )
 
 var _ storage.StorageX = (*Storage)(nil)

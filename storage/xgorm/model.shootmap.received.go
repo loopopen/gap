@@ -2,7 +2,7 @@
 
 package xgorm
 
-import "github.com/lopolopen/gap/internal/entity"
+import "github.com/loopopen/gap/internal/entity"
 
 // ToEntity converts receiver to type entity.Envelope
 func (r *Received) ToEntity() *entity.Envelope {

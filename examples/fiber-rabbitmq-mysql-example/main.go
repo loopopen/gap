@@ -12,9 +12,9 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
-	"github.com/lopolopen/gap"
-	"github.com/lopolopen/gap/broker/xrabbitmq"
-	"github.com/lopolopen/gap/storage/xmysql"
+	"github.com/loopopen/gap"
+	"github.com/loopopen/gap/broker/xrabbitmq"
+	"github.com/loopopen/gap/storage/xmysql"
 	"golang.org/x/sync/errgroup"
 )
 

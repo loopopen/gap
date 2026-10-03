@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/lopolopen/gap"
-	"github.com/lopolopen/gap/storage/xgorm"
+	"github.com/loopopen/gap"
+	"github.com/loopopen/gap/storage/xgorm"
 	"gorm.io/gorm"
 )
 
-//go:generate go run github.com/lopolopen/gap/cmd/gapc -file=$GOFILE
+//go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
 
 type MySvc struct {
 	db        *gorm.DB

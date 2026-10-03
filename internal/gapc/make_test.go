@@ -69,9 +69,9 @@ func Test_pkgPathAsGroup(t *testing.T) {
 		{
 			name: "with url",
 			args: args{
-				pkgPath: "github.com/lopolopen/proj/a/b",
+				pkgPath: "github.com/loopopen/proj/a/b",
 			},
-			want: "github.com.lopolopen.proj",
+			want: "github.com.loopopen.proj",
 		},
 	}
 	for _, tt := range tests {

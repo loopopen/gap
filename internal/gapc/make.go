@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/lopolopen/gap/internal/pkgs/logx"
+	"github.com/loopopen/gap/internal/pkgs/logx"
 )
 
 func (g *Generator) CmdLine() string {
@@ -141,7 +141,7 @@ func (g *Generator) checkHandlerType(fn *ast.FuncDecl) (types.Type, bool) {
 		return nil, false
 	}
 	const (
-		path = "github.com/lopolopen/gap"
+		path = "github.com/loopopen/gap"
 		name = "Handler"
 	)
 	if handler.Obj().Pkg().Path() != path || handler.Obj().Name() != name {

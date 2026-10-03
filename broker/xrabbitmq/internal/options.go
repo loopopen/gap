@@ -3,9 +3,9 @@ package internal
 import (
 	"fmt"
 
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/shoot"
 )
 
 //go:generate go tool shoot new -opt -short -type=Options,QueueOptions
@@ -13,29 +13,29 @@ import (
 const ExchangeKind = "topic"
 
 type Options struct {
-	//shoot: def="guest"
+	//@ def="guest"
 	Password string `yaml:"password"`
 
-	//shoot: def="guest"
+	//@ def="guest"
 	UserName string `yaml:"username"`
 
-	//shoot: def="/"
+	//@ def="/"
 	VirtualHost string `yaml:"virtual_host"`
 
-	//shoot: def="default"
+	//@ def="default"
 	Exchange string `yaml:"exchange"`
 
-	//shoot: def="localhost:5672"
+	//@ def="localhost:5672"
 	Endpoint string `yaml:"endpoint"`
 
 	URL string `yaml:"url"`
 
 	PublisherConfirms bool `yaml:"publisher_confirms"`
 
-	//shoot: def=runtime.GOMAXPROCS(0)*10
+	//@ def=runtime.GOMAXPROCS(0)*10
 	PrefetchCount int `yaml:"prefetch_count"`
 
-	//shoot: def=new(QueueOptions).With()
+	//@ def=new(QueueOptions).With()
 	QueueOpts *QueueOptions
 }
 
@@ -44,7 +44,7 @@ func (o *Options) PluginType() enum.Plugin {
 }
 
 type QueueOptions struct {
-	//shoot: def=true
+	//@ def=true
 	Durable bool
 
 	Exclusive bool

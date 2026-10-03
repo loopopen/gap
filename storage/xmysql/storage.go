@@ -9,12 +9,12 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/lopolopen/gap/internal/entity"
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/errx"
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/gap/internal/txer"
-	"github.com/lopolopen/gap/storage"
+	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/errx"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/internal/txer"
+	"github.com/loopopen/gap/storage"
 )
 
 type Storage struct {

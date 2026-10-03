@@ -3,7 +3,7 @@
 package xmysql
 
 import (
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/shoot"
 )
 
 // NewOptions constructs a new instance of type Options

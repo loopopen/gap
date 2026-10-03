@@ -3,8 +3,8 @@ package internal
 import (
 	"context"
 
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/gap/internal/txer"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/internal/txer"
 )
 
 type Publisher[T any] interface {

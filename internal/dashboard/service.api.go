@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/lopolopen/gap/internal/dashboard/dto"
-	"github.com/lopolopen/gap/internal/entity"
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/gap/internal/dashboard/dto"
+	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/shoot"
 )
 
 var metas []*dto.Meta

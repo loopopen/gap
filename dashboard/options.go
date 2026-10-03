@@ -7,7 +7,7 @@ import (
 //go:generate go tool shoot new -opt -short -type=Options
 
 type Options struct {
-	//shoot: def="/dashboard"
+	//@def="/dashboard"
 	PathPrefix string
 
 	LocationPath string

@@ -1,14 +1,14 @@
 package xkafka
 
 import (
-	"github.com/lopolopen/gap/broker"
-	"github.com/lopolopen/gap/broker/xkafka/internal"
-	"github.com/lopolopen/gap/internal/dashboard"
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/plugin"
+	"github.com/loopopen/gap/broker"
+	"github.com/loopopen/gap/broker/xkafka/internal"
+	"github.com/loopopen/gap/internal/dashboard"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/plugin"
 )
 
-const version = "v0.1.0-beta.2"
+const version = "v0.2.0-beta.1"
 
 type Options = internal.Options
 

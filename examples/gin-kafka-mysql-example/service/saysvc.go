@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lopolopen/gap"
+	"github.com/loopopen/gap"
 )
 
 type SaySvc struct {
@@ -29,7 +29,7 @@ func (svc *SaySvc) Say(ctx context.Context, name string) error {
 	return err
 }
 
-//go:generate go run github.com/lopolopen/gap/cmd/gapc -file=$GOFILE
+//go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
 
 // @subscribe
 func (svc *SaySvc) HandleSomethingSaid() gap.Handler[event.SomethingSaid] {

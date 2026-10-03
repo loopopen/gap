@@ -1,6 +1,6 @@
 package repo
 
-import "github.com/lopolopen/gap"
+import "github.com/loopopen/gap"
 
 type OrderRepo interface {
 	Bind(txer gap.Txer) (OrderRepo, error)

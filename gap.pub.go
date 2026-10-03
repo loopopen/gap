@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/bwmarrin/snowflake"
-	"github.com/lopolopen/gap/internal"
-	"github.com/lopolopen/gap/internal/entity"
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/plugin"
-	"github.com/lopolopen/gap/internal/workerid"
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/gap/internal"
+	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/plugin"
+	"github.com/loopopen/gap/internal/workerid"
+	"github.com/loopopen/shoot"
 )
 
 var fixPubOnce sync.Once

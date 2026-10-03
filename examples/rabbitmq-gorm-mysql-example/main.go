@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lopolopen/gap"
-	"github.com/lopolopen/gap/broker/xrabbitmq"
-	"github.com/lopolopen/gap/storage/xgorm"
+	"github.com/loopopen/gap"
+	"github.com/loopopen/gap/broker/xrabbitmq"
+	"github.com/loopopen/gap/storage/xgorm"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

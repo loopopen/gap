@@ -3,7 +3,7 @@ package broker
 import (
 	"sync"
 
-	"github.com/lopolopen/gap/internal/gap"
+	"github.com/loopopen/gap/internal/gap"
 )
 
 type FactoryIface interface {

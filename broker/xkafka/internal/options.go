@@ -1,35 +1,35 @@
 package internal
 
 import (
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/shoot"
 )
 
 //go:generate go tool shoot new -opt -short -type=Options,TopicOptions
 
 type Options struct {
-	//shoot: def=""
+	//@ def=""
 	Password string `yaml:"password"`
 
-	//shoot: def=""
+	//@ def=""
 	UserName string `yaml:"username"`
 
-	//shoot: def=[]string{"localhost:9092"}
+	//@ def=[]string{"localhost:9092"}
 	Brokers []string `yaml:"brokers"`
 
-	//shoot: def=new(TopicOptions).With()
+	//@ def=new(TopicOptions).With()
 	TopicOpts *TopicOptions `yaml:"topicOpts"`
 
-	//shoot: def=kafka.LastOffset
+	//@ def=kafka.LastOffset
 	StartOffset int64 `yaml:"startOffset"`
 }
 
 type TopicOptions struct {
-	//shoot: def=-1
+	//@ def=-1
 	NumPartitions int `yaml:"numPartitions"`
 
-	//shoot: def=-1
+	//@ def=-1
 	ReplicationFactor int `yaml:"replicationFactor"`
 }
 

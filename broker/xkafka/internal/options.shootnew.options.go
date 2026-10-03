@@ -3,7 +3,7 @@
 package internal
 
 import (
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/shoot"
 	"github.com/segmentio/kafka-go"
 )
 

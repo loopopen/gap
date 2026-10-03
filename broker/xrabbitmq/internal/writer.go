@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lopolopen/gap/broker"
-	"github.com/lopolopen/gap/internal"
-	"github.com/lopolopen/gap/internal/entity"
-	"github.com/lopolopen/gap/internal/errx"
-	"github.com/lopolopen/gap/internal/gap"
+	"github.com/loopopen/gap/broker"
+	"github.com/loopopen/gap/internal"
+	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/errx"
+	"github.com/loopopen/gap/internal/gap"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 

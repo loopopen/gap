@@ -3,7 +3,7 @@
 package xgorm
 
 import (
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/shoot"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )

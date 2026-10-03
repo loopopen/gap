@@ -14,7 +14,7 @@ const About: React.FC = () => {
       <h1>About GAP Dashboard</h1>
       <Paragraph>This is the GAP Dashboard application built with React and Ant Design.</Paragraph>
       <Paragraph>Created by Lopolop Inc.</Paragraph>
-      <h1>About GAP<Link to="https://github.com/lopolopen/gap" target="_blank" style={{ marginLeft: 8 }}><GithubFilled /></Link></h1>
+      <h1>About GAP<Link to="https://github.com/loopopen/gap" target="_blank" style={{ marginLeft: 8 }}><GithubFilled /></Link></h1>
       <div style={{ maxWidth: '60%' }}>
         <Paragraph>GAP is a lightweight, event-driven messaging library for Go. </Paragraph>
         <Paragraph>It provides outbox pattern implementation with support for RabbitMQ, Kafka and MySQL (or GORM-based storage).</Paragraph>
