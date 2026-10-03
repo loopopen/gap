@@ -4,6 +4,10 @@ github.com/jinzhu/inflection v1.0.0 h1:K317FqzuhWc8YvSVlFMCCUb36O/S9MCKRDI7QkRKD
 github.com/jinzhu/inflection v1.0.0/go.mod h1:h+uFLlag+Qp1Va5pdKtLDYj+kHp5pxUVkryuEj+Srlc=
 github.com/jinzhu/now v1.1.5 h1:/o9tlHleP7gOFmsnYNz3RGnqzefHA47wQpKrrdTIwXQ=
 github.com/jinzhu/now v1.1.5/go.mod h1:d3SSVoowX0Lcu0IBviAWJpolVfI5UJVZZ7cO71lE/z8=
+github.com/loopopen/gap v0.2.0-alpha.1 h1:EIbrG1qG13+TpyOb2UDYpVZUYRcXhFHmvYnf2UABFpw=
+github.com/loopopen/gap v0.2.0-alpha.1/go.mod h1:50OaDyMaLmHueAscy5XKZXGx76tPBHFStAh5KW8sdp4=
+github.com/loopopen/shoot v0.9.0-beta.1 h1:AVuLhiZfQTUn8ssw+WVlApka/EUSgPCoXoTSJp31k+g=
+github.com/loopopen/shoot v0.9.0-beta.1/go.mod h1:tGJXCsuL6qnpyS/2fbnSIscbZfsuTDnZZqaaFSx4Ie0=
 golang.org/x/text v0.35.0 h1:JOVx6vVDFokkpaq1AEptVzLTpDe9KGpj5tR4/X+ybL8=
 golang.org/x/text v0.35.0/go.mod h1:khi/HExzZJ2pGnjenulevKNX1W67CUy0AsXcNubPGCA=
 gorm.io/gorm v1.31.1 h1:7CA8FTFz/gRfgqgpeKIBcervUn3xSyPUmr6B2WXJ7kg=

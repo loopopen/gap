@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/gin-gonic/gin v1.12.0
-	github.com/loopopen/gap v0.1.0-beta.1
+	github.com/loopopen/gap v0.2.0-alpha.1
 	github.com/loopopen/gap/broker/xkafka v0.0.0
 	github.com/loopopen/gap/storage/xmysql v0.0.0
 	github.com/segmentio/kafka-go v0.4.50
@@ -30,7 +30,7 @@ require (
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
-	github.com/loopopen/shoot v0.8.0 // indirect
+	github.com/loopopen/shoot v0.9.0-beta.1 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect

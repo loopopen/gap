@@ -1,4 +1,26 @@
-.PHONY: test
+.PHONY: test tidy
+
+MODULES := \
+	. \
+	broker/xkafka \
+	broker/xrabbitmq \
+	storage/xgorm \
+	storage/xmysql \
+	examples/fiber-rabbitmq-mysql-example \
+	examples/gin-kafka-mysql-example \
+	examples/kafka-gorm-postgres-example \
+	examples/rabbitmq-gorm-mysql-example \
+	examples/rabbitmq-mysql-example
+
+test-modules:
+	@for dir in $(MODULES); do \
+		(cd $$dir && GOWORK=off go test ./...) || exit 1; \
+	done
+
+tidy-modules:
+	@for dir in $(MODULES); do \
+		(cd $$dir && GOWORK=off go mod tidy) || exit 1; \
+	done
 
 build-ui:
 	cd ./internal/dashboard/app && npm run build
@@ -7,6 +29,8 @@ define tag_func
 	@if [ -z "$(tag)" ]; then \
 		grep -oE 'version = "v[0-9]+\.[^"]*' $(1) | cut -d'"' -f2; \
 	else \
+		@make test-modules \
+		@make tidy-modules \
 		sed -i '' "s/= \"v[0-9]\{1,\}\.[^\"]*\"/= \"$(tag)\"/" $(1); \
 		git commit -am"chore: $(2)$(tag)"; \
 		git tag $(2)$(tag); \
@@ -27,3 +51,6 @@ tag-xkafka:
 
 tag-xrabbitmq:
 	$(call tag_func,./broker/xrabbitmq/options.go,broker/xrabbitmq/)
+
+tidy: tidy-modules
+	@go mod tidy
