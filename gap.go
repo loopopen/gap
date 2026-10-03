@@ -10,7 +10,7 @@ import (
 	"github.com/loopopen/shoot"
 )
 
-const version = "v0.1.2-beta.1"
+const version = "v0.2.0-alpha.1"
 
 const (
 	KeysMessageID     = internal.KeysMessageID
