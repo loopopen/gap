@@ -3,8 +3,8 @@ package dashboard
 import (
 	"net/http"
 
-	"github.com/lopolopen/gap/dashboard"
-	"github.com/lopolopen/gap/internal/gap"
+	"github.com/loopopen/gap/dashboard"
+	"github.com/loopopen/gap/internal/gap"
 )
 
 type Handler struct {

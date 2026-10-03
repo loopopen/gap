@@ -4,11 +4,11 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/lopolopen/gap/internal/dashboard"
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/gap/internal/plugin"
-	"github.com/lopolopen/gap/storage"
+	"github.com/loopopen/gap/internal/dashboard"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/internal/plugin"
+	"github.com/loopopen/gap/storage"
 )
 
 type Factory struct{}

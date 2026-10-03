@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/lopolopen/gap/internal/entity"
-	"github.com/lopolopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/enum"
 )
 
 type Status enum.Status

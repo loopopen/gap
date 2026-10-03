@@ -1,13 +1,13 @@
 package gap
 
 import (
-	"github.com/lopolopen/gap/internal"
-	"github.com/lopolopen/gap/internal/dashboard"
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/gap/internal/pump"
-	"github.com/lopolopen/gap/internal/txer"
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/gap/internal"
+	"github.com/loopopen/gap/internal/dashboard"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/internal/pump"
+	"github.com/loopopen/gap/internal/txer"
+	"github.com/loopopen/shoot"
 )
 
 const version = "v0.1.2-beta.1"

@@ -5,10 +5,10 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/lopolopen/gap/broker"
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/gap/storage"
+	"github.com/loopopen/gap/broker"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/storage"
 )
 
 var registries = make(map[enum.Plugin]any)

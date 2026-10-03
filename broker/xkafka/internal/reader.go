@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lopolopen/gap/broker"
-	"github.com/lopolopen/gap/internal/entity"
-	"github.com/lopolopen/gap/internal/gap"
+	"github.com/loopopen/gap/broker"
+	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/gap"
 	"github.com/segmentio/kafka-go"
 )
 

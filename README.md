@@ -1,6 +1,6 @@
 # gap
 
-[![Language](https://img.shields.io/badge/language-中文-blue.svg)](https://github.com/lopolopen/gap/blob/main/README.zh-cn.md)
+[![Language](https://img.shields.io/badge/language-中文-blue.svg)](https://github.com/loopopen/gap/blob/main/README.zh-cn.md)
 
 A lightweight, event-driven messaging library for Go. It provides outbox pattern implementation with support for RabbitMQ, Kafka and MySQL (or GORM-based storage), and is designed to support additional brokers and databases in the future.
 
@@ -16,7 +16,7 @@ A lightweight, event-driven messaging library for Go. It provides outbox pattern
 ## Installation
 
 ```bash
-go get github.com/lopolopen/gap
+go get github.com/loopopen/gap
 ```
 
 ## Quick Start
@@ -58,9 +58,9 @@ import (
     "syscall"
     "time"
 
-    "github.com/lopolopen/gap"
-    "github.com/lopolopen/gap/storage/xgorm"
-    "github.com/lopolopen/gap/broker/xrabbitmq"
+    "github.com/loopopen/gap"
+    "github.com/loopopen/gap/storage/xgorm"
+    "github.com/loopopen/gap/broker/xrabbitmq"
     "gorm.io/driver/mysql"
     "gorm.io/gorm"
     "gorm.io/gorm/logger"
@@ -113,7 +113,7 @@ func main() {
     stop()
 }
 
-//go:generate go run github.com/lopolopen/gap/cmd/gapc -file=$GOFILE
+//go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
 
 // @subscribe
 func handle(/*dependency-list*/) gap.Handler[*event.OrderCreated] {
@@ -178,7 +178,7 @@ go run .
 Use the `gapc` tool to generate handler boilerplate:
 
 ```bash
-go run github.com/lopolopen/gap/cmd/gapc -file=main.go
+go run github.com/loopopen/gap/cmd/gapc -file=main.go
 ```
 
 Add annotations to your handler functions: (topic;group)

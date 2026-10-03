@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	gaptx "github.com/lopolopen/gap/internal/txer"
-	"github.com/lopolopen/gap/storage"
+	gaptx "github.com/loopopen/gap/internal/txer"
+	"github.com/loopopen/gap/storage"
 )
 
 type SqlTx struct {

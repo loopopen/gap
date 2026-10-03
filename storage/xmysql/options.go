@@ -1,9 +1,9 @@
 package xmysql
 
 import (
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/shoot"
 )
 
 const version = "v0.1.0-beta.1"
@@ -11,7 +11,7 @@ const version = "v0.1.0-beta.1"
 //go:generate go tool shoot new -opt -short -type=Options
 
 type Options struct {
-	//shoot: def="gap"
+	//@ def="gap"
 	Schema string
 
 	DSN string

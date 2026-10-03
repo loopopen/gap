@@ -1,8 +1,8 @@
 package gapc
 
 import (
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/shoot"
 )
 
 var (

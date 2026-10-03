@@ -5,8 +5,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/lopolopen/gap/internal/gapc"
-	"github.com/lopolopen/gap/internal/pkgs/logx"
+	"github.com/loopopen/gap/internal/gapc"
+	"github.com/loopopen/gap/internal/pkgs/logx"
 )
 
 func main() {

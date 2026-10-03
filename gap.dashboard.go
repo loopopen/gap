@@ -3,7 +3,7 @@ package gap
 import (
 	"net/http"
 
-	"github.com/lopolopen/gap/internal/dashboard"
+	"github.com/loopopen/gap/internal/dashboard"
 )
 
 func NewDashboardHandler(opts OptionsGetter) http.Handler {

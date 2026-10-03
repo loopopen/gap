@@ -1,6 +1,6 @@
 # gap
 
-[![Language](https://img.shields.io/badge/language-英文-blue.svg)](https://github.com/lopolopen/gap/blob/main/README.md)
+[![Language](https://img.shields.io/badge/language-英文-blue.svg)](https://github.com/loopopen/gap/blob/main/README.md)
 
 一个轻量、事件驱动的 Go 消息库。它实现了 Outbox 模式，并支持 RabbitMQ、Kafka 和 MySQL（或基于 GORM 的存储），同时设计上可扩展以支持更多的 broker 和数据库。
 
@@ -16,7 +16,7 @@
 ## 安装
 
 ```bash
-go get github.com/lopolopen/gap
+go get github.com/loopopen/gap
 ```
 
 ## 快速开始
@@ -58,9 +58,9 @@ import (
     "syscall"
     "time"
 
-    "github.com/lopolopen/gap"
-    "github.com/lopolopen/gap/storage/xgorm"
-    "github.com/lopolopen/gap/broker/xrabbitmq"
+    "github.com/loopopen/gap"
+    "github.com/loopopen/gap/storage/xgorm"
+    "github.com/loopopen/gap/broker/xrabbitmq"
     "gorm.io/driver/mysql"
     "gorm.io/gorm"
     "gorm.io/gorm/logger"
@@ -113,7 +113,7 @@ func main() {
     stop()
 }
 
-//go:generate go run github.com/lopolopen/gap/cmd/gapc -file=$GOFILE
+//go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
 
 // @subscribe
 func handle(/*dependency-list*/) gap.Handler[*event.OrderCreated] {
@@ -178,7 +178,7 @@ go run .
 使用 `gapc` 工具生成处理器模板：
 
 ```bash
-go run github.com/lopolopen/gap/cmd/gapc -file=main.go
+go run github.com/loopopen/gap/cmd/gapc -file=main.go
 ```
 
 向处理器函数添加注解：（topic;group）

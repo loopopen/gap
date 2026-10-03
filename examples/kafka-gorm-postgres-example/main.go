@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lopolopen/gap"
-	"github.com/lopolopen/gap/broker/xkafka"
-	"github.com/lopolopen/gap/storage/xgorm"
+	"github.com/loopopen/gap"
+	"github.com/loopopen/gap/broker/xkafka"
+	"github.com/loopopen/gap/storage/xgorm"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -90,7 +90,7 @@ func must[T any](v T, err error) T {
 	return v
 }
 
-//go:generate go run github.com/lopolopen/gap/cmd/gapc -file=$GOFILE
+//go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
 
 // @subscribe: topic="topic.time.now"
 func handle() gap.Handler[time.Time] {

@@ -4,10 +4,11 @@ go 1.25.0
 
 require (
 	github.com/gin-gonic/gin v1.12.0
-	github.com/lopolopen/gap v0.1.0-beta.1
-	github.com/lopolopen/gap/broker/xkafka v0.1.0-beta.1
-	github.com/lopolopen/gap/storage/xmysql v0.1.0-beta.1
-	golang.org/x/sync v0.20.0
+	github.com/loopopen/gap v0.1.0-beta.1
+	github.com/loopopen/gap/broker/xkafka v0.0.0
+	github.com/loopopen/gap/storage/xmysql v0.0.0
+	github.com/segmentio/kafka-go v0.4.50
+	golang.org/x/sync v0.21.0
 )
 
 require (
@@ -29,7 +30,7 @@ require (
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
-	github.com/lopolopen/shoot v0.7.1 // indirect
+	github.com/loopopen/shoot v0.8.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -37,20 +38,19 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.26 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.59.0 // indirect
-	github.com/segmentio/kafka-go v0.4.50 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
 	golang.org/x/arch v0.25.0 // indirect
-	golang.org/x/crypto v0.49.0 // indirect
-	golang.org/x/net v0.52.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
-replace github.com/lopolopen/gap => ../../../gap
+replace github.com/loopopen/gap => ../../../gap
 
-// replace github.com/lopolopen/gap/storage/xmysql => ../../../gap/storage/xmysql
+replace github.com/loopopen/gap/storage/xmysql => ../../../gap/storage/xmysql
 
-// replace github.com/lopolopen/gap/broker/xkafka => ../../../gap/broker/xkafka
+replace github.com/loopopen/gap/broker/xkafka => ../../../gap/broker/xkafka

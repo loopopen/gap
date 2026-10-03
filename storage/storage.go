@@ -3,10 +3,10 @@ package storage
 import (
 	"context"
 
-	"github.com/lopolopen/gap/internal/entity"
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/gap/internal/txer"
+	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/internal/txer"
 )
 
 type Storage interface {

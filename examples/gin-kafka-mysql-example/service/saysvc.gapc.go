@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"examples/gin-kafka-mysql-example/event"
 
-	"github.com/lopolopen/gap"
-	"github.com/lopolopen/gap/gapc"
+	"github.com/loopopen/gap"
+	"github.com/loopopen/gap/gapc"
 )
 
 func init() {

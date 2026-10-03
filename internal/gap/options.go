@@ -4,49 +4,49 @@ import (
 	"context"
 	"time"
 
-	"github.com/lopolopen/gap/dashboard"
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/gap/dashboard"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/shoot"
 )
 
 //go:generate go tool shoot new -opt -short -type=Options
 
 type Options struct {
-	//shoot: def=context.Background()
+	//@ def=context.Background()
 	Context context.Context
 
-	//shoot: def=context.Background()
+	//@ def=context.Background()
 	DrainContext context.Context
 
 	ServiceName string
 
-	//shoot: def="v1"
+	//@ def="v1"
 	Version string
 
-	//shoot: def="default"
+	//@ def="default"
 	DefaultGroup string
 
-	//shoot: def=200
+	//@ def=200
 	ClaimBatchSize int
 
-	//shoot: def=30
+	//@ def=30
 	MaxRetries int
 
-	//shoot: def=180
+	//@ def=180
 	LookbackSeconds int
 
-	//shoot: def=1
+	//@ def=1
 	PumpIntervalSeconds int
 
 	MaxPublishConcurrency int
 
-	//shoot: def=-1
+	//@ def=-1
 	WorkerID int64
 
-	//shoot: def=runtime.GOMAXPROCS(0)*512
+	//@ def=runtime.GOMAXPROCS(0)*512
 	PublishBufferSize int
 
-	//shoot: def=1
+	//@ def=1
 	WorkConcurrencyFactor int
 
 	DashboardOptions     *dashboard.Options

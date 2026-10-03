@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/bwmarrin/snowflake"
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/errx"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/errx"
 )
 
 var sfNode *snowflake.Node

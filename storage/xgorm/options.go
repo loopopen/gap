@@ -1,9 +1,9 @@
 package xgorm
 
 import (
-	"github.com/lopolopen/gap/internal/enum"
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/shoot"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/shoot"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -13,7 +13,7 @@ const version = "v0.1.1-beta.1"
 //go:generate go tool shoot new -opt -short -type=Options
 
 type Options struct {
-	//shoot: def="gap"
+	//@ def="gap"
 	Schema string
 
 	LogLevel logger.LogLevel

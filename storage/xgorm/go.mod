@@ -1,10 +1,10 @@
-module github.com/lopolopen/gap/storage/xgorm
+module github.com/loopopen/gap/storage/xgorm
 
 go 1.25.0
 
 require (
-	github.com/lopolopen/gap v0.1.0-beta.1
-	github.com/lopolopen/shoot v0.7.1
+	github.com/loopopen/gap v0.1.0-beta.1
+	github.com/loopopen/shoot v0.9.0-beta.1
 	gorm.io/gorm v1.31.1
 )
 

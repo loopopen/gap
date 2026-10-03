@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lopolopen/gap/internal/entity"
-	"github.com/lopolopen/gap/internal/errx"
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/gap/internal/plugin"
-	"github.com/lopolopen/gap/storage"
+	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/errx"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/internal/plugin"
+	"github.com/loopopen/gap/storage"
 )
 
 var pump *Pump

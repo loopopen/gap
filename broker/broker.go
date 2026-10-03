@@ -3,7 +3,7 @@ package broker
 import (
 	"context"
 
-	"github.com/lopolopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/entity"
 )
 
 type Writer interface {

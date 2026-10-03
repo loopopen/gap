@@ -1,10 +1,10 @@
-module github.com/lopolopen/gap/broker/xrabbitmq
+module github.com/loopopen/gap/broker/xrabbitmq
 
 go 1.25.0
 
 require (
-	github.com/lopolopen/gap v0.1.0-beta.1
-	github.com/lopolopen/shoot v0.7.1
+	github.com/loopopen/gap v0.1.0-beta.1
+	github.com/loopopen/shoot v0.9.0-beta.1
 	github.com/rabbitmq/amqp091-go v1.10.0
 )
 

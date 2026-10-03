@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/lopolopen/gap"
+	"github.com/loopopen/gap"
 )
 
 type GreetSvc struct {
@@ -27,7 +27,7 @@ func (svc *GreetSvc) Greet(ctx context.Context, name string) error {
 	return err
 }
 
-//go:generate go run github.com/lopolopen/gap/cmd/gapc -file=$GOFILE
+//go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
 
 // @subscribe
 func (svc *GreetSvc) HandleHello() gap.Handler[event.Hello] {

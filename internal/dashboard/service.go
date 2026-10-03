@@ -8,10 +8,10 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/lopolopen/gap/dashboard"
-	"github.com/lopolopen/gap/internal/gap"
-	"github.com/lopolopen/gap/internal/plugin"
-	"github.com/lopolopen/gap/storage"
+	"github.com/loopopen/gap/dashboard"
+	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/internal/plugin"
+	"github.com/loopopen/gap/storage"
 )
 
 //go:embed app/dist

@@ -17,8 +17,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/lopolopen/gap/internal/pkgs/logx"
-	"github.com/lopolopen/gap/internal/pkgs/setx"
+	"github.com/loopopen/gap/internal/pkgs/logx"
+	"github.com/loopopen/gap/internal/pkgs/setx"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/imports"
 )

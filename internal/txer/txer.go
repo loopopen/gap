@@ -1,7 +1,7 @@
 package txer
 
 import (
-	"github.com/lopolopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/entity"
 )
 
 type Txer interface {
