@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/gin-gonic/gin v1.12.0
-	github.com/loopopen/gap v0.2.0-alpha.1
+	github.com/loopopen/gap v0.2.0-beta.1
 	github.com/loopopen/gap/broker/xkafka v0.0.0
 	github.com/loopopen/gap/storage/xmysql v0.0.0
 	github.com/segmentio/kafka-go v0.4.50

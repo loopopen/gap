@@ -29,8 +29,8 @@ define tag_func
 	@if [ -z "$(tag)" ]; then \
 		grep -oE 'version = "v[0-9]+\.[^"]*' $(1) | cut -d'"' -f2; \
 	else \
-		@make test-modules \
-		@make tidy-modules \
+		make test-modules; \
+		make tidy-modules; \
 		sed -i '' "s/= \"v[0-9]\{1,\}\.[^\"]*\"/= \"$(tag)\"/" $(1); \
 		git commit -am"chore: $(2)$(tag)"; \
 		git tag $(2)$(tag); \
@@ -54,3 +54,6 @@ tag-xrabbitmq:
 
 tidy: tidy-modules
 	@go mod tidy
+
+push:
+	git push && git push --tags

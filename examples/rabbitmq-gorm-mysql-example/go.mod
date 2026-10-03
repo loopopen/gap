@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/loopopen/gap v0.2.0-alpha.1
+	github.com/loopopen/gap v0.2.0-beta.1
 	github.com/loopopen/gap/broker/xrabbitmq v0.0.0
 	github.com/loopopen/gap/storage/xgorm v0.0.0
 	gorm.io/driver/mysql v1.6.0

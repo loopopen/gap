@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/go-sql-driver/mysql v1.9.3
-	github.com/loopopen/gap v0.2.0-alpha.1
+	github.com/loopopen/gap v0.2.0-beta.1
 	github.com/loopopen/gap/broker/xrabbitmq v0.0.0
 	github.com/loopopen/gap/storage/xmysql v0.0.0
 )
