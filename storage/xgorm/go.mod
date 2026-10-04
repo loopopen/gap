@@ -1,6 +1,6 @@
 module github.com/loopopen/gap/storage/xgorm
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/loopopen/gap v0.2.0-beta.2
