@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/loopopen/gap v0.2.0-beta.1
+	github.com/loopopen/gap v0.2.0-beta.2
 	github.com/loopopen/gap/broker/xrabbitmq v0.0.0
 	github.com/loopopen/gap/storage/xgorm v0.0.0
 	gorm.io/driver/mysql v1.6.0
@@ -18,7 +18,7 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/loopopen/shoot v0.9.0-beta.1 // indirect
-	github.com/rabbitmq/amqp091-go v1.13.0 // indirect
+	github.com/rabbitmq/amqp091-go v1.15.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
 )
 

@@ -1,10 +1,10 @@
 github.com/bwmarrin/snowflake v0.3.0 h1:xm67bEhkKh6ij1790JB83OujPR5CzNe8QuQqAgISZN0=
 github.com/bwmarrin/snowflake v0.3.0/go.mod h1:NdZxfVWX+oR6y2K0o6qAYv6gIOP9rjG0/E9WsDpxqwE=
-github.com/loopopen/gap v0.2.0-beta.1 h1:m6h/42ZrDDYw1fK3p3YyQboEyZ1EYuY4Z2VLZRjQhVw=
-github.com/loopopen/gap v0.2.0-beta.1/go.mod h1:50OaDyMaLmHueAscy5XKZXGx76tPBHFStAh5KW8sdp4=
+github.com/loopopen/gap v0.2.0-beta.2 h1:BjxCWr+Nbq0AtjtqVZU0o8zrV2+O9HoP28bxOCWAnFA=
+github.com/loopopen/gap v0.2.0-beta.2/go.mod h1:50OaDyMaLmHueAscy5XKZXGx76tPBHFStAh5KW8sdp4=
 github.com/loopopen/shoot v0.9.0-beta.1 h1:AVuLhiZfQTUn8ssw+WVlApka/EUSgPCoXoTSJp31k+g=
 github.com/loopopen/shoot v0.9.0-beta.1/go.mod h1:tGJXCsuL6qnpyS/2fbnSIscbZfsuTDnZZqaaFSx4Ie0=
-github.com/rabbitmq/amqp091-go v1.10.0 h1:STpn5XsHlHGcecLmMFCtg7mqq0RnD+zFr4uzukfVhBw=
-github.com/rabbitmq/amqp091-go v1.10.0/go.mod h1:Hy4jKW5kQART1u+JkDTF9YYOQUHXqMuhrgxOEeS7G4o=
+github.com/rabbitmq/amqp091-go v1.15.0 h1:LEQL4/yp48/Wigt6A6XOu18RQRo8ZHtB5I/KZJn+gkw=
+github.com/rabbitmq/amqp091-go v1.15.0/go.mod h1:Hy4jKW5kQART1u+JkDTF9YYOQUHXqMuhrgxOEeS7G4o=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
 go.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
