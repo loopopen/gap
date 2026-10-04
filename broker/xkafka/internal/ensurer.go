@@ -25,17 +25,28 @@ type Ensurer struct {
 	topicOpts   *TopicOptions
 	client      *kafka.Client
 	topicsCache map[string]bool
-	cacheMu     sync.Mutex
+	topicCalls  map[string]*topicCall
+	cacheMu     sync.RWMutex
+}
+
+type topicCall struct {
+	done chan struct{}
+	err  error
+}
+
+func newEnsurer(opts *Options, client *kafka.Client) *Ensurer {
+	return &Ensurer{
+		opts:        opts,
+		topicOpts:   opts.TopicOpts,
+		client:      client,
+		topicsCache: make(map[string]bool),
+		topicCalls:  make(map[string]*topicCall),
+	}
 }
 
 func SingleEnsurer(opts *Options) *Ensurer {
 	ensurerOnce.Do(func() {
-		ensurer = &Ensurer{
-			opts:        opts,
-			topicOpts:   opts.TopicOpts,
-			client:      SingleClient(opts),
-			topicsCache: make(map[string]bool),
-		}
+		ensurer = newEnsurer(opts, SingleClient(opts))
 	})
 	return ensurer
 }
@@ -60,17 +71,58 @@ func (e *Ensurer) ensure(ctx context.Context) error {
 // ensureTopic creates a topic if it doesn't exist, with production-grade error handling and retries.
 // It uses a cache to avoid redundant create attempts within the same broker instance.
 func (e *Ensurer) ensureTopic(ctx context.Context, topic string) error {
-	if e.topicsCache[topic] {
+	return e.ensureTopicWith(ctx, topic, e.ensureTopicUncached)
+}
+
+// ensureTopicWith keeps cache access short and deduplicates concurrent work per
+// topic. Network calls run without holding cacheMu, so different topics can be
+// ensured concurrently.
+func (e *Ensurer) ensureTopicWith(
+	ctx context.Context,
+	topic string,
+	ensure func(context.Context, string) error,
+) error {
+	e.cacheMu.RLock()
+	ready := e.topicsCache[topic]
+	e.cacheMu.RUnlock()
+	if ready {
 		return nil
 	}
 
 	e.cacheMu.Lock()
-	defer e.cacheMu.Unlock()
-
 	if e.topicsCache[topic] {
+		e.cacheMu.Unlock()
 		return nil
 	}
+	if call, ok := e.topicCalls[topic]; ok {
+		e.cacheMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-call.done:
+			return call.err
+		}
+	}
 
+	call := &topicCall{done: make(chan struct{})}
+	e.topicCalls[topic] = call
+	e.cacheMu.Unlock()
+
+	err := ensure(ctx, topic)
+
+	e.cacheMu.Lock()
+	if err == nil {
+		e.topicsCache[topic] = true
+	}
+	call.err = err
+	delete(e.topicCalls, topic)
+	close(call.done)
+	e.cacheMu.Unlock()
+
+	return err
+}
+
+func (e *Ensurer) ensureTopicUncached(ctx context.Context, topic string) error {
 	ctx, cancel := context.WithTimeout(ctx, topicEnsureTimeout)
 	defer cancel()
 
@@ -103,9 +155,6 @@ func (e *Ensurer) ensureTopic(ctx context.Context, topic string) error {
 			}
 			continue
 		}
-
-		// Topic created successfully, mark in cache
-		e.topicsCache[topic] = true
 
 		slog.Debug("successfully created kafka topic",
 			slog.String("topic", topic),
