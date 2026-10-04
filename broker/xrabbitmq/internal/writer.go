@@ -76,27 +76,27 @@ func (w *Writer) send(ctx context.Context, routingKey string, headers map[string
 		tbl[k] = v
 	}
 
-	// Exchange may not be bound to any queues.
-	// In this case:
-	// The message will be discarded by the broker.
-	// The message in the database will be marked as successfully sent if persistence is enabled.
-	if !w.opts.PublisherConfirms {
-		err := ch.PublishWithContext(ctx, w.exchange(), routingKey, false, false, amqp.Publishing{
-			Headers:      tbl,
-			MessageId:    headers[internal.KeysMessageID],
-			DeliveryMode: amqp.Persistent,
-			Body:         body,
-		})
+	publishing := amqp.Publishing{
+		Headers:      tbl,
+		MessageId:    headers[internal.KeysMessageID],
+		DeliveryMode: amqp.Persistent,
+		Body:         body,
+	}
+
+	if !w.opts.PublisherConfirms && !w.opts.Mandatory {
+		err := ch.PublishWithContext(ctx, w.exchange(), routingKey, false, false, publishing)
 		if err != nil {
 			return err
 		}
 	} else {
-		confirm, err := ch.PublishWithDeferredConfirmWithContext(ctx, w.exchange(), routingKey, false, false, amqp.Publishing{
-			Headers:      tbl,
-			MessageId:    headers[internal.KeysMessageID],
-			DeliveryMode: amqp.Persistent,
-			Body:         body,
-		})
+		var returns <-chan amqp.Return
+		if w.opts.Mandatory {
+			returns = ch.NotifyReturn(make(chan amqp.Return, 1))
+		}
+
+		confirm, err := ch.PublishWithDeferredConfirmWithContext(
+			ctx, w.exchange(), routingKey, w.opts.Mandatory, false, publishing,
+		)
 		if err != nil {
 			return err
 		}
@@ -109,6 +109,22 @@ func (w *Writer) send(ctx context.Context, routingKey string, headers map[string
 		}
 		if !acked {
 			return errors.New("rabbitmq: message was nacked by broker")
+		}
+
+		// RabbitMQ sends basic.return before basic.ack for an unroutable
+		// mandatory message. Since the return channel is buffered, a completed
+		// confirmation makes this non-blocking check deterministic.
+		if w.opts.Mandatory {
+			select {
+			case ret, ok := <-returns:
+				if ok {
+					return fmt.Errorf(
+						"rabbitmq: message was returned: code=%d reason=%q exchange=%q routing_key=%q",
+						ret.ReplyCode, ret.ReplyText, ret.Exchange, ret.RoutingKey,
+					)
+				}
+			default:
+			}
 		}
 	}
 

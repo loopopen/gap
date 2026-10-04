@@ -22,6 +22,11 @@ tidy-modules:
 		(cd $$dir && GOWORK=off go mod tidy) || exit 1; \
 	done
 
+gen-modules:
+	@for dir in $(MODULES); do \
+		(cd $$dir && go generate ./...) || exit 1; \
+	done
+
 build-ui:
 	cd ./internal/dashboard/app && npm run build
 
@@ -29,8 +34,8 @@ define tag_func
 	@if [ -z "$(tag)" ]; then \
 		grep -oE 'version = "v[0-9]+\.[^"]*' $(1) | cut -d'"' -f2; \
 	else \
-		make test-modules; \
-		make tidy-modules; \
+		(make tidy-modules) || exit 1; \
+		(make test-modules) || exit 1; \
 		sed -i '' "s/= \"v[0-9]\{1,\}\.[^\"]*\"/= \"$(tag)\"/" $(1); \
 		git commit -am"chore: $(2)$(tag)"; \
 		git tag $(2)$(tag); \

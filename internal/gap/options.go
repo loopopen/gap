@@ -12,41 +12,41 @@ import (
 //go:generate go tool shoot new -opt -short -type=Options
 
 type Options struct {
-	//@ def=context.Background()
+	//@def=context.Background()
 	Context context.Context
 
-	//@ def=context.Background()
+	//@def=context.Background()
 	DrainContext context.Context
 
 	ServiceName string
 
-	//@ def="v1"
+	//@def="v1"
 	Version string
 
-	//@ def="default"
+	//@def="default"
 	DefaultGroup string
 
-	//@ def=200
+	//@def=200
 	ClaimBatchSize int
 
-	//@ def=30
+	//@def=30
 	MaxRetries int
 
-	//@ def=180
+	//@def=180
 	LookbackSeconds int
 
-	//@ def=1
+	//@def=1
 	PumpIntervalSeconds int
 
 	MaxPublishConcurrency int
 
-	//@ def=-1
+	//@def=-1
 	WorkerID int64
 
-	//@ def=runtime.GOMAXPROCS(0)*512
+	//@def=runtime.GOMAXPROCS(0)*512
 	PublishBufferSize int
 
-	//@ def=1
+	//@def=1
 	WorkConcurrencyFactor int
 
 	DashboardOptions     *dashboard.Options

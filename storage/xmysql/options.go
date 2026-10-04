@@ -6,12 +6,12 @@ import (
 	"github.com/loopopen/shoot"
 )
 
-const version = "v0.2.0-beta.1"
+const version = "v0.2.0-beta.2"
 
 //go:generate go tool shoot new -opt -short -type=Options
 
 type Options struct {
-	//@ def="gap"
+	//@def="gap"
 	Schema string
 
 	DSN string

@@ -8,7 +8,7 @@ import (
 	"github.com/loopopen/gap/internal/plugin"
 )
 
-const version = "v0.2.0-beta.1"
+const version = "v0.2.0-beta.2"
 
 var (
 	UseRabbitMQ       = internal.UseRabbitMQ
@@ -19,6 +19,7 @@ var (
 	Endpoint          = internal.Endpoint
 	URL               = internal.URL
 	PublisherConfirms = internal.PublisherConfirms
+	Mandatory         = internal.Mandatory
 	PrefetchCount     = internal.PrefetchCount
 )
 
