@@ -64,7 +64,10 @@ func (p *DefaultPool) Rent() (*amqp.Channel, error) {
 		return nil, err
 	}
 
-	if p.opts.PublisherConfirms {
+	// Mandatory returns are asynchronous. Confirm mode gives the publisher a
+	// response boundary: RabbitMQ sends basic.return before the corresponding
+	// basic.ack, so the writer can reliably decide whether the message routed.
+	if p.opts.PublisherConfirms || p.opts.Mandatory {
 		err := ch.Confirm(false)
 		if err != nil {
 			return nil, err

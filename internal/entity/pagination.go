@@ -8,9 +8,9 @@ const (
 //go:generate go tool shoot new -json -file=$GOFILE
 
 type Pagination struct {
-	//@ new
+	//@new
 	Page int
-	//@ new
+	//@new
 	PerPage   int
 	Total     int
 	TotalPage int

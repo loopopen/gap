@@ -22,6 +22,11 @@ tidy-modules:
 		(cd $$dir && GOWORK=off go mod tidy) || exit 1; \
 	done
 
+gen-modules:
+	@for dir in $(MODULES); do \
+		(cd $$dir && go generate ./...) || exit 1; \
+	done
+
 build-ui:
 	cd ./internal/dashboard/app && npm run build
 

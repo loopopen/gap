@@ -13,29 +13,34 @@ import (
 const ExchangeKind = "topic"
 
 type Options struct {
-	//@ def="guest"
+	//@def="guest"
 	Password string `yaml:"password"`
 
-	//@ def="guest"
+	//@def="guest"
 	UserName string `yaml:"username"`
 
-	//@ def="/"
+	//@def="/"
 	VirtualHost string `yaml:"virtual_host"`
 
-	//@ def="default"
+	//@def="default"
 	Exchange string `yaml:"exchange"`
 
-	//@ def="localhost:5672"
+	//@def="localhost:5672"
 	Endpoint string `yaml:"endpoint"`
 
 	URL string `yaml:"url"`
 
 	PublisherConfirms bool `yaml:"publisher_confirms"`
 
-	//@ def=runtime.GOMAXPROCS(0)*10
+	// Mandatory returns messages that cannot be routed to any queue. Enabling it
+	// also enables publisher confirms internally so returns can be observed
+	// before a publish is reported as successful.
+	Mandatory bool `yaml:"mandatory"`
+
+	//@def=runtime.GOMAXPROCS(0)*10
 	PrefetchCount int `yaml:"prefetch_count"`
 
-	//@ def=new(QueueOptions).With()
+	//@def=new(QueueOptions).With()
 	QueueOpts *QueueOptions
 }
 
@@ -44,7 +49,7 @@ func (o *Options) PluginType() enum.Plugin {
 }
 
 type QueueOptions struct {
-	//@ def=true
+	//@def=true
 	Durable bool
 
 	Exclusive bool

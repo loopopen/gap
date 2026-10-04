@@ -19,6 +19,7 @@ var (
 	Endpoint          = internal.Endpoint
 	URL               = internal.URL
 	PublisherConfirms = internal.PublisherConfirms
+	Mandatory         = internal.Mandatory
 	PrefetchCount     = internal.PrefetchCount
 )
 
