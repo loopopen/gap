@@ -1,6 +1,8 @@
 package internal
 
 import (
+	"crypto/tls"
+
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/shoot"
@@ -23,6 +25,9 @@ type Options struct {
 
 	//@def=kafka.LastOffset
 	StartOffset int64 `yaml:"startOffset"`
+
+	//@def=nil
+	TLSConfig *tls.Config `yaml:"-"`
 }
 
 type TopicOptions struct {

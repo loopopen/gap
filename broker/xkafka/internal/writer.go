@@ -13,15 +13,16 @@ import (
 )
 
 type Writer struct {
-	gapOpts *gap.Options
-	opts    *Options
-	client  *kafka.Client
-	group   string
-	writer  *kafka.Writer
-	groupID string
-	topics  []string
-	topicMu sync.Mutex
-	ensurer *Ensurer
+	gapOpts   *gap.Options
+	opts      *Options
+	client    *kafka.Client
+	transport *kafka.Transport
+	group     string
+	writer    *kafka.Writer
+	groupID   string
+	topics    []string
+	topicMu   sync.Mutex
+	ensurer   *Ensurer
 }
 
 // NewWriter creates a new Kafka writer broker instance.
@@ -29,10 +30,11 @@ func NewWriter(gapOpts *gap.Options) *Writer {
 	opts := gapOpts.BrokerOptions.(*Options)
 
 	writer := &Writer{
-		gapOpts: gapOpts,
-		opts:    opts,
-		client:  SingleClient(opts),
-		ensurer: SingleEnsurer(opts),
+		gapOpts:   gapOpts,
+		opts:      opts,
+		client:    SingleClient(opts),
+		transport: SingleTransport(opts),
+		ensurer:   SingleEnsurer(opts),
 	}
 
 	var _ broker.Writer = writer
@@ -45,14 +47,19 @@ func (w *Writer) init() error {
 		return err
 	}
 
-	w.writer = kafka.NewWriter(kafka.WriterConfig{
-		Brokers:      w.opts.Brokers,
+	w.writer = newKafkaWriter(w.opts, w.transport)
+	return nil
+}
+
+func newKafkaWriter(opts *Options, transport *kafka.Transport) *kafka.Writer {
+	return &kafka.Writer{
+		Addr:         kafka.TCP(opts.Brokers...),
 		Balancer:     &kafka.LeastBytes{},
 		ReadTimeout:  3 * time.Second,
 		WriteTimeout: 3 * time.Second,
 		BatchTimeout: 100 * time.Millisecond,
-	})
-	return nil
+		Transport:    transport,
+	}
 }
 
 // Write implements [gap.Writer].
