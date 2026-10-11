@@ -19,6 +19,7 @@ var (
 	Brokers     = internal.Brokers
 	TopicOpts   = internal.TopicOpts
 	StartOffset = internal.StartOffset
+	TLSConfig   = internal.TLSConfig
 )
 
 var (

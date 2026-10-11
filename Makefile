@@ -1,4 +1,4 @@
-.PHONY: test tidy
+.PHONY: test tidy tag-gap tag-xgorm tag-xmysql tag-xkafka tag-xrabbitmq tag-all
 
 MODULES := \
 	. \
@@ -56,6 +56,11 @@ tag-xkafka:
 
 tag-xrabbitmq:
 	$(call tag_func,./broker/xrabbitmq/options.go,broker/xrabbitmq/)
+
+tag-all:
+	@for target in tag-gap tag-xgorm tag-xmysql tag-xkafka tag-xrabbitmq; do \
+		$(MAKE) --no-print-directory $$target tag="$(tag)" || exit 1; \
+	done
 
 tidy: tidy-modules
 	@go mod tidy

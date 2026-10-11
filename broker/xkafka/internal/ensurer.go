@@ -135,7 +135,7 @@ func (e *Ensurer) ensureTopicUncached(ctx context.Context, topic string) error {
 			}
 		}
 
-		_, err := client.CreateTopics(context.Background(), &kafka.CreateTopicsRequest{
+		_, err := e.client.CreateTopics(context.Background(), &kafka.CreateTopicsRequest{
 			Topics: []kafka.TopicConfig{
 				{
 					Topic:             topic,
