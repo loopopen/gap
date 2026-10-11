@@ -19,6 +19,7 @@ type Reader struct {
 	gapOpts  *gap.Options
 	opts     *Options
 	client   *kafka.Client
+	dialer   *kafka.Dialer
 	group    string
 	reader   *kafka.Reader
 	readerMu sync.Mutex
@@ -40,6 +41,7 @@ func NewReader(gapOpts *gap.Options, group string) *Reader {
 		gapOpts: gapOpts,
 		opts:    opts,
 		client:  SingleClient(opts),
+		dialer:  SingleDialer(opts),
 		groupID: fmt.Sprintf("gap.%s.g.%s", gapOpts.Version, group),
 		group:   group,
 		ensurer: SingleEnsurer(opts),
@@ -78,11 +80,16 @@ func (r *Reader) renewReader() {
 	if r.reader != nil {
 		r.reader.Close()
 	}
-	r.reader = kafka.NewReader(kafka.ReaderConfig{
-		Brokers:          r.opts.Brokers,
-		GroupID:          r.groupID,
-		GroupTopics:      r.topics,
-		StartOffset:      r.opts.StartOffset,
+	r.reader = newKafkaReader(r.opts, r.dialer, r.groupID, r.topics)
+}
+
+func newKafkaReader(opts *Options, dialer *kafka.Dialer, groupID string, topics []string) *kafka.Reader {
+	return kafka.NewReader(kafka.ReaderConfig{
+		Brokers:          opts.Brokers,
+		Dialer:           dialer,
+		GroupID:          groupID,
+		GroupTopics:      topics,
+		StartOffset:      opts.StartOffset,
 		CommitInterval:   0,
 		ReadBatchTimeout: 3 * time.Second,
 	})
