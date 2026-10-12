@@ -25,6 +25,8 @@ func NewSaySvc(pub gap.EventPublisher) *SaySvc {
 func (svc *SaySvc) Say(ctx context.Context, name string) error {
 	err := svc.pub.Publish(ctx, event.SomethingSaid{
 		Words: fmt.Sprintf("My name is %s.", name),
+	}, map[string]string{
+		"x-debug": name,
 	})
 	return err
 }
