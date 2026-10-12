@@ -12,7 +12,7 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-type Writer struct {
+type Producer struct {
 	gapOpts   *gap.Options
 	opts      *Options
 	client    *kafka.Client
@@ -25,11 +25,11 @@ type Writer struct {
 	ensurer   *Ensurer
 }
 
-// NewWriter creates a new Kafka writer broker instance.
-func NewWriter(gapOpts *gap.Options) *Writer {
+// NewProducer creates a new Kafka producer broker instance.
+func NewProducer(gapOpts *gap.Options) *Producer {
 	opts := gapOpts.BrokerOptions.(*Options)
 
-	writer := &Writer{
+	producer := &Producer{
 		gapOpts:   gapOpts,
 		opts:      opts,
 		client:    SingleClient(opts),
@@ -37,17 +37,17 @@ func NewWriter(gapOpts *gap.Options) *Writer {
 		ensurer:   SingleEnsurer(opts),
 	}
 
-	var _ broker.Writer = writer
-	return writer
+	var _ broker.Producer = producer
+	return producer
 }
 
-func (w *Writer) init() error {
-	err := w.ensurer.ensure(w.gapOpts.Context)
+func (p *Producer) init() error {
+	err := p.ensurer.ensure(p.gapOpts.Context)
 	if err != nil {
 		return err
 	}
 
-	w.writer = newKafkaWriter(w.opts, w.transport)
+	p.writer = newKafkaWriter(p.opts, p.transport)
 	return nil
 }
 
@@ -62,8 +62,8 @@ func newKafkaWriter(opts *Options, transport *kafka.Transport) *kafka.Writer {
 	}
 }
 
-// Write implements [gap.Writer].
-func (w *Writer) Write(ctx context.Context, envelope *entity.Envelope) error {
+// Produce implements [broker.Producer].
+func (p *Producer) Produce(ctx context.Context, envelope *entity.Envelope) error {
 	if envelope == nil {
 		return errx.ErrParamIsNil("envelope")
 	}
@@ -78,15 +78,15 @@ func (w *Writer) Write(ctx context.Context, envelope *entity.Envelope) error {
 		return errx.ErrNilPayload
 	}
 
-	if err := w.ensurer.ensureTopic(ctx, envelope.Topic); err != nil {
+	if err := p.ensurer.ensureTopic(ctx, envelope.Topic); err != nil {
 		return err
 	}
 
 	envelope.Log().Debug("kafka: send the message")
-	return w.send(ctx, envelope.Topic, envelope.Headers, body)
+	return p.send(ctx, envelope.Topic, envelope.Headers, body)
 }
 
-func (w *Writer) send(ctx context.Context, topic string, headers map[string]string, body []byte) error {
+func (p *Producer) send(ctx context.Context, topic string, headers map[string]string, body []byte) error {
 	hds := make([]kafka.Header, 0, len(headers))
 	for k, v := range headers {
 		hds = append(hds, kafka.Header{Key: k, Value: []byte(v)})
@@ -98,5 +98,5 @@ func (w *Writer) send(ctx context.Context, topic string, headers map[string]stri
 		Headers: hds,
 	}
 
-	return w.writer.WriteMessages(ctx, msg)
+	return p.writer.WriteMessages(ctx, msg)
 }

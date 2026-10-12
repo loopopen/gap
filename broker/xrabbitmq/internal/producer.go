@@ -13,7 +13,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type Writer struct {
+type Producer struct {
 	gapOpts *gap.Options
 	opts    *Options
 	group   string
@@ -23,27 +23,27 @@ type Writer struct {
 	ctag    string
 }
 
-func NewWriter(gapOpts *gap.Options) *Writer {
+func NewProducer(gapOpts *gap.Options) *Producer {
 	opts := gapOpts.BrokerOptions.(*Options)
 
-	w := &Writer{
+	producer := &Producer{
 		gapOpts: gapOpts,
 		opts:    opts,
 		chPool:  NewDefaultPool(gapOpts.DrainContext, opts),
 	}
 
-	var _ broker.Writer = w
-	return w
+	var _ broker.Producer = producer
+	return producer
 }
 
-func (w *Writer) init() error {
-	ch, err := w.chPool.Rent()
+func (p *Producer) init() error {
+	ch, err := p.chPool.Rent()
 	if err != nil {
 		return err
 	}
 	defer ch.Close()
 
-	err = ch.ExchangeDeclare(w.exchange(), ExchangeKind, true, false, false, false, nil)
+	err = ch.ExchangeDeclare(p.exchange(), ExchangeKind, true, false, false, false, nil)
 	if err != nil {
 		return err
 	}
@@ -51,8 +51,8 @@ func (w *Writer) init() error {
 	return nil
 }
 
-// Pub implements [gap.Writer].
-func (w *Writer) Write(ctx context.Context, envelope *entity.Envelope) error {
+// Produce implements [broker.Producer].
+func (p *Producer) Produce(ctx context.Context, envelope *entity.Envelope) error {
 	routingKey := envelope.Topic
 	body, err := envelope.PayloadBytes()
 	if err != nil {
@@ -61,15 +61,15 @@ func (w *Writer) Write(ctx context.Context, envelope *entity.Envelope) error {
 	if len(body) == 0 {
 		return errx.ErrNilPayload
 	}
-	return w.send(ctx, routingKey, envelope.Headers, envelope.Payload)
+	return p.send(ctx, routingKey, envelope.Headers, envelope.Payload)
 }
 
-func (w *Writer) send(ctx context.Context, routingKey string, headers map[string]string, body []byte) error {
-	ch, err := w.chPool.Rent()
+func (p *Producer) send(ctx context.Context, routingKey string, headers map[string]string, body []byte) error {
+	ch, err := p.chPool.Rent()
 	if err != nil {
 		return err
 	}
-	defer w.chPool.Return(ch)
+	defer p.chPool.Return(ch)
 
 	tbl := make(map[string]any)
 	for k, v := range headers {
@@ -83,19 +83,19 @@ func (w *Writer) send(ctx context.Context, routingKey string, headers map[string
 		Body:         body,
 	}
 
-	if !w.opts.PublisherConfirms && !w.opts.Mandatory {
-		err := ch.PublishWithContext(ctx, w.exchange(), routingKey, false, false, publishing)
+	if !p.opts.PublisherConfirms && !p.opts.Mandatory {
+		err := ch.PublishWithContext(ctx, p.exchange(), routingKey, false, false, publishing)
 		if err != nil {
 			return err
 		}
 	} else {
 		var returns <-chan amqp.Return
-		if w.opts.Mandatory {
+		if p.opts.Mandatory {
 			returns = ch.NotifyReturn(make(chan amqp.Return, 1))
 		}
 
 		confirm, err := ch.PublishWithDeferredConfirmWithContext(
-			ctx, w.exchange(), routingKey, w.opts.Mandatory, false, publishing,
+			ctx, p.exchange(), routingKey, p.opts.Mandatory, false, publishing,
 		)
 		if err != nil {
 			return err
@@ -114,7 +114,7 @@ func (w *Writer) send(ctx context.Context, routingKey string, headers map[string
 		// RabbitMQ sends basic.return before basic.ack for an unroutable
 		// mandatory message. Since the return channel is buffered, a completed
 		// confirmation makes this non-blocking check deterministic.
-		if w.opts.Mandatory {
+		if p.opts.Mandatory {
 			select {
 			case ret, ok := <-returns:
 				if ok {
@@ -131,9 +131,9 @@ func (w *Writer) send(ctx context.Context, routingKey string, headers map[string
 	return nil
 }
 
-func (w *Writer) exchange() string {
-	if w.x == "" {
-		w.x = fmt.Sprintf("gap.%s.x.%s", w.gapOpts.Version, w.opts.Exchange)
+func (p *Producer) exchange() string {
+	if p.x == "" {
+		p.x = fmt.Sprintf("gap.%s.x.%s", p.gapOpts.Version, p.opts.Exchange)
 	}
-	return w.x
+	return p.x
 }

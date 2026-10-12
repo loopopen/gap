@@ -92,6 +92,8 @@ func initSvc(ctx context.Context) *service.SvcContext {
 			dashboard.PathPrefix("/gap"),
 		),
 		xkafka.UseKafka(
+			xkafka.UserName("kafka"),
+			xkafka.Password("kafka"),
 			xkafka.Brokers(brokers),
 			// xkafka.ConfigTopic(
 			// 	xkafka.NumPartitions(2),
