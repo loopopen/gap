@@ -17,22 +17,22 @@ import (
 )
 
 type Pub[T any] struct {
-	opts    *gap.Options
-	storage storage.Storage
-	writer  broker.Writer
-	pump    *pump.Pump
-	txer    txer.Txer
+	opts     *gap.Options
+	storage  storage.Storage
+	producer broker.Producer
+	pump     *pump.Pump
+	txer     txer.Txer
 }
 
-func NewPub[T any](opts *gap.Options, writer broker.Writer, storage storage.Storage) *Pub[T] {
-	if writer == nil {
+func NewPub[T any](opts *gap.Options, producer broker.Producer, storage storage.Storage) *Pub[T] {
+	if producer == nil {
 		panic(errx.ErrNoBroker)
 	}
 
 	pub := &Pub[T]{
-		opts:    opts,
-		storage: storage,
-		writer:  writer,
+		opts:     opts,
+		storage:  storage,
+		producer: producer,
 	}
 
 	if storage != nil {
@@ -65,11 +65,11 @@ func (p *Pub[T]) bind(txer txer.Txer) (*Pub[T], error) {
 		return nil, err
 	}
 	pub := &Pub[T]{
-		opts:    p.opts,
-		storage: stor,
-		writer:  p.writer,
-		pump:    p.pump,
-		txer:    txer,
+		opts:     p.opts,
+		storage:  stor,
+		producer: p.producer,
+		pump:     p.pump,
+		txer:     txer,
 	}
 	txer.SetFlushHandler(func(e *entity.Envelope) {
 		pub.dispatch(pub.opts.DrainContext, e)
@@ -115,7 +115,7 @@ func (p *Pub[T]) Publish(ctx context.Context, topic string, msg T, args ...any) 
 	}
 
 	slog.Warn("send message without persistence")
-	err := p.writer.Write(ctx, en)
+	err := p.producer.Produce(ctx, en)
 	if err != nil {
 		return err
 	}
@@ -130,7 +130,7 @@ func (p *Pub[T]) dispatch(ctx context.Context, envelope *entity.Envelope) {
 }
 
 func (p *Pub[T]) SendAndUpdate(ctx context.Context, envelope *entity.Envelope) error {
-	err := p.writer.Write(ctx, envelope)
+	err := p.producer.Produce(ctx, envelope)
 	if err != nil {
 		envelope.Log().Debug("failed to send message", slog.Any("err", err))
 

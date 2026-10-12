@@ -9,22 +9,22 @@ import (
 
 type Factory struct{}
 
-func (f *Factory) CreateReader(gapOpts *gap.Options, group string) (broker.Reader, error) {
-	reader := NewReader(gapOpts, group)
-	err := reader.init()
+func (f *Factory) CreateConsumer(gapOpts *gap.Options, group string) (broker.Consumer, error) {
+	consumer := NewConsumer(gapOpts, group)
+	err := consumer.init()
 	if err != nil {
-		slog.Error("failed to init reader", slog.Any("err", err))
+		slog.Error("failed to init consumer", slog.Any("err", err))
 		return nil, err
 	}
-	return reader, nil
+	return consumer, nil
 }
 
-func (f *Factory) CreateWriter(gapOpts *gap.Options) (broker.Writer, error) {
-	writer := NewWriter(gapOpts)
-	err := writer.init()
+func (f *Factory) CreateProducer(gapOpts *gap.Options) (broker.Producer, error) {
+	producer := NewProducer(gapOpts)
+	err := producer.init()
 	if err != nil {
-		slog.Error("failed to init writer", slog.Any("err", err))
+		slog.Error("failed to init producer", slog.Any("err", err))
 		return nil, err
 	}
-	return writer, nil
+	return producer, nil
 }

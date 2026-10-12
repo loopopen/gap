@@ -65,9 +65,9 @@ func (g *GroupedSubs) subscribeOne(gapOpts *gap.Options, opts *gap.HandlerOption
 
 	sub, ok := g.subs[group]
 	if !ok {
-		reader := plugin.MustGetRBroker(gapOpts, group)
-		if reader == nil {
-			panic("reader broker must not be nil")
+		consumer := plugin.MustGetConsumer(gapOpts, group)
+		if consumer == nil {
+			panic("consumer broker must not be nil")
 		}
 		stor := plugin.MustGetStorage(gapOpts)
 		if stor != nil {
@@ -79,7 +79,7 @@ func (g *GroupedSubs) subscribeOne(gapOpts *gap.Options, opts *gap.HandlerOption
 			})
 		}
 
-		sub = NewSub(gapOpts, &opts.GroupOptions, reader, stor)
+		sub = NewSub(gapOpts, &opts.GroupOptions, consumer, stor)
 		g.subs[group] = sub
 	}
 	err := sub.Subscribe(opts.Topic, opts.Handler)
@@ -103,7 +103,7 @@ type Sub struct {
 	opts      *gap.Options
 	groupOpts *gap.GroupOptions
 	storage   storage.Storage
-	reader    broker.Reader
+	consumer  broker.Consumer
 	handlers  map[string]gap.Handler[[]byte]
 	pump      *pump.Pump
 }
@@ -119,7 +119,7 @@ func (s *Sub) Subscribe(topic string, handler gap.Handler[[]byte]) error {
 	slog.Debug(fmt.Sprintf("subscribe: topic(%s) -> group(%s:%d)", topic, s.groupOpts.Group, s.groupOpts.IngestConcurrency))
 
 	ctx := s.opts.Context
-	err := s.reader.Subscribe(ctx, topic)
+	err := s.consumer.Subscribe(ctx, topic)
 	if err != nil {
 		return err
 	}
@@ -127,8 +127,8 @@ func (s *Sub) Subscribe(topic string, handler gap.Handler[[]byte]) error {
 	return nil
 }
 
-func NewSub(opts *gap.Options, groupOpts *gap.GroupOptions, reader broker.Reader, storage storage.Storage) *Sub {
-	if reader == nil {
+func NewSub(opts *gap.Options, groupOpts *gap.GroupOptions, consumer broker.Consumer, storage storage.Storage) *Sub {
+	if consumer == nil {
 		panic(errx.ErrNoBroker)
 	}
 
@@ -136,7 +136,7 @@ func NewSub(opts *gap.Options, groupOpts *gap.GroupOptions, reader broker.Reader
 		opts:      opts,
 		groupOpts: groupOpts,
 		storage:   storage,
-		reader:    reader,
+		consumer:  consumer,
 		handlers:  make(map[string]gap.Handler[[]byte]),
 	}
 
@@ -152,7 +152,7 @@ func NewSub(opts *gap.Options, groupOpts *gap.GroupOptions, reader broker.Reader
 
 func (s *Sub) Listening() error {
 	ctx := s.opts.DrainContext
-	enCh, err := s.reader.Read(ctx)
+	enCh, err := s.consumer.Consume(ctx)
 	if err != nil {
 		return err
 	}
@@ -176,9 +176,9 @@ func (s *Sub) Listening() error {
 				slog.Warn("hande message without persistence")
 				err := s.handle(ctx, en)
 				if err != nil {
-					s.reader.Reject(en.Tag)
+					s.consumer.Reject(en.Tag)
 				} else {
-					s.reader.Commit(en.Tag)
+					s.consumer.Commit(en.Tag)
 				}
 			}
 		}
@@ -238,12 +238,12 @@ func (s *Sub) ingestSerial(ctx context.Context, envelope *entity.Envelope) {
 	err := s.storage.CreateReceived(ctx, envelope)
 	if err != nil {
 		envelope.Log().Error("failed to create received record", slog.Any("err", err))
-		if err := s.reader.Reject(envelope.Tag); err != nil {
+		if err := s.consumer.Reject(envelope.Tag); err != nil {
 			envelope.Log().Error("failed to reject message", slog.Any("err", err))
 		}
 		return
 	}
-	if err := s.reader.Commit(envelope.Tag); err != nil {
+	if err := s.consumer.Commit(envelope.Tag); err != nil {
 		envelope.Log().Error("failed to commit message", slog.Any("err", err))
 		return
 	}

@@ -6,14 +6,14 @@ import (
 	"github.com/loopopen/gap/internal/entity"
 )
 
-type Writer interface {
-	Write(ctx context.Context, envelope *entity.Envelope) error
+type Producer interface {
+	Produce(ctx context.Context, envelope *entity.Envelope) error
 }
 
-type Reader interface {
+type Consumer interface {
 	Subscribe(ctx context.Context, topic string) error
 
-	Read(ctx context.Context) (<-chan *entity.Envelope, error)
+	Consume(ctx context.Context) (<-chan *entity.Envelope, error)
 
 	Commit(tag any) error
 
