@@ -3,7 +3,7 @@ module github.com/loopopen/gap/storage/xgorm
 go 1.26.0
 
 require (
-	github.com/loopopen/gap v0.2.0-beta.2
+	github.com/loopopen/gap v0.2.0-beta.5
 	github.com/loopopen/shoot v0.9.0-beta.5
 	gorm.io/gorm v1.31.1
 )
