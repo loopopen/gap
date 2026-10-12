@@ -64,7 +64,7 @@ func Test_pkgPathAsGroup(t *testing.T) {
 			args: args{
 				pkgPath: "examples/proj/a/b",
 			},
-			want: "examples.proj",
+			want: "example.proj",
 		},
 		{
 			name: "with url",
