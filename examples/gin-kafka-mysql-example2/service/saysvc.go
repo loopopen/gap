@@ -1,0 +1,51 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
+	"examples/gin-kafka-mysql-example2/event"
+
+	"github.com/loopopen/gap"
+)
+
+type SaySvc struct {
+	pub gap.EventPublisher
+}
+
+func NewSaySvc(pub gap.EventPublisher) *SaySvc {
+	return &SaySvc{
+		pub: pub,
+	}
+}
+
+func (svc *SaySvc) Say(ctx context.Context, name string) error {
+	err := svc.pub.Publish(ctx, event.SomethingSaid{
+		Words: fmt.Sprintf("My name is %s.", name),
+	}, map[string]string{
+		"x-debug": name,
+	})
+	return err
+}
+
+//go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
+
+// @subscribe
+func (svc *SaySvc) HandleSomethingSaid() gap.Handler[event.SomethingSaid] {
+	return func(ctx context.Context, msg event.SomethingSaid, headers map[string]string) error {
+		if strings.Contains(msg.Words, "error") {
+			time.Sleep(2 * time.Second)
+			return errors.New("test error")
+		}
+
+		slog.Info(fmt.Sprintf("📌 He said: %s", msg.Words))
+		return nil
+	}
+}
+
+//todo:
+// @subscribe: concurrency=2

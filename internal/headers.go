@@ -20,22 +20,26 @@ func (h *Headers) Add(args ...any) {
 		return
 	}
 
+	if h.headers == nil {
+		h.headers = make(map[string]string)
+	}
+
 	if len(args) == 1 {
-		a, ok := args[0].(map[string]string)
-		if ok {
-			h.headers = a
+		if m, ok := args[0].(map[string]string); ok {
+			for k, v := range m {
+				h.headers[k] = v
+			}
 			return
 		}
 	}
 
-	h.headers = make(map[string]string)
 	for _, arg := range args {
-		a, ok := arg.(pair)
+		p, ok := arg.(pair)
 		if !ok {
 			panic(errInvalidArgs)
 		}
-		if _, ok := h.headers[a.Key]; !ok {
-			h.headers[a.Key] = a.Value
+		if _, ok := h.headers[p.Key]; !ok {
+			h.headers[p.Key] = p.Value
 		}
 	}
 }

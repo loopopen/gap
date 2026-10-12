@@ -1,13 +1,15 @@
-.PHONY: test tidy tag-gap tag-xgorm tag-xmysql tag-xkafka tag-xrabbitmq tag-all
+.PHONY: test tidy tag-gap tag-xgorm tag-xmysql tag-xkafka tag-xconfluent tag-xrabbitmq tag-all
 
 MODULES := \
 	. \
 	broker/xkafka \
+	broker/xconfluent \
 	broker/xrabbitmq \
 	storage/xgorm \
 	storage/xmysql \
 	examples/fiber-rabbitmq-mysql-example \
 	examples/gin-kafka-mysql-example \
+	examples/gin-kafka-mysql-example2 \
 	examples/kafka-gorm-postgres-example \
 	examples/rabbitmq-gorm-mysql-example \
 	examples/rabbitmq-mysql-example
@@ -54,11 +56,14 @@ tag-xmysql:
 tag-xkafka:
 	$(call tag_func,./broker/xkafka/options.go,broker/xkafka/)
 
+tag-xconfluent:
+	$(call tag_func,./broker/xconfluent/options.go,broker/xconfluent/)
+
 tag-xrabbitmq:
 	$(call tag_func,./broker/xrabbitmq/options.go,broker/xrabbitmq/)
 
 tag-all:
-	@for target in tag-gap tag-xgorm tag-xmysql tag-xkafka tag-xrabbitmq; do \
+	@for target in tag-gap tag-xgorm tag-xmysql tag-xkafka tag-xconfluent tag-xrabbitmq; do \
 		$(MAKE) --no-print-directory $$target tag="$(tag)" || exit 1; \
 	done
 
