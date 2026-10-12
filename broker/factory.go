@@ -7,47 +7,47 @@ import (
 )
 
 type FactoryIface interface {
-	CreateWriter(opts *gap.Options) (Writer, error)
+	CreateProducer(opts *gap.Options) (Producer, error)
 
-	CreateReader(opts *gap.Options, group string) (Reader, error)
+	CreateConsumer(opts *gap.Options, group string) (Consumer, error)
 }
 
 type Factory struct {
-	factory FactoryIface
-	mu      *sync.Mutex
-	writer  Writer
-	readers map[string]Reader
+	factory   FactoryIface
+	mu        *sync.Mutex
+	producer  Producer
+	consumers map[string]Consumer
 }
 
 func NewFactory(factory FactoryIface) *Factory {
 	return &Factory{
-		factory: factory,
-		mu:      &sync.Mutex{},
-		readers: make(map[string]Reader),
+		factory:   factory,
+		mu:        &sync.Mutex{},
+		consumers: make(map[string]Consumer),
 	}
 }
 
-func (f *Factory) CreateWriter(gapOpts *gap.Options) (Writer, error) {
-	if f.writer == nil {
-		writer, err := f.factory.CreateWriter(gapOpts)
+func (f *Factory) CreateProducer(gapOpts *gap.Options) (Producer, error) {
+	if f.producer == nil {
+		producer, err := f.factory.CreateProducer(gapOpts)
 		if err != nil {
 			return nil, err
 		}
-		f.writer = writer
+		f.producer = producer
 	}
 
-	return f.writer, nil
+	return f.producer, nil
 }
 
-func (f *Factory) CreateReader(gapOpts *gap.Options, group string) (Reader, error) {
-	reader, ok := f.readers[group]
+func (f *Factory) CreateConsumer(gapOpts *gap.Options, group string) (Consumer, error) {
+	consumer, ok := f.consumers[group]
 	if !ok {
 		var err error
-		reader, err = f.factory.CreateReader(gapOpts, group)
+		consumer, err = f.factory.CreateConsumer(gapOpts, group)
 		if err != nil {
 			return nil, err
 		}
-		f.readers[group] = reader
+		f.consumers[group] = consumer
 	}
-	return reader, nil
+	return consumer, nil
 }

@@ -38,30 +38,30 @@ func mustGet[T any](typ enum.Plugin) T {
 	return t
 }
 
-func MustGetWBroker(gapOpts *gap.Options) broker.Writer {
+func MustGetProducer(gapOpts *gap.Options) broker.Producer {
 	opts := gapOpts.BrokerOptions
 	if opts == nil {
 		return nil
 	}
 	f := mustGet[broker.FactoryIface](opts.PluginType())
-	writer, err := f.CreateWriter(gapOpts)
+	producer, err := f.CreateProducer(gapOpts)
 	if err != nil {
 		panic(err)
 	}
-	return writer
+	return producer
 }
 
-func MustGetRBroker(gapOpts *gap.Options, group string) broker.Reader {
+func MustGetConsumer(gapOpts *gap.Options, group string) broker.Consumer {
 	opts := gapOpts.BrokerOptions
 	if opts == nil {
 		return nil
 	}
 	f := mustGet[broker.FactoryIface](opts.PluginType())
-	reader, err := f.CreateReader(gapOpts, group)
+	consumer, err := f.CreateConsumer(gapOpts, group)
 	if err != nil {
 		panic(err)
 	}
-	return reader
+	return consumer
 }
 
 func MustGetStorage(gapOpts *gap.Options) storage.Storage {

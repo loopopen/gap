@@ -16,7 +16,7 @@ import (
 
 const corrid = internal.KeysCorrelationID
 
-type Reader struct {
+type Consumer struct {
 	gapOpts *gap.Options
 	opts    *Options
 	group   string
@@ -26,14 +26,14 @@ type Reader struct {
 	ctag    string
 }
 
-func NewReader(gapOpts *gap.Options, group string) *Reader {
+func NewConsumer(gapOpts *gap.Options, group string) *Consumer {
 	if group == "" {
 		panic("group should not be empty")
 	}
 
 	opts := gapOpts.BrokerOptions.(*Options)
 
-	b := &Reader{
+	consumer := &Consumer{
 		gapOpts: gapOpts,
 		opts:    opts,
 		chPool:  NewDefaultPool(gapOpts.DrainContext, opts),
@@ -41,18 +41,18 @@ func NewReader(gapOpts *gap.Options, group string) *Reader {
 		group:   group,
 	}
 
-	var _ broker.Reader = b
-	return b
+	var _ broker.Consumer = consumer
+	return consumer
 }
 
-func (r *Reader) init() error {
-	ch, err := r.chPool.Rent()
+func (c *Consumer) init() error {
+	ch, err := c.chPool.Rent()
 	if err != nil {
 		return err
 	}
 	defer ch.Close()
 
-	err = ch.ExchangeDeclare(r.exchange(), ExchangeKind, true, false, false, false, nil)
+	err = ch.ExchangeDeclare(c.exchange(), ExchangeKind, true, false, false, false, nil)
 	if err != nil {
 		return err
 	}
@@ -60,37 +60,37 @@ func (r *Reader) init() error {
 	return nil
 }
 
-func (r *Reader) Subscribe(_ context.Context, topic string) error {
-	ch, err := r.chPool.Rent()
+func (c *Consumer) Subscribe(_ context.Context, topic string) error {
+	ch, err := c.chPool.Rent()
 	if err != nil {
 		return err
 	}
-	defer r.chPool.Return(ch)
+	defer c.chPool.Return(ch)
 
-	o := r.opts.QueueOpts
-	q, err := ch.QueueDeclare(r.q, o.Durable, o.AutoDelete, o.Exclusive, false, nil)
-	if err != nil {
-		return err
-	}
-
-	err = ch.QueueBind(q.Name, topic, r.exchange(), false, nil)
+	o := c.opts.QueueOpts
+	q, err := ch.QueueDeclare(c.q, o.Durable, o.AutoDelete, o.Exclusive, false, nil)
 	if err != nil {
 		return err
 	}
 
-	slog.Debug("rabbitmq: routing key bound successfully", slog.String("queue", r.q), slog.String("routing_key", topic))
+	err = ch.QueueBind(q.Name, topic, c.exchange(), false, nil)
+	if err != nil {
+		return err
+	}
+
+	slog.Debug("rabbitmq: routing key bound successfully", slog.String("queue", c.q), slog.String("routing_key", topic))
 	return nil
 }
 
-func (r *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
-	enCh := make(chan *entity.Envelope, r.opts.PrefetchCount)
+func (c *Consumer) Consume(ctx context.Context) (<-chan *entity.Envelope, error) {
+	enCh := make(chan *entity.Envelope, c.opts.PrefetchCount)
 
 	go func() {
 		defer close(enCh)
 
 		for {
 			var deliCh <-chan amqp.Delivery
-			ch, err := r.chPool.Rent()
+			ch, err := c.chPool.Rent()
 			if err != nil {
 				slog.Error("failed to rent a channel", slog.Any("err", err))
 				goto RETRY
@@ -98,8 +98,8 @@ func (r *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
 
 			deliCh, err = ch.ConsumeWithContext(
 				ctx,
-				r.q,
-				r.consumerTag(),
+				c.q,
+				c.consumerTag(),
 				false, false, false, false, nil,
 			)
 			if err != nil {
@@ -108,9 +108,9 @@ func (r *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
 			}
 
 			for deli := range deliCh {
-				en := entity.NewEnvelope(r.gapOpts.Version, deli.RoutingKey, nil).
+				en := entity.NewEnvelope(c.gapOpts.Version, deli.RoutingKey, nil).
 					WithPayload(deli.Body).
-					WithGroup(r.group).
+					WithGroup(c.group).
 					WithTag(deli)
 
 				for k, v := range deli.Headers {
@@ -127,7 +127,7 @@ func (r *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
 			}
 
 		RETRY:
-			r.chPool.Return(ch)
+			c.chPool.Return(ch)
 
 			select {
 			case <-ctx.Done():
@@ -140,30 +140,30 @@ func (r *Reader) Read(ctx context.Context) (<-chan *entity.Envelope, error) {
 	return enCh, nil
 }
 
-func (r *Reader) Commit(tag any) error {
+func (c *Consumer) Commit(tag any) error {
 	deli, _ := tag.(amqp.Delivery)
 	return deli.Ack(false)
 }
 
-func (r *Reader) Reject(tag any) error {
+func (c *Consumer) Reject(tag any) error {
 	deli, _ := tag.(amqp.Delivery)
 	return deli.Nack(false, true)
 }
 
-func (r *Reader) exchange() string {
-	if r.x == "" {
-		r.x = fmt.Sprintf("gap.%s.x.%s", r.gapOpts.Version, r.opts.Exchange)
+func (c *Consumer) exchange() string {
+	if c.x == "" {
+		c.x = fmt.Sprintf("gap.%s.x.%s", c.gapOpts.Version, c.opts.Exchange)
 	}
-	return r.x
+	return c.x
 }
 
-func (r *Reader) consumerTag() string {
-	if r.ctag == "" {
-		name := r.gapOpts.ServiceName
+func (c *Consumer) consumerTag() string {
+	if c.ctag == "" {
+		name := c.gapOpts.ServiceName
 		if name == "" {
 			name = os.Args[0]
 		}
-		r.ctag = fmt.Sprintf("gap.%s", name)
+		c.ctag = fmt.Sprintf("gap.%s", name)
 	}
-	return r.ctag
+	return c.ctag
 }

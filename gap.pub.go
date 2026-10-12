@@ -20,9 +20,9 @@ var fixPubOnce sync.Once
 func NewPublisher[T any](opts ...shoot.Option[Options, *Options]) Publisher[T] {
 	gapOpts := new(Options).With(opts...)
 
-	brok := plugin.MustGetWBroker(gapOpts)
-	if brok == nil {
-		panic("writer broker must not be nil")
+	producer := plugin.MustGetProducer(gapOpts)
+	if producer == nil {
+		panic("producer broker must not be nil")
 	}
 	stor := plugin.MustGetStorage(gapOpts)
 	if stor != nil {
@@ -36,7 +36,7 @@ func NewPublisher[T any](opts ...shoot.Option[Options, *Options]) Publisher[T] {
 
 	initSnowflake(gapOpts.WorkerID)
 
-	pub := internal.NewPub[T](gapOpts, brok, stor)
+	pub := internal.NewPub[T](gapOpts, producer, stor)
 	return pub
 }
 
