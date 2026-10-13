@@ -6,7 +6,7 @@ import (
 	"github.com/loopopen/shoot"
 )
 
-const version = "v0.2.0-beta.5"
+const version = "v0.2.1-beta.1"
 
 //go:generate go tool shoot new -opt -short -type=Options
 
