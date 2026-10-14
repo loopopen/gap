@@ -62,7 +62,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 		"AND `retries` < ? " +
 		"AND `created_at` < ? " +
 		"LIMIT ? FOR UPDATE SKIP LOCKED"
-	const script2 = "UPDATE `%s_published` SET `status` = ? WHERE `id` IN (%s)"
+	const script2 = "UPDATE `%s_published` SET `status` = ?, `retries` = `retries` + 1 WHERE `id` IN (%s)"
 
 	var tx *sql.Tx
 	tx, err = s.db.BeginTx(ctx, &sql.TxOptions{})
@@ -115,6 +115,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 	for i, p := range pubs {
 		placeholders[i] = "?"
 		params[i+1] = p.ID
+		p.Retries++
 		es = append(es, p.ToEntity())
 	}
 	_, err = tx.ExecContext(ctx, fmt.Sprintf(script2, s.opts.Schema, strings.Join(placeholders, ", ")), params...)
@@ -136,7 +137,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 		"AND `retries` < ? " +
 		"AND `created_at` < ? " +
 		"LIMIT ? FOR UPDATE SKIP LOCKED"
-	const script2 = "UPDATE `%s_received` SET `status` = ? WHERE `id` IN (%s)"
+	const script2 = "UPDATE `%s_received` SET `status` = ?, `retries` = `retries` + 1 WHERE `id` IN (%s)"
 
 	var tx *sql.Tx
 	tx, err = s.db.BeginTx(ctx, &sql.TxOptions{})
@@ -190,6 +191,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 	for i, r := range recs {
 		placeholders[i] = "?"
 		params[i+1] = r.ID
+		r.Retries++
 		es = append(es, r.ToEntity())
 	}
 	_, err = tx.ExecContext(ctx, fmt.Sprintf(script2, s.opts.Schema, strings.Join(placeholders, ", ")), params...)
