@@ -19,6 +19,7 @@ export interface RecMsgQueryParams extends MsgQueryParams {
 
 export const usePubMsgs = (params: PubMsgQueryParams, options?: { enabled: boolean }) => {
   const { enabled = true } = options || {};
+  const { page, per_page, status, topic } = params;
 
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [total, setTotal] = useState(0);
@@ -26,7 +27,9 @@ export const usePubMsgs = (params: PubMsgQueryParams, options?: { enabled: boole
 
   useEffect(() => {
     if (!enabled) return
-    axios.get<PagedResult<Msg>>(`/messages/published`, { params })
+    axios.get<PagedResult<Msg>>(`/messages/published`, {
+      params: { page, per_page, status, topic },
+    })
       .then(resp => {
         setMsgs(resp.data?.data || []);
         setTotal(resp.data?.pagination?.total || 0);
@@ -35,13 +38,14 @@ export const usePubMsgs = (params: PubMsgQueryParams, options?: { enabled: boole
       }).finally(() => {
         setLoading(false);
       })
-  }, [JSON.stringify(params), enabled]);
+  }, [enabled, page, per_page, status, topic]);
 
   return { msgs, total, loading };
 }
 
 export const useRecMsgs = (params: RecMsgQueryParams, options?: { enabled: boolean }) => {
   const { enabled = true } = options || {};
+  const { group, page, per_page, status, topic } = params;
 
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [total, setTotal] = useState(0);
@@ -49,7 +53,9 @@ export const useRecMsgs = (params: RecMsgQueryParams, options?: { enabled: boole
 
   useEffect(() => {
     if (!enabled) return
-    axios.get<PagedResult<Msg>>(`/messages/received`, { params })
+    axios.get<PagedResult<Msg>>(`/messages/received`, {
+      params: { group, page, per_page, status, topic },
+    })
       .then(resp => {
         setMsgs(resp.data?.data || []);
         setTotal(resp.data?.pagination?.total || 0);
@@ -58,7 +64,7 @@ export const useRecMsgs = (params: RecMsgQueryParams, options?: { enabled: boole
       }).finally(() => {
         setLoading(false);
       })
-  }, [JSON.stringify(params), enabled]);
+  }, [enabled, group, page, per_page, status, topic]);
 
   return { msgs, total, loading };
 }

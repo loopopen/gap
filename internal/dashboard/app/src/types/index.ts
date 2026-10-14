@@ -5,7 +5,7 @@ export interface Pagination {
   totalPage: number;
 }
 
-export interface PagedResult<T extends Object> {
+export interface PagedResult<T extends object> {
   data: T[];
   pagination: Pagination;
 }
