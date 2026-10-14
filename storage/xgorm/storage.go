@@ -35,6 +35,9 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 	}
 
 	pub := new(Published).FromEntity(envelope)
+	if pub.err != nil {
+		return pub.err
+	}
 	err := s.db.Create(pub).Error
 	if err != nil {
 		return err
@@ -50,6 +53,9 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 	}
 
 	rec := new(Received).FromEntity(envelope)
+	if rec.err != nil {
+		return rec.err
+	}
 	err := s.db.Create(rec).Error
 	if err != nil {
 		return err
@@ -215,6 +221,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 	minutsAge := time.Now().Add(-o.Lookback())
 
 	var pubs []*Published
+	var es []*entity.Envelope
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		err := tx.
 			Model(&Published{}).
@@ -244,20 +251,21 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 		for _, p := range pubs {
 			ids = append(ids, p.ID)
 		}
-		return tx.
+		if err := tx.
 			Model(&Published{}).
 			Where(clause.IN{
 				Column: "id",
 				Values: ids,
 			}).
-			Updates(&Model{Status: enum.StatusProcessing}).Error
+			Updates(&Model{Status: enum.StatusProcessing}).Error; err != nil {
+			return err
+		}
+		var convErr error
+		es, convErr = publishedEnvelopes(pubs)
+		return convErr
 	})
 	if err != nil {
 		return nil, err
-	}
-	var es []*entity.Envelope
-	for _, p := range pubs {
-		es = append(es, p.ToEntity())
 	}
 	return es, nil
 }
@@ -267,6 +275,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 	minutsAge := time.Now().Add(-o.Lookback())
 
 	var recs []*Received
+	var es []*entity.Envelope
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		err := tx.
 			Model(&Received{}).
@@ -296,20 +305,21 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 		for _, p := range recs {
 			ids = append(ids, p.ID)
 		}
-		return tx.
+		if err := tx.
 			Model(&Received{}).
 			Where(clause.IN{
 				Column: "id",
 				Values: ids,
 			}).
-			Updates(&Model{Status: enum.StatusProcessing}).Error
+			Updates(&Model{Status: enum.StatusProcessing}).Error; err != nil {
+			return err
+		}
+		var convErr error
+		es, convErr = receivedEnvelopes(recs)
+		return convErr
 	})
 	if err != nil {
 		return nil, err
-	}
-	var es []*entity.Envelope
-	for _, p := range recs {
-		es = append(es, p.ToEntity())
 	}
 	return es, nil
 }
