@@ -3,6 +3,7 @@ package xgorm
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -22,6 +23,7 @@ type Model struct {
 	Payload   string      `gorm:"mysql:type:longtext;postgres:type:text"`
 	Retries   int         `gorm:"default:0"`
 	ExpiredAt sql.Null[time.Time]
+	err       error `gorm:"-"`
 }
 
 //go:generate go tool shoot map -path=../../internal/entity -to=Envelope,Envelope -type=Published,Received
@@ -31,11 +33,12 @@ type Published struct {
 }
 
 func (p *Published) writeEntity(e *entity.Envelope) {
+	p.err = nil
 	if p.Headers != "" {
 		var headers map[string]string
-		err := json.Unmarshal([]byte(p.Headers), &headers)
-		if err != nil {
-			panic(err)
+		if err := json.Unmarshal([]byte(p.Headers), &headers); err != nil {
+			p.err = fmt.Errorf("decode headers for id %d: %w", p.ID, err)
+			return
 		}
 		e.Headers = headers
 	}
@@ -46,15 +49,24 @@ func (p *Published) writeEntity(e *entity.Envelope) {
 }
 
 func (p *Published) readEntity(e *entity.Envelope) {
+	p.err = nil
 	if p.CreatedAt.IsZero() {
 		p.CreatedAt = time.Now()
 	}
-	payload, _ := e.PayloadBytes()
+	payload, err := e.PayloadBytes()
+	if err != nil {
+		p.err = fmt.Errorf("encode payload for id %d: %w", e.ID, err)
+		return
+	}
 	p.Payload = string(payload)
 	if p.Status == 0 {
 		p.Status = enum.StatusPending
 	}
-	headers, _ := e.HeadersBytes()
+	headers, err := e.HeadersBytes()
+	if err != nil {
+		p.err = fmt.Errorf("encode headers for id %d: %w", e.ID, err)
+		return
+	}
 	p.Headers = string(headers)
 }
 
@@ -64,11 +76,12 @@ type Received struct {
 }
 
 func (r *Received) writeEntity(e *entity.Envelope) {
+	r.err = nil
 	if r.Headers != "" {
 		var headers map[string]string
-		err := json.Unmarshal([]byte(r.Headers), &headers)
-		if err != nil {
-			panic(err)
+		if err := json.Unmarshal([]byte(r.Headers), &headers); err != nil {
+			r.err = fmt.Errorf("decode headers for id %d: %w", r.ID, err)
+			return
 		}
 		e.Headers = headers
 	}
@@ -78,14 +91,47 @@ func (r *Received) writeEntity(e *entity.Envelope) {
 }
 
 func (r *Received) readEntity(e *entity.Envelope) {
+	r.err = nil
 	if r.CreatedAt.IsZero() {
 		r.CreatedAt = time.Now()
 	}
-	payload, _ := e.PayloadBytes()
+	payload, err := e.PayloadBytes()
+	if err != nil {
+		r.err = fmt.Errorf("encode payload for id %d: %w", e.ID, err)
+		return
+	}
 	r.Payload = string(payload)
 	if r.Status == 0 {
 		r.Status = enum.StatusPending
 	}
-	headers, _ := e.HeadersBytes()
+	headers, err := e.HeadersBytes()
+	if err != nil {
+		r.err = fmt.Errorf("encode headers for id %d: %w", e.ID, err)
+		return
+	}
 	r.Headers = string(headers)
+}
+
+func publishedEnvelopes(pubs []*Published) ([]*entity.Envelope, error) {
+	es := make([]*entity.Envelope, 0, len(pubs))
+	for _, p := range pubs {
+		en := p.ToEntity()
+		if p.err != nil {
+			return nil, p.err
+		}
+		es = append(es, en)
+	}
+	return es, nil
+}
+
+func receivedEnvelopes(recs []*Received) ([]*entity.Envelope, error) {
+	es := make([]*entity.Envelope, 0, len(recs))
+	for _, r := range recs {
+		en := r.ToEntity()
+		if r.err != nil {
+			return nil, r.err
+		}
+		es = append(es, en)
+	}
+	return es, nil
 }
