@@ -215,8 +215,8 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 	minutsAge := time.Now().Add(-o.Lookback())
 
 	var pubs []*Published
-	s.db.Transaction(func(tx *gorm.DB) error {
-		err := tx.WithContext(ctx).
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.
 			Model(&Published{}).
 			Where(&Model{Version: o.Version}).
 			Where(clause.IN{
@@ -244,18 +244,17 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 		for _, p := range pubs {
 			ids = append(ids, p.ID)
 		}
-		err = tx.WithContext(ctx).
+		return tx.
 			Model(&Published{}).
 			Where(clause.IN{
 				Column: "id",
 				Values: ids,
 			}).
 			Updates(&Model{Status: enum.StatusProcessing}).Error
-		if err != nil {
-			return err
-		}
-		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 	var es []*entity.Envelope
 	for _, p := range pubs {
 		es = append(es, p.ToEntity())
@@ -268,8 +267,8 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 	minutsAge := time.Now().Add(-o.Lookback())
 
 	var recs []*Received
-	s.db.Transaction(func(tx *gorm.DB) error {
-		err := tx.WithContext(ctx).
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.
 			Model(&Received{}).
 			Where(&Model{Version: o.Version}).
 			Where(clause.IN{
@@ -297,18 +296,17 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 		for _, p := range recs {
 			ids = append(ids, p.ID)
 		}
-		err = tx.WithContext(ctx).
+		return tx.
 			Model(&Received{}).
 			Where(clause.IN{
 				Column: "id",
 				Values: ids,
 			}).
 			Updates(&Model{Status: enum.StatusProcessing}).Error
-		if err != nil {
-			return err
-		}
-		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 	var es []*entity.Envelope
 	for _, p := range recs {
 		es = append(es, p.ToEntity())
