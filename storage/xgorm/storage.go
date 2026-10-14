@@ -250,6 +250,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 		var ids []any
 		for _, p := range pubs {
 			ids = append(ids, p.ID)
+			p.Retries++
 		}
 		if err := tx.
 			Model(&Published{}).
@@ -257,7 +258,10 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 				Column: "id",
 				Values: ids,
 			}).
-			Updates(&Model{Status: enum.StatusProcessing}).Error; err != nil {
+			Updates(map[string]any{
+				"status":  enum.StatusProcessing,
+				"retries": gorm.Expr("retries + 1"),
+			}).Error; err != nil {
 			return err
 		}
 		var convErr error
@@ -304,6 +308,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 		var ids []any
 		for _, p := range recs {
 			ids = append(ids, p.ID)
+			p.Retries++
 		}
 		if err := tx.
 			Model(&Received{}).
@@ -311,7 +316,10 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 				Column: "id",
 				Values: ids,
 			}).
-			Updates(&Model{Status: enum.StatusProcessing}).Error; err != nil {
+			Updates(map[string]any{
+				"status":  enum.StatusProcessing,
+				"retries": gorm.Expr("retries + 1"),
+			}).Error; err != nil {
 			return err
 		}
 		var convErr error
