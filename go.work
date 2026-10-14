@@ -1,0 +1,16 @@
+go 1.24.13
+
+use (
+	.
+	./broker/xconfluent
+	./broker/xkafka
+	./broker/xrabbitmq
+	./examples/fiber-rabbitmq-mysql-example
+	./examples/gin-kafka-mysql-example
+	./examples/gin-kafka-mysql-example2
+	./examples/kafka-gorm-postgres-example
+	./examples/rabbitmq-gorm-mysql-example
+	./examples/rabbitmq-mysql-example
+	./storage/xgorm
+	./storage/xmysql
+)
