@@ -18,13 +18,13 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/klauspost/compress v1.15.9 // indirect
-	github.com/loopopen/shoot v0.9.0-beta.5 // indirect
+	github.com/klauspost/compress v1.17.9 // indirect
+	github.com/loopopen/shoot v0.9.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.15 // indirect
 	github.com/segmentio/kafka-go v0.4.50 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
+	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 )
 
 replace github.com/loopopen/gap => ../../../gap

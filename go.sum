@@ -2,8 +2,8 @@ github.com/bwmarrin/snowflake v0.3.0 h1:xm67bEhkKh6ij1790JB83OujPR5CzNe8QuQqAgIS
 github.com/bwmarrin/snowflake v0.3.0/go.mod h1:NdZxfVWX+oR6y2K0o6qAYv6gIOP9rjG0/E9WsDpxqwE=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
 github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
-github.com/loopopen/shoot v0.9.0-beta.5 h1:RfFPBaimOsvIzv3hutpiXqpZ80XJMI11nD6iL87MoBw=
-github.com/loopopen/shoot v0.9.0-beta.5/go.mod h1:tGJXCsuL6qnpyS/2fbnSIscbZfsuTDnZZqaaFSx4Ie0=
+github.com/loopopen/shoot v0.9.0 h1:bagSuwclKj+39+bWJEKNFtRbFzNpMqyHCt6XVanHRfA=
+github.com/loopopen/shoot v0.9.0/go.mod h1:tGJXCsuL6qnpyS/2fbnSIscbZfsuTDnZZqaaFSx4Ie0=
 golang.org/x/mod v0.33.0 h1:tHFzIWbBifEmbwtGz65eaWyGiGZatSrT9prnU8DbVL8=
 golang.org/x/mod v0.33.0/go.mod h1:swjeQEj+6r7fODbD2cqrnje9PnziFuw4bmLbBZFrQ5w=
 golang.org/x/sync v0.19.0 h1:vV+1eWNmZ5geRlYjzm2adRgW2/mcpevXNg50YZtPCE4=
