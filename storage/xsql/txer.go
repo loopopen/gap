@@ -43,7 +43,7 @@ func DoInTx(ctx context.Context, action func(context.Context, gaptx.Txer) error,
 	defer func() {
 		//rollback when panic or error
 		if panicked || err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 		}
 	}()
 

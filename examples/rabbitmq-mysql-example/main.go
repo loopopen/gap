@@ -60,7 +60,7 @@ func runjob(ctx context.Context, db *sql.DB, pub gap.Publisher[time.Time]) {
 			}
 			defer func() {
 				if err != nil {
-					tx.Rollback()
+					_ = tx.Rollback()
 				} else {
 					err = tx.Commit()
 				}
