@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/loopopen/gap/internal/entity"
@@ -17,6 +19,10 @@ import (
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 )
+
+const maxIdentLen = 63
+
+var identRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type TableCommentter interface {
 	TableComment() string
@@ -100,27 +106,20 @@ func (s *Storage) setDB(db *gorm.DB) {
 }
 
 func (s *Storage) init() error {
-	schema := s.opts.Schema
+	if _, err := quoteIdent(s.opts.Schema); err != nil {
+		return fmt.Errorf("schema: %w", err)
+	}
 
 	switch s.db.Dialector.Name() {
 	case "postgres":
-		if err := s.db.Exec(fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS "%s"`, schema)).Error; err != nil {
+		createSchema, createType, err := postgresSchemaSQL(s.opts.Schema)
+		if err != nil {
 			return err
 		}
-		if err := s.db.Exec(fmt.Sprintf(`
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 
-        FROM pg_type t 
-        JOIN pg_namespace n ON n.oid = t.typnamespace 
-        WHERE t.typname = 'status_enum' 
-        AND n.nspname = '%s'
-    ) THEN
-        CREATE TYPE %s.status_enum AS ENUM ('Pending', 'Processing', 'Succeeded', 'Failed');
-    END IF;
-END
-$$;`, schema, schema)).Error; err != nil {
+		if err := s.db.Exec(createSchema).Error; err != nil {
+			return err
+		}
+		if err := s.db.Exec(createType).Error; err != nil {
 			return err
 		}
 	}
@@ -144,10 +143,10 @@ func (s *Storage) autoMigrate(models ...any) error {
 		if dname == "postgres" {
 			migrator := s.db.Table(tableName).Migrator()
 			if migrator.HasColumn(&Model{}, "status") {
-				sql := fmt.Sprintf(`
-ALTER TABLE %s 
-ALTER COLUMN "status" TYPE %s.status_enum
-USING "status"::%s.status_enum;`, tableName, s.opts.Schema, s.opts.Schema)
+				sql, err := postgresStatusSQL(tableName, s.opts.Schema)
+				if err != nil {
+					return err
+				}
 				if err := s.db.Exec(sql).Error; err != nil {
 					return err
 				}
@@ -160,13 +159,12 @@ USING "status"::%s.status_enum;`, tableName, s.opts.Schema, s.opts.Schema)
 		}
 
 		if tableComment != "" {
-			if dname == "mysql" {
-				sql := fmt.Sprintf("ALTER TABLE `%s` COMMENT = '%s'", tableName, tableComment)
-				if err := s.db.Exec(sql).Error; err != nil {
-					return err
-				}
-			} else {
-				panic("unimplemented")
+			sql, err := tableCommentSQL(dname, tableName, tableComment)
+			if err != nil {
+				return err
+			}
+			if err := s.db.Exec(sql).Error; err != nil {
+				return err
 			}
 		}
 	}
@@ -351,4 +349,81 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.St
 		slog.Debug("updated status of received", slog.Any("id", id), slog.String("status", status.String()))
 	}
 	return nil
+}
+
+func quoteIdent(name string) (string, error) {
+	if len(name) > maxIdentLen || !identRE.MatchString(name) {
+		return "", fmt.Errorf("invalid identifier %q", name)
+	}
+	return `"` + name + `"`, nil
+}
+
+func quoteQualified(name string) (string, error) {
+	parts := strings.Split(name, ".")
+	quoted := make([]string, 0, len(parts))
+	for _, part := range parts {
+		q, err := quoteIdent(part)
+		if err != nil {
+			return "", err
+		}
+		quoted = append(quoted, q)
+	}
+	return strings.Join(quoted, "."), nil
+}
+
+func postgresSchemaSQL(schema string) (string, string, error) {
+	quoted, err := quoteIdent(schema)
+	if err != nil {
+		return "", "", err
+	}
+	createSchema := fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoted)
+	createType := fmt.Sprintf(`
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_type t 
+        JOIN pg_namespace n ON n.oid = t.typnamespace 
+        WHERE t.typname = 'status_enum' 
+        AND n.nspname = '%s'
+    ) THEN
+        CREATE TYPE %s."status_enum" AS ENUM ('Pending', 'Processing', 'Succeeded', 'Failed');
+    END IF;
+END
+$$;`, schema, quoted)
+	return createSchema, createType, nil
+}
+
+func postgresStatusSQL(tableName, schema string) (string, error) {
+	table, err := quoteQualified(tableName)
+	if err != nil {
+		return "", err
+	}
+	quotedSchema, err := quoteIdent(schema)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(`
+ALTER TABLE %s 
+ALTER COLUMN "status" TYPE %s."status_enum"
+USING "status"::%s."status_enum";`, table, quotedSchema, quotedSchema), nil
+}
+
+func tableCommentSQL(dialect, tableName, comment string) (string, error) {
+	literal := strings.ReplaceAll(comment, `'`, `''`)
+	switch dialect {
+	case "mysql":
+		if _, err := quoteIdent(tableName); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("ALTER TABLE `%s` COMMENT = '%s'", tableName, literal), nil
+	case "postgres":
+		table, err := quoteQualified(tableName)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("COMMENT ON TABLE %s IS '%s'", table, literal), nil
+	default:
+		return "", fmt.Errorf("table comments are not implemented for %s", dialect)
+	}
 }
