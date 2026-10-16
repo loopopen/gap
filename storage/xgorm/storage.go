@@ -238,6 +238,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 				Column: "created_at",
 				Value:  minutsAge,
 			}).
+			Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}}).
 			Limit(batchSize).
 			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Scan(&pubs).Error
@@ -296,6 +297,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 				Column: "created_at",
 				Value:  minutsAge,
 			}).
+			Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}}).
 			Limit(batchSize).
 			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Scan(&recs).Error
