@@ -120,9 +120,12 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 		placeholders[i] = "?"
 		params[i+1] = p.ID
 		p.Retries++
-		es = append(es, p.ToEntity())
 	}
 	_, err = tx.ExecContext(ctx, fmt.Sprintf(script2, s.opts.Schema, strings.Join(placeholders, ", ")), params...)
+	if err != nil {
+		return nil, err
+	}
+	es, err = pubsToEntities(pubs)
 	if err != nil {
 		return nil, err
 	}
@@ -200,9 +203,12 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 		placeholders[i] = "?"
 		params[i+1] = r.ID
 		r.Retries++
-		es = append(es, r.ToEntity())
 	}
 	_, err = tx.ExecContext(ctx, fmt.Sprintf(script2, s.opts.Schema, strings.Join(placeholders, ", ")), params...)
+	if err != nil {
+		return nil, err
+	}
+	es, err = recsToEntities(recs)
 	if err != nil {
 		return nil, err
 	}
@@ -216,6 +222,9 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 	}
 
 	pub := new(Published).FromEntity(envelope)
+	if pub.err != nil {
+		return pub.err
+	}
 	const script = "INSERT INTO `%s_published` (" +
 		"`id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`" +
 		") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -246,6 +255,9 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 	}
 
 	rec := new(Received).FromEntity(envelope)
+	if rec.err != nil {
+		return rec.err
+	}
 	const script = "INSERT INTO `%s_received` (" +
 		"`id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group`" +
 		") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"

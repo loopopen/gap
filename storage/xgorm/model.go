@@ -112,7 +112,7 @@ func (r *Received) readEntity(e *entity.Envelope) {
 	r.Headers = string(headers)
 }
 
-func publishedEnvelopes(pubs []*Published) ([]*entity.Envelope, error) {
+func pubsToEntities(pubs []*Published) ([]*entity.Envelope, error) {
 	es := make([]*entity.Envelope, 0, len(pubs))
 	for _, p := range pubs {
 		en := p.ToEntity()
@@ -124,7 +124,7 @@ func publishedEnvelopes(pubs []*Published) ([]*entity.Envelope, error) {
 	return es, nil
 }
 
-func receivedEnvelopes(recs []*Received) ([]*entity.Envelope, error) {
+func recsToEntities(recs []*Received) ([]*entity.Envelope, error) {
 	es := make([]*entity.Envelope, 0, len(recs))
 	for _, r := range recs {
 		en := r.ToEntity()

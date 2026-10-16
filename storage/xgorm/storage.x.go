@@ -51,7 +51,7 @@ func (s *Storage) QueryPublished(ctx context.Context, status enum.Status, topic 
 		return nil, nil, err
 	}
 
-	es, err := publishedEnvelopes(pubs)
+	es, err := pubsToEntities(pubs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -86,7 +86,7 @@ func (s *Storage) QueryReceived(ctx context.Context, status enum.Status, topic s
 		return nil, nil, err
 	}
 
-	es, err := receivedEnvelopes(recs)
+	es, err := recsToEntities(recs)
 	if err != nil {
 		return nil, nil, err
 	}
