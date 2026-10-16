@@ -167,6 +167,10 @@ func (s *Storage) autoMigrate(models ...any) error {
 				return err
 			}
 		}
+
+		if err := s.ensureClaimIndex(dname, tableName, claimIndexName(model)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -236,7 +240,6 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 				Column: "created_at",
 				Value:  minutsAge,
 			}).
-			Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}}).
 			Limit(batchSize).
 			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Scan(&pubs).Error
@@ -295,7 +298,6 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 				Column: "created_at",
 				Value:  minutsAge,
 			}).
-			Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}}).
 			Limit(batchSize).
 			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Scan(&recs).Error
@@ -349,6 +351,99 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.St
 		slog.Debug("updated status of received", slog.Any("id", id), slog.String("status", status.String()))
 	}
 	return nil
+}
+
+func claimIndexName(model any) string {
+	switch model.(type) {
+	case *Published:
+		return "idx_published_claim"
+	case *Received:
+		return "idx_received_claim"
+	default:
+		return ""
+	}
+}
+
+func (s *Storage) ensureClaimIndex(dialect, table, index string) error {
+	if index == "" {
+		return fmt.Errorf("claim index name is empty")
+	}
+	switch dialect {
+	case "mysql":
+		return s.ensureMySQLClaimIndex(table, index)
+	case "postgres":
+		return s.ensurePostgresClaimIndex(table, index)
+	default:
+		return fmt.Errorf("claim index is not implemented for %s", dialect)
+	}
+}
+
+func (s *Storage) ensureMySQLClaimIndex(table, index string) error {
+	var n int
+	err := s.db.Raw(
+		`SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
+		table, index,
+	).Scan(&n).Error
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	sql, err := mysqlClaimIndexSQL(table, index)
+	if err != nil {
+		return err
+	}
+	err = s.db.Exec(sql).Error
+	if err != nil && strings.Contains(err.Error(), "Duplicate key name") {
+		return nil
+	}
+	return err
+}
+
+func (s *Storage) ensurePostgresClaimIndex(table, index string) error {
+	sql, err := postgresClaimIndexSQL(table, index)
+	if err != nil {
+		return err
+	}
+	return s.db.Exec(sql).Error
+}
+
+func mysqlClaimIndexSQL(table, index string) (string, error) {
+	quotedTable, err := quoteMySQLIdent(table)
+	if err != nil {
+		return "", err
+	}
+	quotedIndex, err := quoteMySQLIdent(index)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(
+		"CREATE INDEX %s ON %s (`version`, `status`, `retries`, `created_at`)",
+		quotedIndex, quotedTable,
+	), nil
+}
+
+func postgresClaimIndexSQL(table, index string) (string, error) {
+	quotedTable, err := quoteQualified(table)
+	if err != nil {
+		return "", err
+	}
+	quotedIndex, err := quoteIdent(index)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(
+		`CREATE INDEX IF NOT EXISTS %s ON %s ("version", "status", "retries", "created_at")`,
+		quotedIndex, quotedTable,
+	), nil
+}
+
+func quoteMySQLIdent(name string) (string, error) {
+	if len(name) == 0 || len(name) > 64 || !identRE.MatchString(name) {
+		return "", fmt.Errorf("invalid identifier %q", name)
+	}
+	return "`" + name + "`", nil
 }
 
 func quoteIdent(name string) (string, error) {

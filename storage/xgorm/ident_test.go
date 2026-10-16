@@ -60,6 +60,19 @@ func TestPostgresStatusSQL(t *testing.T) {
 	}
 }
 
+func TestPostgresClaimIndexSQL(t *testing.T) {
+	sql, err := postgresClaimIndexSQL("gap.published", "idx_published_claim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sql != `CREATE INDEX IF NOT EXISTS "idx_published_claim" ON "gap"."published" ("version", "status", "retries", "created_at")` {
+		t.Fatal(sql)
+	}
+	if _, err := postgresClaimIndexSQL(`gap.published"; drop`, "idx_published_claim"); err == nil {
+		t.Fatal("accepted injected table")
+	}
+}
+
 func TestTableCommentSQL(t *testing.T) {
 	sql, err := tableCommentSQL("postgres", "gap.published", "it's ready")
 	if err != nil {

@@ -8,6 +8,17 @@ import (
 	"github.com/loopopen/gap/internal/enum"
 )
 
+func TestClaimIndexSQL(t *testing.T) {
+	sql := claimIndexSQL("gap_published", "idx_published_claim")
+	if sql != "CREATE INDEX `idx_published_claim` ON `gap_published` (`version`, `status`, `retries`, `created_at`)" {
+		t.Fatal(sql)
+	}
+	sql = claimIndexSQL("gap`published", "idx_published_claim")
+	if sql != "CREATE INDEX `idx_published_claim` ON `gap``published` (`version`, `status`, `retries`, `created_at`)" {
+		t.Fatal(sql)
+	}
+}
+
 func TestToEntityInvalidHeaders(t *testing.T) {
 	p := &Published{ID: 7, Headers: "{"}
 	en := p.ToEntity()
