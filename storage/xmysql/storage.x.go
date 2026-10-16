@@ -70,6 +70,7 @@ func (s *Storage) QueryPublished(ctx context.Context, status enum.Status, topic 
 	if err != nil {
 		return nil, nil, err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var pub Published
 		err = rows.Scan(
@@ -87,6 +88,9 @@ func (s *Storage) QueryPublished(ctx context.Context, status enum.Status, topic 
 			return nil, nil, err
 		}
 		pubs = append(pubs, &pub)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, nil, err
 	}
 
 	var es []*entity.Envelope
@@ -123,6 +127,7 @@ func (s *Storage) QueryReceived(ctx context.Context, status enum.Status, topic s
 	if err != nil {
 		return nil, nil, err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var rec Received
 		err = rows.Scan(
@@ -141,6 +146,9 @@ func (s *Storage) QueryReceived(ctx context.Context, status enum.Status, topic s
 			return nil, nil, err
 		}
 		recs = append(recs, &rec)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, nil, err
 	}
 
 	var es []*entity.Envelope
