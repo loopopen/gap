@@ -3,12 +3,13 @@ package xmysql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/errx"
@@ -61,7 +62,6 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 		"AND `status` IN (?, ?) " +
 		"AND `retries` < ? " +
 		"AND `created_at` < ? " +
-		"ORDER BY `id` " +
 		"LIMIT ? FOR UPDATE SKIP LOCKED"
 	const script2 = "UPDATE `%s_published` SET `status` = ?, `retries` = `retries` + 1 WHERE `id` IN (%s)"
 
@@ -144,7 +144,6 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 		"AND `status` IN (?, ?) " +
 		"AND `retries` < ? " +
 		"AND `created_at` < ? " +
-		"ORDER BY `id` " +
 		"LIMIT ? FOR UPDATE SKIP LOCKED"
 	const script2 = "UPDATE `%s_received` SET `status` = ?, `retries` = `retries` + 1 WHERE `id` IN (%s)"
 
@@ -375,5 +374,43 @@ func (s *Storage) init() error {
 		return err
 	}
 
-	return nil
+	if err := s.ensureClaimIndex(s.opts.Schema+"_published", "idx_published_claim"); err != nil {
+		return err
+	}
+	return s.ensureClaimIndex(s.opts.Schema+"_received", "idx_received_claim")
+}
+
+func (s *Storage) ensureClaimIndex(table, index string) error {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
+		table, index,
+	).Scan(&n)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	_, err = s.db.Exec(claimIndexSQL(table, index))
+	if isDuplicateIndex(err) {
+		return nil
+	}
+	return err
+}
+
+func claimIndexSQL(table, index string) string {
+	return fmt.Sprintf(
+		"CREATE INDEX %s ON %s (`version`, `status`, `retries`, `created_at`)",
+		quoteMySQL(index), quoteMySQL(table),
+	)
+}
+
+func quoteMySQL(name string) string {
+	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+}
+
+func isDuplicateIndex(err error) bool {
+	var me *mysql.MySQLError
+	return errors.As(err, &me) && me.Number == 1061
 }
