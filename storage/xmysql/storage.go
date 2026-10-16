@@ -87,6 +87,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var pub Published
 		err = rows.Scan(
@@ -165,6 +166,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var rec Received
 		err = rows.Scan(
@@ -183,6 +185,9 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 			return nil, err
 		}
 		recs = append(recs, &rec)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
 	}
 	c := len(recs)
 	if c == 0 {
