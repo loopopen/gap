@@ -8,6 +8,34 @@ import (
 	"github.com/loopopen/gap/internal/enum"
 )
 
+func TestClaimIndexSQL(t *testing.T) {
+	sql, err := claimIndexSQL("gap_published", "idx_published_claim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sql != "CREATE INDEX `idx_published_claim` ON `gap_published` (`version`, `status`, `retries`, `created_at`)" {
+		t.Fatal(sql)
+	}
+	if _, err := claimIndexSQL("gap`published", "idx_published_claim"); err == nil {
+		t.Fatal("accepted injected table name")
+	}
+}
+
+func TestQuotedTable(t *testing.T) {
+	s := &Storage{opts: &Options{Schema: "gap"}}
+	table, err := s.quotedTable("published")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if table != "`gap_published`" {
+		t.Fatal(table)
+	}
+	s.opts.Schema = "gap`; drop table x; --"
+	if _, err := s.quotedTable("published"); err == nil {
+		t.Fatal("accepted injected schema")
+	}
+}
+
 func TestToEntityInvalidHeaders(t *testing.T) {
 	p := &Published{ID: 7, Headers: "{"}
 	en := p.ToEntity()

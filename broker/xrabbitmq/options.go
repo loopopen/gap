@@ -8,7 +8,7 @@ import (
 	"github.com/loopopen/gap/internal/plugin"
 )
 
-const version = "v0.2.2-beta.2"
+const version = "v0.3.0-beta.1"
 
 var (
 	UseRabbitMQ       = internal.UseRabbitMQ

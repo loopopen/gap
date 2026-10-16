@@ -2,6 +2,7 @@ package xgorm
 
 import (
 	"context"
+	"errors"
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
@@ -17,6 +18,9 @@ const (
 func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
 	var pub *Published
 	err := s.db.WithContext(ctx).Take(&pub, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
