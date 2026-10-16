@@ -265,7 +265,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 			return err
 		}
 		var convErr error
-		es, convErr = publishedEnvelopes(pubs)
+		es, convErr = pubsToEntities(pubs)
 		return convErr
 	})
 	if err != nil {
@@ -323,7 +323,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 			return err
 		}
 		var convErr error
-		es, convErr = receivedEnvelopes(recs)
+		es, convErr = recsToEntities(recs)
 		return convErr
 	})
 	if err != nil {

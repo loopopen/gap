@@ -40,7 +40,11 @@ func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelo
 	if err != nil {
 		return nil, err
 	}
-	return pub.ToEntity(), nil
+	en := pub.ToEntity()
+	if pub.err != nil {
+		return nil, pub.err
+	}
+	return en, nil
 }
 
 // QueryPublished implements [storage.StorageX].
@@ -93,9 +97,9 @@ func (s *Storage) QueryPublished(ctx context.Context, status enum.Status, topic 
 		return nil, nil, err
 	}
 
-	var es []*entity.Envelope
-	for _, p := range pubs {
-		es = append(es, p.ToEntity())
+	es, err := pubsToEntities(pubs)
+	if err != nil {
+		return nil, nil, err
 	}
 	pg.SetTotal(int(count))
 	return es, &pg, nil
@@ -151,9 +155,9 @@ func (s *Storage) QueryReceived(ctx context.Context, status enum.Status, topic s
 		return nil, nil, err
 	}
 
-	var es []*entity.Envelope
-	for _, r := range recs {
-		es = append(es, r.ToEntity())
+	es, err := recsToEntities(recs)
+	if err != nil {
+		return nil, nil, err
 	}
 	pg.SetTotal(int(count))
 	return es, &pg, nil
