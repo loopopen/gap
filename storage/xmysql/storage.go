@@ -32,6 +32,17 @@ func (s *Storage) execer() Execer {
 	return s.db
 }
 
+func (s *Storage) beginClaim(ctx context.Context) (tx *sql.Tx, own bool, err error) {
+	if s.tx != nil {
+		return s.tx, false, nil
+	}
+	tx, err = s.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, false, err
+	}
+	return tx, true, nil
+}
+
 // Bind implements [storage.Storage].
 func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
 	tx, ok := txer.Tx().(*sql.Tx)
@@ -65,18 +76,19 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 		"LIMIT ? FOR UPDATE SKIP LOCKED"
 	const script2 = "UPDATE `%s_published` SET `status` = ?, `retries` = `retries` + 1 WHERE `id` IN (%s)"
 
-	var tx *sql.Tx
-	tx, err = s.db.BeginTx(ctx, &sql.TxOptions{})
+	tx, own, err := s.beginClaim(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		} else {
-			err = tx.Commit()
-		}
-	}()
+	if own {
+		defer func() {
+			if err != nil {
+				_ = tx.Rollback()
+			} else {
+				err = tx.Commit()
+			}
+		}()
+	}
 	rows, err := tx.QueryContext(ctx, fmt.Sprintf(script1, s.opts.Schema),
 		o.Version,
 		enum.StatusPending,
@@ -147,18 +159,19 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 		"LIMIT ? FOR UPDATE SKIP LOCKED"
 	const script2 = "UPDATE `%s_received` SET `status` = ?, `retries` = `retries` + 1 WHERE `id` IN (%s)"
 
-	var tx *sql.Tx
-	tx, err = s.db.BeginTx(ctx, &sql.TxOptions{})
+	tx, own, err := s.beginClaim(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		} else {
-			err = tx.Commit()
-		}
-	}()
+	if own {
+		defer func() {
+			if err != nil {
+				_ = tx.Rollback()
+			} else {
+				err = tx.Commit()
+			}
+		}()
+	}
 	rows, err := tx.QueryContext(ctx, fmt.Sprintf(script1, s.opts.Schema),
 		o.Version,
 		enum.StatusPending,
@@ -262,7 +275,7 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 	const script = "INSERT INTO `%s_received` (" +
 		"`id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group`" +
 		") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-	_, err := s.db.ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema),
+	_, err := s.execer().ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema),
 		rec.ID,
 		rec.CreatedAt,
 		rec.Version,
@@ -293,7 +306,7 @@ func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, src enum.S
 		script += "`version` = ? AND `status` = ?"
 		args = append(args, s.gapOpts.Version, src)
 	}
-	_, err := s.db.ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema), args...)
+	_, err := s.execer().ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema), args...)
 	if err != nil {
 		return err
 	}
@@ -315,7 +328,7 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.St
 		script += "`version` = ? AND `status` = ?"
 		args = append(args, s.gapOpts.Version, src)
 	}
-	_, err := s.db.ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema), args...)
+	_, err := s.execer().ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema), args...)
 	if err != nil {
 		return err
 	}
