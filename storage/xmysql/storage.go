@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -17,6 +18,8 @@ import (
 	"github.com/loopopen/gap/internal/txer"
 	"github.com/loopopen/gap/storage"
 )
+
+var mysqlIdentRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type Storage struct {
 	gapOpts *gap.Options
@@ -68,14 +71,18 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 	minutesAgo := time.Now().Add(-o.Lookback())
 
 	var pubs []*Published
-	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` FROM `%s_published` " +
+	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` FROM %s " +
 		"WHERE `version` = ? " +
 		"AND `status` IN (?, ?) " +
 		"AND `retries` < ? " +
 		"AND `created_at` < ? " +
 		"LIMIT ? FOR UPDATE SKIP LOCKED"
-	const script2 = "UPDATE `%s_published` SET `status` = ?, `retries` = `retries` + 1 WHERE `id` IN (%s)"
+	const script2 = "UPDATE %s SET `status` = ?, `retries` = `retries` + 1 WHERE `id` IN (%s)"
 
+	table, err := s.quotedTable("published")
+	if err != nil {
+		return nil, err
+	}
 	tx, own, err := s.beginClaim(ctx)
 	if err != nil {
 		return nil, err
@@ -89,7 +96,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 			}
 		}()
 	}
-	rows, err := tx.QueryContext(ctx, fmt.Sprintf(script1, s.opts.Schema),
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(script1, table),
 		o.Version,
 		enum.StatusPending,
 		enum.StatusFailed,
@@ -134,7 +141,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 		params[i+1] = p.ID
 		p.Retries++
 	}
-	_, err = tx.ExecContext(ctx, fmt.Sprintf(script2, s.opts.Schema, strings.Join(placeholders, ", ")), params...)
+	_, err = tx.ExecContext(ctx, fmt.Sprintf(script2, table, strings.Join(placeholders, ", ")), params...)
 	if err != nil {
 		return nil, err
 	}
@@ -151,14 +158,18 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 	minutesAgo := time.Now().Add(-o.Lookback())
 
 	var recs []*Received
-	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` FROM `%s_received` " +
+	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` FROM %s " +
 		"WHERE `version` = ? " +
 		"AND `status` IN (?, ?) " +
 		"AND `retries` < ? " +
 		"AND `created_at` < ? " +
 		"LIMIT ? FOR UPDATE SKIP LOCKED"
-	const script2 = "UPDATE `%s_received` SET `status` = ?, `retries` = `retries` + 1 WHERE `id` IN (%s)"
+	const script2 = "UPDATE %s SET `status` = ?, `retries` = `retries` + 1 WHERE `id` IN (%s)"
 
+	table, err := s.quotedTable("received")
+	if err != nil {
+		return nil, err
+	}
 	tx, own, err := s.beginClaim(ctx)
 	if err != nil {
 		return nil, err
@@ -172,7 +183,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 			}
 		}()
 	}
-	rows, err := tx.QueryContext(ctx, fmt.Sprintf(script1, s.opts.Schema),
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(script1, table),
 		o.Version,
 		enum.StatusPending,
 		enum.StatusFailed,
@@ -218,7 +229,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 		params[i+1] = r.ID
 		r.Retries++
 	}
-	_, err = tx.ExecContext(ctx, fmt.Sprintf(script2, s.opts.Schema, strings.Join(placeholders, ", ")), params...)
+	_, err = tx.ExecContext(ctx, fmt.Sprintf(script2, table, strings.Join(placeholders, ", ")), params...)
 	if err != nil {
 		return nil, err
 	}
@@ -239,11 +250,15 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 	if pub.err != nil {
 		return pub.err
 	}
-	const script = "INSERT INTO `%s_published` (" +
+	table, err := s.quotedTable("published")
+	if err != nil {
+		return err
+	}
+	const script = "INSERT INTO %s (" +
 		"`id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`" +
 		") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	xer := s.execer()
-	_, err := xer.ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema),
+	_, err = xer.ExecContext(ctx, fmt.Sprintf(script, table),
 		pub.ID,
 		pub.CreatedAt,
 		pub.Version,
@@ -272,10 +287,14 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 	if rec.err != nil {
 		return rec.err
 	}
-	const script = "INSERT INTO `%s_received` (" +
+	table, err := s.quotedTable("received")
+	if err != nil {
+		return err
+	}
+	const script = "INSERT INTO %s (" +
 		"`id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group`" +
 		") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-	_, err := s.execer().ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema),
+	_, err = s.execer().ExecContext(ctx, fmt.Sprintf(script, table),
 		rec.ID,
 		rec.CreatedAt,
 		rec.Version,
@@ -297,7 +316,11 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 
 // UpdateStatusPublished implements [storage.Storage].
 func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, src enum.Status, status enum.Status) error {
-	var script = "UPDATE `%s_published` SET `status` = ? WHERE "
+	table, err := s.quotedTable("published")
+	if err != nil {
+		return err
+	}
+	script := "UPDATE " + table + " SET `status` = ? WHERE "
 	args := []any{status}
 	if id != 0 {
 		script += "`id` = ?"
@@ -306,7 +329,7 @@ func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, src enum.S
 		script += "`version` = ? AND `status` = ?"
 		args = append(args, s.gapOpts.Version, src)
 	}
-	_, err := s.execer().ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema), args...)
+	_, err = s.execer().ExecContext(ctx, script, args...)
 	if err != nil {
 		return err
 	}
@@ -319,7 +342,11 @@ func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, src enum.S
 
 // UpdateStatusReceived implements [storage.Storage].
 func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.Status, status enum.Status) error {
-	var script = "UPDATE `%s_received` SET `status` = ? WHERE "
+	table, err := s.quotedTable("received")
+	if err != nil {
+		return err
+	}
+	script := "UPDATE " + table + " SET `status` = ? WHERE "
 	args := []any{status}
 	if id != 0 {
 		script += "`id` = ?"
@@ -328,7 +355,7 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.St
 		script += "`version` = ? AND `status` = ?"
 		args = append(args, s.gapOpts.Version, src)
 	}
-	_, err := s.execer().ExecContext(ctx, fmt.Sprintf(script, s.opts.Schema), args...)
+	_, err = s.execer().ExecContext(ctx, script, args...)
 	if err != nil {
 		return err
 	}
@@ -351,7 +378,15 @@ func NewStorage(gapOpts *gap.Options, db *sql.DB) *Storage {
 }
 
 func (s *Storage) init() error {
-	const script1 = "CREATE TABLE IF NOT EXISTS `%s_published` (" +
+	published, err := s.quotedTable("published")
+	if err != nil {
+		return err
+	}
+	received, err := s.quotedTable("received")
+	if err != nil {
+		return err
+	}
+	const script1 = "CREATE TABLE IF NOT EXISTS %s (" +
 		"`id` bigint(20) unsigned NOT NULL," +
 		"`created_at` datetime(3) NOT NULL," +
 		"`version` varchar(16) NOT NULL," +
@@ -364,12 +399,12 @@ func (s *Storage) init() error {
 		"`expired_at` datetime(3) DEFAULT NULL," +
 		"PRIMARY KEY (`id`)" +
 		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-	_, err := s.db.Exec(fmt.Sprintf(script1, s.opts.Schema))
+	_, err = s.db.Exec(fmt.Sprintf(script1, published))
 	if err != nil {
 		return err
 	}
 
-	const script2 = "CREATE TABLE IF NOT EXISTS `%s_received` (" +
+	const script2 = "CREATE TABLE IF NOT EXISTS %s (" +
 		"`id` bigint(20) unsigned NOT NULL," +
 		"`created_at` datetime(3) NOT NULL," +
 		"`version` varchar(16) NOT NULL," +
@@ -382,15 +417,23 @@ func (s *Storage) init() error {
 		"`expired_at` datetime(3) DEFAULT NULL," +
 		"PRIMARY KEY (`id`)" +
 		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-	_, err = s.db.Exec(fmt.Sprintf(script2, s.opts.Schema))
+	_, err = s.db.Exec(fmt.Sprintf(script2, received))
 	if err != nil {
 		return err
 	}
 
-	if err := s.ensureClaimIndex(s.opts.Schema+"_published", "idx_published_claim"); err != nil {
+	publishedName, err := s.tableName("published")
+	if err != nil {
 		return err
 	}
-	return s.ensureClaimIndex(s.opts.Schema+"_received", "idx_received_claim")
+	receivedName, err := s.tableName("received")
+	if err != nil {
+		return err
+	}
+	if err := s.ensureClaimIndex(publishedName, "idx_published_claim"); err != nil {
+		return err
+	}
+	return s.ensureClaimIndex(receivedName, "idx_received_claim")
 }
 
 func (s *Storage) ensureClaimIndex(table, index string) error {
@@ -405,22 +448,53 @@ func (s *Storage) ensureClaimIndex(table, index string) error {
 	if n > 0 {
 		return nil
 	}
-	_, err = s.db.Exec(claimIndexSQL(table, index))
+	sql, err := claimIndexSQL(table, index)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(sql)
 	if isDuplicateIndex(err) {
 		return nil
 	}
 	return err
 }
 
-func claimIndexSQL(table, index string) string {
+func claimIndexSQL(table, index string) (string, error) {
+	quotedTable, err := quoteMySQLIdent(table)
+	if err != nil {
+		return "", err
+	}
+	quotedIndex, err := quoteMySQLIdent(index)
+	if err != nil {
+		return "", err
+	}
 	return fmt.Sprintf(
 		"CREATE INDEX %s ON %s (`version`, `status`, `retries`, `created_at`)",
-		quoteMySQL(index), quoteMySQL(table),
-	)
+		quotedIndex, quotedTable,
+	), nil
 }
 
-func quoteMySQL(name string) string {
-	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+func (s *Storage) tableName(base string) (string, error) {
+	name := s.opts.Schema + "_" + base
+	if _, err := quoteMySQLIdent(name); err != nil {
+		return "", fmt.Errorf("schema: %w", err)
+	}
+	return name, nil
+}
+
+func (s *Storage) quotedTable(base string) (string, error) {
+	name, err := s.tableName(base)
+	if err != nil {
+		return "", err
+	}
+	return "`" + name + "`", nil
+}
+
+func quoteMySQLIdent(name string) (string, error) {
+	if len(name) == 0 || len(name) > 64 || !mysqlIdentRE.MatchString(name) {
+		return "", fmt.Errorf("invalid identifier %q", name)
+	}
+	return "`" + name + "`", nil
 }
 
 func isDuplicateIndex(err error) bool {

@@ -16,14 +16,18 @@ import (
 var _ storage.StorageX = (*Storage)(nil)
 
 func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
+	table, err := s.quotedTable("published")
+	if err != nil {
+		return nil, err
+	}
 	const script = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` " +
-		"FROM `%s_published` WHERE `id` = ?"
-	row := s.db.QueryRowContext(ctx, fmt.Sprintf(script, s.opts.Schema), id)
+		"FROM %s WHERE `id` = ?"
+	row := s.db.QueryRowContext(ctx, fmt.Sprintf(script, table), id)
 	if row == nil {
 		return nil, nil
 	}
 	var pub Published
-	err := row.Scan(
+	err = row.Scan(
 		&pub.ID,
 		&pub.CreatedAt,
 		&pub.Version,
@@ -54,21 +58,25 @@ func (s *Storage) QueryPublished(ctx context.Context, status enum.Status, topic 
 	AddIfNotZero(wh, "`status` = ?", status)
 	AddIfNotZero(wh, "`topic` = ?", topic)
 
-	const script2 = "SELECT COUNT(*) FROM `%s_published` %s"
+	table, err := s.quotedTable("published")
+	if err != nil {
+		return nil, nil, err
+	}
+	const script2 = "SELECT COUNT(*) FROM %s %s"
 
 	var count int64
-	script := fmt.Sprintf(script2, s.opts.Schema, wh.String())
+	script := fmt.Sprintf(script2, table, wh.String())
 	slog.Info(script)
-	err := s.db.QueryRowContext(ctx, script, wh.Params()...).Scan(&count)
+	err = s.db.QueryRowContext(ctx, script, wh.Params()...).Scan(&count)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` " +
-		"FROM `%s_published` %s ORDER BY `id` %s"
+		"FROM %s %s ORDER BY `id` %s"
 
 	pg := page.Normalize()
-	script = fmt.Sprintf(script1, s.opts.Schema, wh.String(), paginate(pg))
+	script = fmt.Sprintf(script1, table, wh.String(), paginate(pg))
 	slog.Info(script)
 	rows, err := s.db.QueryContext(ctx, script, wh.Params()...)
 	if err != nil {
@@ -115,19 +123,23 @@ func (s *Storage) QueryReceived(ctx context.Context, status enum.Status, topic s
 	AddIfNotZero(h, "`topic` = ?", topic)
 	AddIfNotZero(h, "`group` = ?", group)
 
-	const script2 = "SELECT COUNT(*) FROM `%s_received` %s"
+	table, err := s.quotedTable("received")
+	if err != nil {
+		return nil, nil, err
+	}
+	const script2 = "SELECT COUNT(*) FROM %s %s"
 
 	var count int64
-	err := s.db.QueryRowContext(ctx, fmt.Sprintf(script2, s.opts.Schema, h.String()), h.Params()...).Scan(&count)
+	err = s.db.QueryRowContext(ctx, fmt.Sprintf(script2, table, h.String()), h.Params()...).Scan(&count)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` " +
-		"FROM `%s_received` %s ORDER BY `id` %s"
+		"FROM %s %s ORDER BY `id` %s"
 
 	pg := page.Normalize()
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(script1, s.opts.Schema, h.String(), paginate(pg)), h.Params()...)
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(script1, table, h.String(), paginate(pg)), h.Params()...)
 	if err != nil {
 		return nil, nil, err
 	}
