@@ -1,13 +1,14 @@
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react'
+import { FiHome, FiInfo, FiMail } from 'react-icons/fi'
 
-import Message from '../pages/Message';
-import About from '../pages/About';
-import Home from '../pages/Home';
+import Message from '../pages/Message'
+import About from '../pages/About'
+import Home from '../pages/Home'
 
 export interface RouteConfig {
-  path: string;
-  title: string;
-  component: ComponentType;
+  path: string
+  title: string
+  component: ComponentType
 }
 
 export const routes: RouteConfig[] = [
@@ -19,16 +20,30 @@ export const routes: RouteConfig[] = [
   {
     path: '/message',
     component: Message,
-    title: 'Message',
+    title: 'Messages',
   },
   {
     path: '/about',
     component: About,
     title: 'About',
-  }
-];
+  },
+]
 
-export const menuItems = routes.map(route => ({
-  label: route.title,
-  path: route.path
-}));
+export interface NavItem {
+  path: string
+  label: string
+  icon: ReactNode
+}
+
+export const navSections: { sectionLabel?: string; items: NavItem[] }[] = [
+  {
+    items: [{ path: '/', label: 'Home', icon: <FiHome size={20} /> }],
+  },
+  {
+    sectionLabel: 'Data',
+    items: [{ path: '/message', label: 'Messages', icon: <FiMail size={20} /> }],
+  },
+  {
+    items: [{ path: '/about', label: 'About', icon: <FiInfo size={20} /> }],
+  },
+]

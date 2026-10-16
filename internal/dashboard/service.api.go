@@ -1,9 +1,11 @@
 package dashboard
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/loopopen/gap/internal/dashboard/dto"
@@ -29,7 +31,9 @@ func (s *BoardSvc) HandleAPIs() []RouteRecord {
 func (s *BoardSvc) QueryMetas() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(ContentType, ContentTypeJSON)
-
+		slices.SortFunc(metas, func(a, b *dto.Meta) int {
+			return cmp.Compare(a.Typ, b.Typ)
+		})
 		if err := json.NewEncoder(w).Encode(metas); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}

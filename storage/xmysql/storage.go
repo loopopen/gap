@@ -105,6 +105,9 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 		}
 		pubs = append(pubs, &pub)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	c := len(pubs)
 	if c == 0 {
 		return nil, nil

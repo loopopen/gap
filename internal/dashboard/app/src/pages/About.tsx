@@ -1,49 +1,63 @@
-import React from 'react';
-import { Badge, List, Spin, Typography } from 'antd';
-import { useMetas } from '../hooks/useMetas';
-import { GithubFilled } from '@ant-design/icons';
-import { Link } from 'react-router-dom';
+import { Badge, Card, Flex, H1, Link, Paragraph, Text } from '@traefik-labs/faency'
+import { FiGithub } from 'react-icons/fi'
 
-const { Paragraph } = Typography;
+import { useMetas } from '../hooks/useMetas'
+import PageTitle from '../layout/PageTitle'
 
-const About: React.FC = () => {
-  const { metas, loading } = useMetas();
+const description = { maxWidth: '42rem', fontSize: '$4', lineHeight: 1.65 }
+
+const About = () => {
+  const { metas, loading, error } = useMetas()
 
   return (
-    <div>
-      <h1>About GAP Dashboard</h1>
-      <Paragraph>This is the GAP Dashboard application built with React and Ant Design.</Paragraph>
-      <Paragraph>Created by Lopolop Inc.</Paragraph>
-      <h1>About GAP<Link to="https://github.com/loopopen/gap" target="_blank" style={{ marginLeft: 8 }}><GithubFilled /></Link></h1>
-      <div style={{ maxWidth: '60%' }}>
-        <Paragraph>GAP is a lightweight, event-driven messaging library for Go. </Paragraph>
-        <Paragraph>It provides outbox pattern implementation with support for RabbitMQ, Kafka and MySQL (or GORM-based storage).</Paragraph>
-        <Paragraph>It is designed to support additional brokers and databases in the future.</Paragraph>
-      </div>
-      <Spin spinning={loading}>
-        <List
-          dataSource={metas}
-          locale={{ emptyText: 'No metas found' }}
-          renderItem={(item) => (
-            <List.Item>
-              {
-                item.type === 'Self' ?
-                  <List.Item.Meta
-                    title={<Badge key={'gap'} color={'blue'} text={'GAP'} />}
-                    description={`version: ${item.version}`}
-                  />
-                  :
-                  <List.Item.Meta
-                    title={<Badge key={item.plugin} color={'green'} text={`${item.type} / ${item.plugin}`} />}
-                    description={`version: ${item.version}`}
-                  />
-              }
-            </List.Item>
-          )}
-        />
-      </Spin>
-    </div>
-  );
-};
+    <Flex direction="column" gap={4}>
+      <PageTitle title="About" />
+      <H1>About GAP Dashboard</H1>
+      <Paragraph css={description}>
+        GAP Dashboard is the operator console for this node. It presents messages published from the node, messages
+        received by it, and the plugins that carry out that work.
+      </Paragraph>
+      <Text css={description}>Powered by Loopopen Inc.</Text>
+      <Flex align="center" gap={2}>
+        <H1 css={{ fontSize: '$6' }}>About GAP</H1>
+        <Link
+          href="https://github.com/loopopen/gap"
+          target="_blank"
+          aria-label="GAP on GitHub"
+          css={{ color: '$purple11' }}
+        >
+          <FiGithub size={18} />
+        </Link>
+      </Flex>
+      <Paragraph css={description}>
+        GAP is a lightweight, event-driven messaging library for Go. It uses the outbox pattern, so a message is written
+        in the same database transaction as your data, then delivered once that transaction commits. It speaks RabbitMQ
+        and Kafka today, and it can store messages in MySQL or in any database GORM already supports. More brokers and
+        databases are part of the plan. The library is shaped so those can be added without tearing up what you already
+        have.
+      </Paragraph>
+      {error && <Text css={{ color: '$red10' }}>{error}</Text>}
+      <Card css={{ p: 0, maxWidth: '50%' }}>
+        {loading && !error && <Text css={{ p: '$3' }}>Loading…</Text>}
+        {!loading && !error && metas.length === 0 && <Text css={{ p: '$3', color: '$textSubtle' }}>No metas found</Text>}
+        {metas.map((item) => (
+          <Flex
+            key={`${item.type}-${item.plugin}-${item.version}`}
+            justify="space-between"
+            align="center"
+            css={{ p: '$3', borderBottom: '1px solid $colors$tableRowBorder' }}
+          >
+            {item.type === 'Self' ? (
+              <Badge variant="blue">GAP</Badge>
+            ) : (
+              <Badge variant="green">{`${item.type} / ${item.plugin}`}</Badge>
+            )}
+            <Text css={{ color: '$textSubtle' }}>{`version: ${item.version}`}</Text>
+          </Flex>
+        ))}
+      </Card>
+    </Flex>
+  )
+}
 
-export default About;
+export default About

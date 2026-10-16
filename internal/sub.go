@@ -280,7 +280,7 @@ func (s *Sub) handle(ctx context.Context, envelope *entity.Envelope) (err error)
 func (s *Sub) HandleAndUpdate(ctx context.Context, envelope *entity.Envelope) error {
 	err := s.handle(ctx, envelope)
 	if err != nil {
-		envelope.Log().Error("failed to handle message", slog.Any("err", err))
+		envelope.Log().Error("failed to handle received message", slog.Any("err", err))
 
 		if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, 0, enum.StatusFailed); err != nil {
 			envelope.Log().Error("failed to set received status to Failed", slog.Any("err", err))
