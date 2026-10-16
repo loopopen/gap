@@ -38,7 +38,7 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 	if pub.err != nil {
 		return pub.err
 	}
-	err := s.db.Create(pub).Error
+	err := s.db.WithContext(ctx).Create(pub).Error
 	if err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 	if rec.err != nil {
 		return rec.err
 	}
-	err := s.db.Create(rec).Error
+	err := s.db.WithContext(ctx).Create(rec).Error
 	if err != nil {
 		return err
 	}
