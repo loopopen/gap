@@ -168,8 +168,8 @@ github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 h1:Z9n2FFNU
 github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51/go.mod h1:CzGEWj7cYgsdH8dAjBGEr58BoE7ScuLd+fwFZ44+/x8=
 github.com/klauspost/compress v1.17.9 h1:6KIumPrER1LHsvBVuDa0r5xaG0Es51mhhB9BQB2qeMA=
 github.com/klauspost/compress v1.17.9/go.mod h1:Di0epgTjJY877eYKx5yC51cX2A2Vl2ibi7bDH9ttBbw=
-github.com/loopopen/gap v0.2.1-beta.1 h1:zAm5b1vmtHWcnI7ju6FmI2OD1jg8nPQJyMtf/jN78yQ=
-github.com/loopopen/gap v0.2.1-beta.1/go.mod h1:lh/nGSskI8jjxtoRKBwFOIA/nddo7cUE5qQPc66p/LQ=
+github.com/loopopen/gap v0.2.2-beta.2 h1:KI+FYsHW0anuoYj0OBpsIxdmHVrrxsQ6pl//gMxYPEo=
+github.com/loopopen/gap v0.2.2-beta.2/go.mod h1:9ek+bOTf4Iu+IP4anqh3yUcpSTUUW8fsOWu5Oh0MV4w=
 github.com/loopopen/shoot v0.9.0 h1:bagSuwclKj+39+bWJEKNFtRbFzNpMqyHCt6XVanHRfA=
 github.com/loopopen/shoot v0.9.0/go.mod h1:tGJXCsuL6qnpyS/2fbnSIscbZfsuTDnZZqaaFSx4Ie0=
 github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 h1:6E+4a0GO5zZEnZ81pIr0yLvtUWk2if982qA3F3QD6H4=
