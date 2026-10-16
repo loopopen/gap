@@ -386,39 +386,10 @@ func (s *Storage) init() error {
 	if err != nil {
 		return err
 	}
-	const script1 = "CREATE TABLE IF NOT EXISTS %s (" +
-		"`id` bigint(20) unsigned NOT NULL," +
-		"`created_at` datetime(3) NOT NULL," +
-		"`version` varchar(16) NOT NULL," +
-		"`topic` varchar(256) NOT NULL," +
-		"`group` varchar(128) DEFAULT NULL," +
-		"`status` enum('Pending','Processing','Succeeded','Failed') NOT NULL," +
-		"`headers` text DEFAULT NULL," +
-		"`payload` longtext DEFAULT NULL," +
-		"`retries` bigint(20) DEFAULT 0," +
-		"`expired_at` datetime(3) DEFAULT NULL," +
-		"PRIMARY KEY (`id`)" +
-		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-	_, err = s.db.Exec(fmt.Sprintf(script1, published))
-	if err != nil {
+	if _, err = s.db.Exec(publishedCreateSQL(published)); err != nil {
 		return err
 	}
-
-	const script2 = "CREATE TABLE IF NOT EXISTS %s (" +
-		"`id` bigint(20) unsigned NOT NULL," +
-		"`created_at` datetime(3) NOT NULL," +
-		"`version` varchar(16) NOT NULL," +
-		"`topic` varchar(256) NOT NULL," +
-		"`group` varchar(128) DEFAULT NULL," +
-		"`status` enum('Pending','Processing','Succeeded','Failed') NOT NULL," +
-		"`headers` text DEFAULT NULL," +
-		"`payload` longtext DEFAULT NULL," +
-		"`retries` bigint(20) DEFAULT 0," +
-		"`expired_at` datetime(3) DEFAULT NULL," +
-		"PRIMARY KEY (`id`)" +
-		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-	_, err = s.db.Exec(fmt.Sprintf(script2, received))
-	if err != nil {
+	if _, err = s.db.Exec(receivedCreateSQL(received)); err != nil {
 		return err
 	}
 
