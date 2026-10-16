@@ -61,6 +61,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 		"AND `status` IN (?, ?) " +
 		"AND `retries` < ? " +
 		"AND `created_at` < ? " +
+		"ORDER BY `id` " +
 		"LIMIT ? FOR UPDATE SKIP LOCKED"
 	const script2 = "UPDATE `%s_published` SET `status` = ?, `retries` = `retries` + 1 WHERE `id` IN (%s)"
 
@@ -143,6 +144,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 		"AND `status` IN (?, ?) " +
 		"AND `retries` < ? " +
 		"AND `created_at` < ? " +
+		"ORDER BY `id` " +
 		"LIMIT ? FOR UPDATE SKIP LOCKED"
 	const script2 = "UPDATE `%s_received` SET `status` = ?, `retries` = `retries` + 1 WHERE `id` IN (%s)"
 
