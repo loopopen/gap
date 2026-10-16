@@ -1,11 +1,14 @@
-import React from 'react';
+import { Flex, H1 } from '@traefik-labs/faency'
 
-const Home: React.FC = () => {
+import PageTitle from '../layout/PageTitle'
+
+const Home = () => {
   return (
-    <div>
-      <h1>GAP Dashboard</h1>
-    </div>
-  );
-};
+    <Flex direction="column" gap={3}>
+      <PageTitle title="Home" />
+      <H1>GAP Dashboard</H1>
+    </Flex>
+  )
+}
 
-export default Home;
+export default Home

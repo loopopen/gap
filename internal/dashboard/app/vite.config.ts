@@ -10,9 +10,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          react: ['react', 'react-dom'],
           vendor: ['axios'],
-          ui: ['antd'],
+          ui: ['@traefik-labs/faency'],
         }
       }
     }
