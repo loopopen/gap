@@ -2,7 +2,7 @@
 
 [![Language](https://img.shields.io/badge/language-英文-blue.svg)](https://github.com/loopopen/gap/blob/main/README.md)
 
-一个轻量、事件驱动的 Go 消息库。它实现了 Outbox 模式，并支持 RabbitMQ、Kafka 和 MySQL（或基于 GORM 的存储），同时设计上可扩展以支持更多的 broker 和数据库。
+GAP 是一个轻量、事件驱动的 Go 消息库。它采用 Outbox 模式，将消息与业务数据写入同一个数据库事务，并在事务提交后投递消息。目前支持 RabbitMQ 和 Kafka，也可以将消息存储在 MySQL 或 GORM 支持的任意数据库中。未来还会支持更多消息代理和数据库；GAP 的扩展机制让你无需大幅改动现有代码即可接入它们。
 
 ## 运行看板
 
@@ -21,9 +21,15 @@
 
 ## 安装
 
+GAP 的消息代理和存储适配器是独立的 Go 模块。请在核心模块之外，安装应用实际使用的适配器。下方快速开始使用 RabbitMQ 和 GORM，因此需要执行：
+
 ```bash
 go get github.com/loopopen/gap
+go get github.com/loopopen/gap/broker/xrabbitmq
+go get github.com/loopopen/gap/storage/xgorm
 ```
+
+其他可用适配器包括 `broker/xkafka`、`broker/xconfluent` 和 `storage/xmysql`。
 
 ## 快速开始
 
@@ -65,11 +71,10 @@ import (
     "time"
 
     "github.com/loopopen/gap"
-    "github.com/loopopen/gap/storage/xgorm"
     "github.com/loopopen/gap/broker/xrabbitmq"
+    "github.com/loopopen/gap/storage/xgorm"
     "gorm.io/driver/mysql"
     "gorm.io/gorm"
-    "gorm.io/gorm/logger"
 )
 
 func main() {
@@ -106,17 +111,30 @@ func main() {
 
         for range ticker.C {
             slog.Info("Publishing message...")
-            db.Transaction(func(tx *gorm.DB) error {
+            err := xgorm.DoInTx(ctx, func(ctx context.Context, txer gap.Txer) error {
                 // Your business logic here...
 
-                // Publish message (outbox pattern ensures reliability)
-                return pub.Publish(ctx, event.NewOrderCreated())
-            })
+                // Bind the publisher so the message and business data are
+                // committed in the same transaction.
+                txPub, err := pub.Bind(txer)
+                if err != nil {
+                    return err
+                }
+                return txPub.Publish(ctx, event.NewOrderCreated())
+            }, db)
+            if err != nil {
+                slog.Error("failed to create order", slog.Any("err", err))
+            }
         }
     }()
 
     <-ctx.Done()
-    stop()
+
+    drainCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    if err := gap.WaitDrain(drainCtx); err != nil {
+        slog.Warn("gap failed to drain", slog.Any("err", err))
+    }
 }
 
 //go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
@@ -144,7 +162,7 @@ go generate ./...
 
 该库通过上下文取消和内置的 drain 辅助函数支持优雅关机。
 
-- `gap.WaitDrain(ctx context.Context)`  在退出前为发布者/订阅者留出处理未完成消息的时间
+- `gap.WaitDrain(ctx context.Context) error` 在退出前等待发布者/订阅者处理完进行中的消息
 
 ## 使用示例
 
@@ -167,7 +185,7 @@ go run .
 
 - `gap.NewPublisher[T](opts...) Publisher[T]`：创建一个类型化发布者
 - `gap.NewEventPublisher(opts...) EventPublisher`：创建事件发布者
-- `publisher.Bind(tx Txer) Publisher[T]`：将发布者绑定到事务以实现 Outbox 模式
+- `publisher.Bind(tx Txer) (Publisher[T], error)`：将发布者绑定到事务以实现 Outbox 模式
 
 ### 订阅者
 

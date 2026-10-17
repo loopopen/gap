@@ -2,7 +2,7 @@
 
 [![Language](https://img.shields.io/badge/language-中文-blue.svg)](https://github.com/loopopen/gap/blob/main/README.zh-cn.md)
 
-A lightweight, event-driven messaging library for Go. It provides outbox pattern implementation with support for RabbitMQ, Kafka and MySQL (or GORM-based storage), and is designed to support additional brokers and databases in the future.
+GAP is a lightweight, event-driven messaging library for Go. It uses the outbox pattern, so a message is written in the same database transaction as your data, then delivered once that transaction commits. It speaks RabbitMQ and Kafka today, and it can store messages in MySQL or in any database GORM already supports. More brokers and databases are part of the plan. The library is shaped so those can be added without tearing up what you already have.
 
 ## Operational Dashboard
 
@@ -21,9 +21,15 @@ Monitor message delivery at a glance with the built-in operational dashboard. Se
 
 ## Installation
 
+GAP's broker and storage integrations are separate Go modules. Install the core module together with the integrations your application uses. For the RabbitMQ and GORM setup used below:
+
 ```bash
 go get github.com/loopopen/gap
+go get github.com/loopopen/gap/broker/xrabbitmq
+go get github.com/loopopen/gap/storage/xgorm
 ```
+
+Other available integrations include `broker/xkafka`, `broker/xconfluent`, and `storage/xmysql`.
 
 ## Quick Start
 
@@ -65,11 +71,10 @@ import (
     "time"
 
     "github.com/loopopen/gap"
-    "github.com/loopopen/gap/storage/xgorm"
     "github.com/loopopen/gap/broker/xrabbitmq"
+    "github.com/loopopen/gap/storage/xgorm"
     "gorm.io/driver/mysql"
     "gorm.io/gorm"
-    "gorm.io/gorm/logger"
 )
 
 func main() {
@@ -106,17 +111,30 @@ func main() {
 
         for range ticker.C {
             slog.Info("Publishing message...")
-            db.Transaction(func(tx *gorm.DB) error {
+            err := xgorm.DoInTx(ctx, func(ctx context.Context, txer gap.Txer) error {
                 // Your business logic here...
 
-                // Publish message (outbox pattern ensures reliability)
-                return pub.Publish(ctx, event.NewOrderCreated())
-            })
+                // Bind the publisher so the message and business data are
+                // committed in the same transaction.
+                txPub, err := pub.Bind(txer)
+                if err != nil {
+                    return err
+                }
+                return txPub.Publish(ctx, event.NewOrderCreated())
+            }, db)
+            if err != nil {
+                slog.Error("failed to create order", slog.Any("err", err))
+            }
         }
     }()
 
     <-ctx.Done()
-    stop()
+
+    drainCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    if err := gap.WaitDrain(drainCtx); err != nil {
+        slog.Warn("gap failed to drain", slog.Any("err", err))
+    }
 }
 
 //go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
@@ -144,7 +162,7 @@ This will generate the necessary handler code automatically.
 
 The library supports graceful shutdown through context cancellation and the built-in drain helper.
 
-- `gap.WaitDrain(ctx context.Context)`  gives the publisher/subscriber time to finish in-flight messages before exiting
+- `gap.WaitDrain(ctx context.Context) error` gives the publisher/subscriber time to finish in-flight messages before exiting
 
 ## Usage Examples
 
@@ -167,7 +185,7 @@ go run .
 
 - `gap.NewPublisher[T](opts...) Publisher[T]`: Create a typed publisher
 - `gap.NewEventPublisher(opts...) EventPublisher`: Create an event publisher
-- `publisher.Bind(tx Txer) Publisher[T]`: Bind publisher to a transaction for outbox pattern
+- `publisher.Bind(tx Txer) (Publisher[T], error)`: Bind a publisher to a transaction for the outbox pattern
 
 ### Subscribers
 
