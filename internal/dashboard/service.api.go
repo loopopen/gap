@@ -149,6 +149,14 @@ func messageFilterFromRequest(r *http.Request, includeGroup bool) (*entity.Messa
 		Topic:   r.FormValue("topic"),
 		Payload: r.FormValue("payload"),
 	}
+	if value := r.FormValue("id"); value != "" {
+		id, err := strconv.ParseUint(value, 10, strconv.IntSize)
+		if err != nil {
+			return nil, fmt.Errorf("invalid id %q: must be an unsigned integer", value)
+		}
+		parsedID := uint(id)
+		filter.ID = &parsedID
+	}
 	if includeGroup {
 		filter.Group = r.FormValue("group")
 	}
