@@ -4,8 +4,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/klauspost/compress v1.17.9 h1:6KIumPrER1LHsvBVuDa0r5xaG0Es51mhhB9BQB2qeMA=
 github.com/klauspost/compress v1.17.9/go.mod h1:Di0epgTjJY877eYKx5yC51cX2A2Vl2ibi7bDH9ttBbw=
-github.com/loopopen/gap v0.3.0-beta.2 h1:ao3eVgRV5stwPagLiwJcH7CIE/HdHmoecRQYJIe1D6w=
-github.com/loopopen/gap v0.3.0-beta.2/go.mod h1:9ek+bOTf4Iu+IP4anqh3yUcpSTUUW8fsOWu5Oh0MV4w=
+github.com/loopopen/gap v0.3.0-beta.3 h1:/rHcN3Vaby9TRXNrWJMukQfQMb3Od+/i2s+VZ/vfikc=
+github.com/loopopen/gap v0.3.0-beta.3/go.mod h1:9ek+bOTf4Iu+IP4anqh3yUcpSTUUW8fsOWu5Oh0MV4w=
 github.com/loopopen/shoot v0.9.0 h1:bagSuwclKj+39+bWJEKNFtRbFzNpMqyHCt6XVanHRfA=
 github.com/loopopen/shoot v0.9.0/go.mod h1:tGJXCsuL6qnpyS/2fbnSIscbZfsuTDnZZqaaFSx4Ie0=
 github.com/pierrec/lz4/v4 v4.1.15 h1:MO0/ucJhngq7299dKLwIMtgTfbkoSPF6AoMYDd8Q4q0=
