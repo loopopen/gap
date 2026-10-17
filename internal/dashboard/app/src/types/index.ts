@@ -5,7 +5,7 @@ export interface Pagination {
   totalPage: number;
 }
 
-export interface PagedResult<T extends Object> {
+export interface PagedResult<T extends object> {
   data: T[];
   pagination: Pagination;
 }
@@ -31,6 +31,22 @@ export interface Meta {
   type: string;
   plugin: string;
   version: string;
+}
+
+export interface MessageStats {
+  total: number;
+  pending: number;
+  processing: number;
+  succeeded: number;
+  failed: number;
+  retries: number;
+  lastActivity: string | null;
+  oldestBacklog: string | null;
+}
+
+export interface DashboardStats {
+  published: MessageStats;
+  received: MessageStats;
 }
 
 export interface Msg {

@@ -23,10 +23,25 @@ func AddMeta(metaType enum.PluginKind, pluginType enum.Plugin, version string) {
 
 func (s *BoardSvc) HandleAPIs() []RouteRecord {
 	s.Get("/api/metas", s.QueryMetas())
+	s.Get("/api/stats", s.QueryDashboardStats())
 	s.Get("/api/messages/published", s.QueryPublished())
 	s.Get("/api/messages/published/{id}", s.GetPublishedByID())
 	s.Get("/api/messages/received", s.QueryReceived())
 	return s.routes
+}
+
+func (s *BoardSvc) QueryDashboardStats() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		stats, err := s.storage.DashboardStats(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set(ContentType, ContentTypeJSON)
+		if err := json.NewEncoder(w).Encode(stats); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
 }
 
 func (s *BoardSvc) QueryMetas() http.Handler {

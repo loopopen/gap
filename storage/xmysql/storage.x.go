@@ -14,6 +14,59 @@ import (
 
 var _ storage.StorageX = (*Storage)(nil)
 
+func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, error) {
+	published, err := s.messageStats(ctx, "published")
+	if err != nil {
+		return nil, err
+	}
+	received, err := s.messageStats(ctx, "received")
+	if err != nil {
+		return nil, err
+	}
+	return &entity.DashboardStats{Published: published, Received: received}, nil
+}
+
+func (s *Storage) messageStats(ctx context.Context, name string) (entity.MessageStats, error) {
+	table, err := s.quotedTable(name)
+	if err != nil {
+		return entity.MessageStats{}, err
+	}
+	const script = `SELECT
+		COUNT(*),
+		COALESCE(SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN status = 'Processing' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN status = 'Succeeded' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(retries), 0),
+		MAX(created_at),
+		MIN(CASE WHEN status IN ('Pending', 'Processing') THEN created_at END)
+		FROM %s`
+
+	var stats entity.MessageStats
+	var lastActivity sql.NullTime
+	var oldestBacklog sql.NullTime
+	err = s.db.QueryRowContext(ctx, fmt.Sprintf(script, table)).Scan(
+		&stats.Total,
+		&stats.Pending,
+		&stats.Processing,
+		&stats.Succeeded,
+		&stats.Failed,
+		&stats.Retries,
+		&lastActivity,
+		&oldestBacklog,
+	)
+	if err != nil {
+		return entity.MessageStats{}, err
+	}
+	if lastActivity.Valid {
+		stats.LastActivity = &lastActivity.Time
+	}
+	if oldestBacklog.Valid {
+		stats.OldestBacklog = &oldestBacklog.Time
+	}
+	return stats, nil
+}
+
 func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
 	table, err := s.quotedTable("published")
 	if err != nil {

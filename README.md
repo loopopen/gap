@@ -4,6 +4,12 @@
 
 A lightweight, event-driven messaging library for Go. It provides outbox pattern implementation with support for RabbitMQ, Kafka and MySQL (or GORM-based storage), and is designed to support additional brokers and databases in the future.
 
+## Operational Dashboard
+
+Monitor message delivery at a glance with the built-in operational dashboard. See publishing and consumption health, success rates, in-flight work, failures, backlog age, and active runtime components from one place.
+
+[![GAP operational dashboard](./docs/images/dashboard-overview.jpg)](./docs/images/dashboard-overview.jpg)
+
 ## Features
 
 - **Outbox Pattern**: Reliable message publishing with database transactions
