@@ -1,15 +1,10 @@
 import { useEffect, useState, type ChangeEvent, type ComponentType, type ReactNode } from 'react'
 import {
-  AriaTable,
-  AriaTbody,
-  AriaTd,
-  AriaTh,
-  AriaThead,
-  AriaTr,
   Badge,
   Box,
   Button,
   Card,
+  CodeBlock,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuPortal,
@@ -32,8 +27,10 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiChevronUp,
+  FiAlertTriangle,
   FiCopy,
   FiFilter,
+  FiInbox,
   FiSearch,
   FiX,
 } from 'react-icons/fi'
@@ -55,6 +52,7 @@ const statuses = [MsgStatus.Succeeded, MsgStatus.Processing, MsgStatus.Pending, 
 type MessageType = 'pub' | 'rec'
 
 type MessageFilters = {
+  id: string
   status: MsgStatusValue | ''
   topic: string
   group: string
@@ -64,6 +62,7 @@ type MessageFilters = {
 }
 
 const emptyFilters: MessageFilters = {
+  id: '',
   status: '',
   topic: '',
   group: '',
@@ -72,7 +71,7 @@ const emptyFilters: MessageFilters = {
   payload: '',
 }
 
-const filterParamKeys = ['status', 'topic', 'group', 'created_from', 'created_to', 'payload'] as const
+const filterParamKeys = ['id', 'status', 'topic', 'group', 'created_from', 'created_to', 'payload'] as const
 
 const readMessageType = (params: URLSearchParams): MessageType => {
   const type = params.get('type')
@@ -83,6 +82,7 @@ const readFilters = (params: URLSearchParams, msgType: MessageType): MessageFilt
   const status = params.get('status')
 
   return {
+    id: params.get('id') || '',
     status: statuses.includes(status as MsgStatusValue) ? status as MsgStatusValue : '',
     topic: params.get('topic') || '',
     group: msgType === 'rec' ? params.get('group') || '' : '',
@@ -106,11 +106,11 @@ const toApiDateTime = (value: string) => {
   return Number.isNaN(date.getTime()) ? value : date.toISOString()
 }
 
-const formatJson = (raw: string) => {
+const payloadView = (raw: string) => {
   try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
+    return { code: JSON.stringify(JSON.parse(raw), null, 2), isJson: true }
   } catch {
-    return raw
+    return { code: raw, isJson: false }
   }
 }
 
@@ -152,6 +152,8 @@ const HeaderItem = Li as ComponentType<{ css?: Record<string, unknown>; align?: 
 const MessageBody = ({ headers, payload }: { headers: string; payload: string }) => {
   const entries = headerEntries(headers)
   const [escaped, setEscaped] = useState(false)
+  const view = payloadView(payload)
+  const displayedPayload = escaped ? escapeJson(payload) : view.code
 
   return (
     <Flex gap={4} align="stretch" css={{ width: '100%', maxWidth: '100%', minWidth: 0, paddingTop: 16, paddingBottom: 16 }}>
@@ -169,11 +171,16 @@ const MessageBody = ({ headers, payload }: { headers: string; payload: string })
             Escape
           </Button>
         </Flex>
-        <Box css={{ flex: 1, p: '$3', borderRadius: '$3', backgroundColor: '$gray2', border: '1px solid $gray4', overflow: 'auto' }}>
-          <Text css={{ whiteSpace: escaped ? 'pre-wrap' : 'pre', wordBreak: escaped ? 'break-all' : 'normal', lineHeight: 1.6 }}>
-            {escaped ? escapeJson(payload) : formatJson(payload)}
-          </Text>
-        </Box>
+        <CodeBlock
+          lang={!escaped && view.isJson ? 'json' : 'text'}
+          code={displayedPayload}
+          copyable
+          copyText="Copy"
+          copiedText="Copied"
+          wrapText={escaped}
+          maxHeight={424}
+          css={{ flex: 1, minWidth: 0, backgroundColor: '$gray2' }}
+        />
       </Flex>
       <Flex direction="column" gap={2} css={{ flex: '4 1 0%', minWidth: 0 }}>
         <Flex align="center" css={{ minHeight: 24 }}>
@@ -252,6 +259,7 @@ const Message = () => {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [copied, setCopied] = useState<string>()
+  const [expandedMessage, setExpandedMessage] = useState<string>()
   const [filtersExpanded, setFiltersExpanded] = useState(false)
   const msgType = readMessageType(searchParams)
   const appliedFilters = readFilters(searchParams, msgType)
@@ -293,6 +301,7 @@ const Message = () => {
   const params: MsgQueryParams = {
     page,
     per_page: pageSize,
+    id: appliedFilters.id || undefined,
     status: appliedFilters.status || undefined,
     topic: appliedFilters.topic || undefined,
     created_from: toApiDateTime(appliedFilters.created_from),
@@ -309,6 +318,9 @@ const Message = () => {
   const rec = useRecMsgs(recParams, { enabled: msgType === 'rec' })
   const { msgs, total, loading, error, refetch } = msgType === 'pub' ? pub : rec
   const totalPages = Math.max(1, Math.ceil((total || 0) / pageSize))
+  const resultGridColumns = msgType === 'rec'
+    ? '32px minmax(300px, 1.2fr) 100px 200px 140px 80px minmax(220px, 0.8fr) minmax(360px, 1.5fr)'
+    : '32px minmax(180px, 1.5fr) 90px 180px 110px 70px minmax(180px, 1.3fr)'
 
   const switchType = (next: MessageType) => {
     const currentFilters = readFilters(searchParams, msgType)
@@ -346,36 +358,14 @@ const Message = () => {
   const hasFilters = Object.values(filters).some(Boolean)
 
   return (
-    <Flex direction="column" gap={4}>
+    <Flex direction="column" gap={5}>
       <PageTitle title="Messages" />
       <Flex justify="space-between" align="center" gap={3} css={{ flexWrap: 'wrap' }}>
-        <H1>Messages</H1>
-        <Flex gap={2}>
-          <Box
-            as="button"
-            type="button"
-            aria-label="Refresh messages"
-            disabled={loading}
-            onClick={refetch}
-            css={{
-              appearance: 'none',
-              width: '$6',
-              height: '$6',
-              p: 0,
-              border: 0,
-              backgroundColor: 'transparent',
-              color: '$buttonPrimaryBg',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              '&:hover': { opacity: 0.8 },
-              '&:focus-visible': { outline: '2px solid $focusOutline', borderRadius: '$2' },
-              '&:disabled': { opacity: 0.45, cursor: 'default' },
-            }}
-          >
-            <MdRefresh size={24} aria-hidden />
-          </Box>
+        <Flex direction="column" gap={1}>
+          <H1>Messages</H1>
+          <Text css={{ color: '$textSubtle' }}>Browse and inspect published and received messages</Text>
+        </Flex>
+        <Flex align="center" gap={2}>
           <Button variant={msgType === 'pub' ? 'primary' : 'secondary'} onClick={() => switchType('pub')}>
             Published
           </Button>
@@ -390,9 +380,10 @@ const Message = () => {
           align="center"
           gap={3}
           css={{
-            px: '$3',
+            px: '$4',
             py: '$2',
-            backgroundColor: '$tableHeaderLayerBackground',
+            minHeight: 32,
+            backgroundColor: '$gray2',
             borderBottom: '1px solid $tableRowBorder',
           }}
         >
@@ -433,8 +424,10 @@ const Message = () => {
             display: 'grid',
             gridTemplateColumns: 'minmax(0, 1fr)',
             columnGap: '$7',
-            rowGap: '$3',
-            p: '$3',
+            rowGap: '$2',
+            px: '$3',
+            pt: '$2',
+            pb: '$2',
             '@bp1': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
             '@bp2': { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
             '@bp3': { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
@@ -462,16 +455,7 @@ const Message = () => {
                   {filters.status ? (
                     <Badge variant={statusVariant[filters.status]}>{filters.status}</Badge>
                   ) : (
-                    <Badge
-                      variant="gray"
-                      css={{
-                        backgroundColor: 'rgba(0, 0, 0, 0.12)',
-                        borderColor: 'rgba(0, 0, 0, 0.55)',
-                        color: '$slate12',
-                      }}
-                    >
-                      Any status
-                    </Badge>
+                    <Badge variant="gray">All</Badge>
                   )}
                   <FiChevronDown aria-hidden />
                 </Button>
@@ -492,7 +476,7 @@ const Message = () => {
                     }}
                   >
                     <DropdownMenuRadioItem value="any" css={{ height: '$6', cursor: 'pointer' }}>
-                      <Text size="1">Any status</Text>
+                      <Badge variant="gray">All</Badge>
                     </DropdownMenuRadioItem>
                     {statuses.map((item) => (
                       <DropdownMenuRadioItem key={item} value={item} css={{ height: '$6', cursor: 'pointer' }}>
@@ -503,6 +487,20 @@ const Message = () => {
                 </DropdownMenuContent>
               </DropdownMenuPortal>
             </DropdownMenu>
+          </Flex>
+          <Flex direction="column" gap={1} css={{ minWidth: 0 }}>
+            <Label htmlFor="message-filter-id" size="1" weight="semiBold">
+              ID
+            </Label>
+            <Input
+              id="message-filter-id"
+              size="small"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="Exact message ID"
+              value={filters.id}
+              onChange={(event) => setFilters((current) => ({ ...current, id: event.target.value }))}
+            />
           </Flex>
           <Flex direction="column" gap={1} css={{ minWidth: 0 }}>
             <Label htmlFor="message-filter-topic" size="1" weight="semiBold">
@@ -531,6 +529,18 @@ const Message = () => {
             </Flex>
           )}
           <Flex direction="column" gap={1} css={{ minWidth: 0 }}>
+            <Label htmlFor="message-filter-payload" size="1" weight="semiBold">
+              Payload
+            </Label>
+            <Input
+              id="message-filter-payload"
+              size="small"
+              placeholder="Search payload content"
+              value={filters.payload}
+              onChange={(event) => setFilters((current) => ({ ...current, payload: event.target.value }))}
+            />
+          </Flex>
+          <Flex direction="column" gap={1} css={{ minWidth: 0 }}>
             <Label htmlFor="message-filter-created-from" size="1" weight="semiBold">
               CreatedAt
             </Label>
@@ -557,20 +567,8 @@ const Message = () => {
               />
             </Flex>
           </Flex>
-          <Flex direction="column" gap={1} css={{ minWidth: 0 }}>
-            <Label htmlFor="message-filter-payload" size="1" weight="semiBold">
-              Payload
-            </Label>
-            <Input
-              id="message-filter-payload"
-              size="small"
-              placeholder="Search payload content"
-              value={filters.payload}
-              onChange={(event) => setFilters((current) => ({ ...current, payload: event.target.value }))}
-            />
-          </Flex>
         </Box>
-        <Flex justify="end" css={{ px: '$3', pb: '$3' }}>
+        <Flex justify="end" css={{ px: '$3', pb: '$2' }}>
           <Button variant="primary" onClick={applyFilters} aria-label="Search messages">
             <FiSearch aria-hidden />
           </Button>
@@ -578,115 +576,160 @@ const Message = () => {
           </Box>
         )}
       </Card>
-      {error && <Text css={{ color: '$red10' }}>{error}</Text>}
-      {loading && !error && <Text css={{ color: '$textSubtle' }}>Loading…</Text>}
-      {!loading && !error && msgs.length === 0 && <Text css={{ color: '$textSubtle' }}>No messages</Text>}
-      <AriaTable
-        hasCollapsibleChildren
-        css={{
-          display: 'grid',
-          gridTemplateColumns: msgType === 'rec'
-            ? 'max-content minmax(0, 2fr) max-content max-content max-content max-content minmax(0, 1.4fr) max-content'
-            : 'max-content minmax(0, 2fr) max-content max-content max-content max-content minmax(0, 1.4fr)',
-          '& [role="rowgroup"]': { display: 'contents' },
-          '& [role="row"]': { display: 'contents' },
-          '& [role="columnheader"]': { backgroundColor: '$tableHeaderLayerBackground' },
-          '& [role="rowgroup"] > div:has(> span:not([role]))': {
-            display: 'block',
-            gridColumn: '1 / -1',
-            width: '100%',
-          },
-          '& [role="rowgroup"] > div:has(> span:not([role])) > span:not([role])': { display: 'none' },
-          '& [role="rowgroup"] > div:has(> span:not([role])) > span[role="cell"]': {
-            position: 'static',
-            display: 'block',
-            width: '100%',
-            height: 'auto',
-          },
-          '& [role="rowgroup"] > div:has(> span:not([role])) > span > div': {
-            paddingTop: 0,
-            paddingBottom: 0,
-          },
-        }}
-      >
-          <AriaThead>
-            <AriaTr emptyFirstColumn tableHead>
-              <AriaTh>ID</AriaTh>
-              <AriaTh>Version</AriaTh>
-              <AriaTh>CreatedAt</AriaTh>
-              <AriaTh>Status</AriaTh>
-              <AriaTh>Retries</AriaTh>
-              <AriaTh>Topic</AriaTh>
-              {msgType === 'rec' && <AriaTh>Group</AriaTh>}
-            </AriaTr>
-          </AriaThead>
-          <AriaTbody>
-            {msgs.map((row) => (
-              <AriaTr key={row.id} collapsedContent={<MessageBody headers={row.headers} payload={row.payload} />}>
-                <AriaTd>
-                  <Flex align="center" gap={2}>
-                    <Tooltip open={copied === row.id} content="Copied">
-                      <Button
-                        ghost
-                        aria-label="copy id"
-                        css={{ height: 20, minHeight: 20, lineHeight: 1, px: '$2' }}
-                        onClick={() => {
-                          navigator.clipboard.writeText(row.id)
-                          setCopied(row.id)
+      {error && (
+        <Card css={{ p: '$3', borderColor: '$red7', backgroundColor: '$red2' }}>
+          <Flex align="center" gap={2} css={{ color: '$red11' }}><FiAlertTriangle /><Text>{error}</Text></Flex>
+        </Card>
+      )}
+
+      <Card css={{ p: 0, overflow: 'hidden' }}>
+        <Flex
+          justify="space-between"
+          align="center"
+          gap={3}
+          css={{
+            px: '$4',
+            py: '$2',
+            minHeight: 32,
+            backgroundColor: '$gray2',
+            borderBottom: '1px solid $tableRowBorder',
+          }}
+        >
+          <Flex align="center" gap={2} css={{ color: '$textDefault' }}>
+            <FiInbox aria-hidden />
+            <Text css={{ fontWeight: 700 }}>{msgType === 'pub' ? 'Published messages' : 'Received messages'}</Text>
+            <Badge variant={msgType === 'pub' ? 'blue' : 'green'}>{total || 0}</Badge>
+          </Flex>
+          <Flex align="center" gap={2}>
+            {loading && <Text size="1" css={{ color: '$textSubtle' }}>Loading…</Text>}
+            <Button
+              ghost
+              variant="secondary"
+              aria-label="Refresh messages"
+              disabled={loading}
+              onClick={refetch}
+              css={{ width: 32, height: 32, px: 0, color: '$buttonPrimaryBg' }}
+            >
+              <MdRefresh size={20} aria-hidden />
+            </Button>
+          </Flex>
+        </Flex>
+
+        {!loading && !error && msgs.length === 0 ? (
+          <Flex direction="column" align="center" gap={2} css={{ py: '$7', color: '$textSubtle' }}>
+            <FiInbox size={28} aria-hidden />
+            <Text>No messages found</Text>
+          </Flex>
+        ) : (
+          <Box css={{ overflowX: 'auto' }}>
+            <Box role="table" aria-label={`${msgType === 'pub' ? 'Published' : 'Received'} messages`} css={{ minWidth: msgType === 'rec' ? 1280 : 970 }}>
+              <Box
+                role="row"
+                css={{
+                  display: 'grid',
+                  gridTemplateColumns: resultGridColumns,
+                  alignItems: 'center',
+                  px: '$3',
+                  py: '$2',
+                  borderBottom: '1px solid $tableRowBorder',
+                }}
+              >
+                <Box role="columnheader" />
+                {['ID', 'Version', 'CreatedAt', 'Status', 'Retries', 'Topic'].map((label) => (
+                  <Text key={label} role="columnheader" size="1" css={{ px: '$2', color: '$textSubtle', fontWeight: 600 }}>{label}</Text>
+                ))}
+                {msgType === 'rec' && <Text role="columnheader" size="1" css={{ px: '$2', color: '$textSubtle', fontWeight: 600 }}>Group</Text>}
+              </Box>
+              <Box role="rowgroup">
+                {msgs.map((row) => {
+                  const isExpanded = expandedMessage === row.id
+                  const cellCss = { minWidth: 0, px: '$2', py: '$3' }
+
+                  return (
+                    <Box key={row.id} css={{ borderBottom: '1px solid $tableRowBorder', '&:last-child': { borderBottom: 'none' } }}>
+                      <Box
+                        role="row"
+                        css={{
+                          display: 'grid',
+                          gridTemplateColumns: resultGridColumns,
+                          alignItems: 'center',
+                          px: '$3',
+                          '&:hover': { backgroundColor: '$gray2' },
                         }}
                       >
-                        <FiCopy />
-                      </Button>
-                    </Tooltip>
-                    <Text>{row.id}</Text>
-                  </Flex>
-                </AriaTd>
-                <AriaTd>
-                  <Badge variant="blue">{row.version}</Badge>
-                </AriaTd>
-                <AriaTd>{row.createdAt}</AriaTd>
-                <AriaTd>
-                  <Badge variant={statusVariant[row.status]}>{row.status}</Badge>
-                </AriaTd>
-                <AriaTd>{row.retries}</AriaTd>
-                <AriaTd>{row.topic}</AriaTd>
-                {msgType === 'rec' && <AriaTd>{row.group}</AriaTd>}
-              </AriaTr>
-            ))}
-          </AriaTbody>
-        </AriaTable>
-      <Flex justify="space-between" align="center">
-        <Flex align="center" gap={2}>
-          <Text css={{ color: '$textSubtle' }}>Rows</Text>
-          <Select
-            value={pageSize}
-            onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-              setPageSize(Number(event.target.value))
-              setPage(1)
-            }}
-          >
-            {[10, 20, 50, 100].map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </Select>
+                        <Flex role="cell" align="center" css={cellCss}>
+                          <Button
+                            ghost
+                            variant="secondary"
+                            aria-label={isExpanded ? `Collapse message ${row.id}` : `Expand message ${row.id}`}
+                            aria-expanded={isExpanded}
+                            onClick={() => setExpandedMessage(isExpanded ? undefined : row.id)}
+                            css={{ width: 24, height: 24, minHeight: 24, px: 0, boxShadow: 'none' }}
+                          >
+                            <FiChevronRight aria-hidden style={{ transition: 'transform 0.2s ease', transform: isExpanded ? 'rotate(90deg)' : 'none' }} />
+                          </Button>
+                        </Flex>
+                        <Flex role="cell" align="center" gap={2} css={cellCss}>
+                          <Tooltip open={copied === row.id} content="Copied">
+                            <Button
+                              ghost
+                              variant="secondary"
+                              aria-label={`Copy message ID ${row.id}`}
+                              css={{ width: 24, height: 24, minHeight: 24, px: 0, boxShadow: 'none', flexShrink: 0 }}
+                              onClick={() => {
+                                navigator.clipboard.writeText(row.id)
+                                setCopied(row.id)
+                              }}
+                            >
+                              <FiCopy aria-hidden />
+                            </Button>
+                          </Tooltip>
+                          <Text size="1" css={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.id}</Text>
+                        </Flex>
+                        <Box role="cell" css={cellCss}><Badge variant="gray">{row.version}</Badge></Box>
+                        <Text role="cell" size="1" css={cellCss}>{row.createdAt}</Text>
+                        <Box role="cell" css={cellCss}><Badge variant={statusVariant[row.status]}>{row.status}</Badge></Box>
+                        <Text role="cell" size="1" css={cellCss}>{row.retries}</Text>
+                        <Text role="cell" size="1" css={{ ...cellCss, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.topic}</Text>
+                        {msgType === 'rec' && <Text role="cell" size="1" css={{ ...cellCss, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.group}</Text>}
+                      </Box>
+                      {isExpanded && (
+                        <Box css={{ px: '$4', borderTop: '1px solid $tableRowBorder' }}>
+                          <MessageBody headers={row.headers} payload={row.payload} />
+                        </Box>
+                      )}
+                    </Box>
+                  )
+                })}
+              </Box>
+            </Box>
+          </Box>
+        )}
+
+        <Flex justify="space-between" align="center" gap={3} css={{ px: '$4', py: '$3', borderTop: '1px solid $tableRowBorder', flexWrap: 'wrap' }}>
+          <Flex align="center" gap={2}>
+            <Text size="1" css={{ color: '$textSubtle' }}>Rows</Text>
+            <Select
+              value={pageSize}
+              onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                setPageSize(Number(event.target.value))
+                setPage(1)
+              }}
+            >
+              {[10, 20, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+            </Select>
+          </Flex>
+          <Flex align="center" gap={2}>
+            <Button ghost variant="secondary" disabled={page <= 1} aria-label="Previous page" onClick={() => setPage((current) => current - 1)}>
+              <FiChevronLeft />
+            </Button>
+            <Text size="1" css={{ color: '$textSubtle' }}>{`Page ${page} of ${totalPages}`}</Text>
+            <Button ghost variant="secondary" disabled={page >= totalPages} aria-label="Next page" onClick={() => setPage((current) => current + 1)}>
+              <FiChevronRight />
+            </Button>
+          </Flex>
         </Flex>
-        <Flex align="center" gap={2}>
-          <Button ghost disabled={page <= 1} aria-label="previous page" onClick={() => setPage((current) => current - 1)}>
-            <FiChevronLeft />
-          </Button>
-          <Text css={{ color: '$textSubtle' }}>{`Page ${page} of ${totalPages}`}</Text>
-          <Button
-            ghost
-            disabled={page >= totalPages}
-            aria-label="next page"
-            onClick={() => setPage((current) => current + 1)}
-          >
-            <FiChevronRight />
-          </Button>
-        </Flex>
-      </Flex>
+      </Card>
     </Flex>
   )
 }

@@ -138,6 +138,9 @@ func applyMessageFilters(db *gorm.DB, filter *entity.MessageFilter, includeGroup
 	if filter == nil {
 		return db
 	}
+	if filter.ID != nil {
+		db = db.Where(clause.Eq{Column: clause.Column{Name: "id"}, Value: *filter.ID})
+	}
 	if filter.Status != 0 {
 		db = db.Where(clause.Eq{Column: clause.Column{Name: "status"}, Value: filter.Status})
 	}

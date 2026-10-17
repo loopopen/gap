@@ -11,6 +11,7 @@ import (
 
 func TestMessageFilterFromRequest(t *testing.T) {
 	values := url.Values{
+		"id":           {"1844674407370955"},
 		"status":       {"Pending"},
 		"topic":        {"orders.created"},
 		"group":        {"notifications"},
@@ -27,6 +28,9 @@ func TestMessageFilterFromRequest(t *testing.T) {
 	if filter.Status != enum.StatusPending || filter.Topic != "orders.created" || filter.Group != "notifications" || filter.Payload != "customer-42" {
 		t.Fatalf("unexpected filter: %#v", filter)
 	}
+	if filter.ID == nil || *filter.ID != 1844674407370955 {
+		t.Fatalf("unexpected id filter: %#v", filter.ID)
+	}
 	if filter.CreatedFrom == nil || filter.CreatedTo == nil {
 		t.Fatalf("missing time boundaries: %#v", filter)
 	}
@@ -35,6 +39,13 @@ func TestMessageFilterFromRequest(t *testing.T) {
 	}
 	if got := filter.CreatedTo.Format(time.RFC3339); got != "2026-10-17T10:30:00+09:00" {
 		t.Fatalf("created_to = %q", got)
+	}
+}
+
+func TestMessageFilterFromRequestRejectsInvalidID(t *testing.T) {
+	request := httptest.NewRequest("GET", "/?id=not-an-id", nil)
+	if _, err := messageFilterFromRequest(request, false); err == nil {
+		t.Fatal("expected an invalid id error")
 	}
 }
 

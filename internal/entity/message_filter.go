@@ -7,6 +7,7 @@ import (
 )
 
 type MessageFilter struct {
+	ID          *uint
 	Status      enum.Status
 	Topic       string
 	Group       string

@@ -229,6 +229,9 @@ func addMessageFilters(h *WhereHelper, filter *entity.MessageFilter, includeGrou
 	if filter == nil {
 		return
 	}
+	if filter.ID != nil {
+		Add(h, "`id` = ?", *filter.ID)
+	}
 	AddIfNotZero(h, "`status` = ?", filter.Status)
 	AddIfNotZero(h, "`topic` = ?", filter.Topic)
 	if includeGroup {

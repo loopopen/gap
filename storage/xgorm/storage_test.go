@@ -21,7 +21,9 @@ func TestApplyMessageFilters(t *testing.T) {
 	db, _ := openStorage(t)
 	from := time.Date(2026, 10, 17, 9, 30, 0, 0, time.UTC)
 	to := from.Add(time.Hour)
+	id := uint(1844674407370955)
 	filtered := applyMessageFilters(db.Model(&Received{}), &entity.MessageFilter{
+		ID:          &id,
 		Status:      enum.StatusPending,
 		Topic:       "orders.created",
 		Group:       "notifications",
@@ -32,6 +34,7 @@ func TestApplyMessageFilters(t *testing.T) {
 
 	where := whereText(filtered)
 	for _, condition := range []string{
+		"`id` = ?",
 		"`status` = ?",
 		"`topic` = ?",
 		"`group` = ?",

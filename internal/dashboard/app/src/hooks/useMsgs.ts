@@ -3,6 +3,7 @@ import axios from 'axios'
 import type { Msg, MsgStatus, PagedResult } from '../types'
 
 export interface MsgQueryParams {
+  id?: string
   status?: MsgStatus
   topic?: string
   created_from?: string
