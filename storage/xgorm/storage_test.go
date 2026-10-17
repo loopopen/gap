@@ -5,14 +5,45 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
+	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/gap"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 )
+
+func TestApplyMessageFilters(t *testing.T) {
+	db, _ := openStorage(t)
+	from := time.Date(2026, 10, 17, 9, 30, 0, 0, time.UTC)
+	to := from.Add(time.Hour)
+	filtered := applyMessageFilters(db.Model(&Received{}), &entity.MessageFilter{
+		Status:      enum.StatusPending,
+		Topic:       "orders.created",
+		Group:       "notifications",
+		CreatedFrom: &from,
+		CreatedTo:   &to,
+		Payload:     "customer-42",
+	}, true)
+
+	where := whereText(filtered)
+	for _, condition := range []string{
+		"`status` = ?",
+		"`topic` = ?",
+		"`group` = ?",
+		"`created_at` >= ?",
+		"`created_at` <= ?",
+		"`payload` LIKE ?",
+	} {
+		if !strings.Contains(where, condition) {
+			t.Fatalf("where clause %q does not contain %q", where, condition)
+		}
+	}
+}
 
 func TestSetDBSharedStatementLeaksCallerClause(t *testing.T) {
 	db, stor := openStorage(t)

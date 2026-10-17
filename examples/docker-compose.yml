@@ -1,0 +1,81 @@
+x-kafka-sasl-jaas: &kafka-sasl-jaas 'org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_USERNAME-kafka}" password="${KAFKA_PASSWORD-kafka}" user_${KAFKA_USERNAME-kafka}="${KAFKA_PASSWORD-kafka}";'
+
+services:
+  mariadb:
+    image: mariadb:11.8
+    container_name: examples-mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MARIADB_DATABASE: example
+    ports:
+      - ${MYSQL_PORT-3306}:3306
+    volumes:
+      - mysqldata:/var/lib/mysql
+    networks:
+      - examples-net
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: examples-rabbitmq
+    ports:
+        - 5672:5672
+        - 15672:15672
+    volumes:
+        - rabbitmqata:/var/lib/rabbitmq/
+        - rabbitmqlog:/var/log/rabbitmq
+    networks:
+        - examples-net
+
+  kafka:
+    image: apache/kafka:4.3.1
+    container_name: examples-kafka
+    ports:
+      - "${KAFKA_PORT-9092}:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:SASL_PLAINTEXT,EXTERNAL:SASL_PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:${KAFKA_PORT-9092}
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_LISTENER_NAME_INTERNAL_PLAIN_SASL_JAAS_CONFIG: *kafka-sasl-jaas
+      KAFKA_LISTENER_NAME_EXTERNAL_PLAIN_SASL_JAAS_CONFIG: *kafka-sasl-jaas
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+      - kafkalog:/var/log/kafka
+    networks:
+      examples-net:
+
+  kafka-ui:
+    container_name: examples-kafka-ui
+    image: ghcr.io/kafbat/kafka-ui:v1.5.0
+    ports:
+      - ${KAFKA_UI_PORT-8888}:8080
+    environment:
+      DYNAMIC_CONFIG_ENABLED: "true"
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_MECHANISM: PLAIN
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_JAAS_CONFIG: *kafka-sasl-jaas
+    volumes:
+      - kafkaui-conf:/etc/kafkaui
+    networks:
+      examples-net:
+
+volumes:
+  mysqldata:
+  rabbitmqata:
+  rabbitmqlog:
+  kafkadata:
+  kafkalog:
+  kafkaui-conf:
+
+networks:
+  examples-net:

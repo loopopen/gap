@@ -31,7 +31,7 @@ func main() {
 	app.Get("/api/greet", handlers.Greet(svcCtx.GreetSvc))
 
 	go func() {
-		err := app.Listen(":8080")
+		err := app.Listen(":8084")
 		if err != nil {
 			slog.Error("server stop listening with error", slog.Any("err", err))
 		}

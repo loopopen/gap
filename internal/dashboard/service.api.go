@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/loopopen/gap/internal/dashboard/dto"
 	"github.com/loopopen/gap/internal/entity"
@@ -42,24 +43,19 @@ func (s *BoardSvc) QueryMetas() http.Handler {
 
 func (s *BoardSvc) QueryPublished() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var status enum.Status
 		var page, perPage int
-		var err error
-		statusStr := r.FormValue("status")
-		if statusStr != "" {
-			status, err = shoot.ParseEnum[enum.Status](statusStr)
-			if err != nil {
-				status = enum.StatusInvalid
-			}
+		filter, err := messageFilterFromRequest(r, false)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
-		topic := r.FormValue("topic")
 
 		pageStr := r.FormValue("page")
 		perPageStr := r.FormValue("per_page")
 		page, _ = strconv.Atoi(pageStr)
 		perPage, _ = strconv.Atoi(perPageStr)
 
-		es, pg, err := s.storage.QueryPublished(r.Context(), status, topic, entity.NewPagination(page, perPage))
+		es, pg, err := s.storage.QueryPublished(r.Context(), filter, entity.NewPagination(page, perPage))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -103,25 +99,19 @@ func (s *BoardSvc) GetPublishedByID() http.Handler {
 
 func (s *BoardSvc) QueryReceived() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var status enum.Status
 		var page, perPage int
-		var err error
-		statusStr := r.FormValue("status")
-		if statusStr != "" {
-			status, err = shoot.ParseEnum[enum.Status](statusStr)
-			if err != nil {
-				status = enum.StatusInvalid
-			}
+		filter, err := messageFilterFromRequest(r, true)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
-		topic := r.FormValue("topic")
-		group := r.FormValue("group")
 
 		pageStr := r.FormValue("page")
 		perPageStr := r.FormValue("per_page")
 		page, _ = strconv.Atoi(pageStr)
 		perPage, _ = strconv.Atoi(perPageStr)
 
-		es, pg, err := s.storage.QueryReceived(r.Context(), status, topic, group, entity.NewPagination(page, perPage))
+		es, pg, err := s.storage.QueryReceived(r.Context(), filter, entity.NewPagination(page, perPage))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -137,4 +127,49 @@ func (s *BoardSvc) QueryReceived() http.Handler {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
+}
+
+func messageFilterFromRequest(r *http.Request, includeGroup bool) (*entity.MessageFilter, error) {
+	filter := &entity.MessageFilter{
+		Topic:   r.FormValue("topic"),
+		Payload: r.FormValue("payload"),
+	}
+	if includeGroup {
+		filter.Group = r.FormValue("group")
+	}
+
+	if value := r.FormValue("status"); value != "" {
+		status, err := shoot.ParseEnum[enum.Status](value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid status %q: %w", value, err)
+		}
+		filter.Status = status
+	}
+
+	var err error
+	filter.CreatedFrom, err = parseMessageTime(r.FormValue("created_from"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid created_from: %w", err)
+	}
+	filter.CreatedTo, err = parseMessageTime(r.FormValue("created_to"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid created_to: %w", err)
+	}
+	if filter.CreatedFrom != nil && filter.CreatedTo != nil && filter.CreatedFrom.After(*filter.CreatedTo) {
+		return nil, fmt.Errorf("created_from must not be after created_to")
+	}
+	return filter, nil
+}
+
+func parseMessageTime(value string) (*time.Time, error) {
+	if value == "" {
+		return nil, nil
+	}
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04"} {
+		parsed, err := time.ParseInLocation(layout, value, time.Local)
+		if err == nil {
+			return &parsed, nil
+		}
+	}
+	return nil, fmt.Errorf("must be RFC3339 or YYYY-MM-DDTHH:MM")
 }
