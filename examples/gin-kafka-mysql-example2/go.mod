@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/confluentinc/confluent-kafka-go/v2 v2.12.0
 	github.com/gin-gonic/gin v1.11.0
-	github.com/loopopen/gap v0.3.0-beta.1
+	github.com/loopopen/gap v0.3.0-beta.2
 	github.com/loopopen/gap/broker/xconfluent v0.0.0
 	github.com/loopopen/gap/storage/xmysql v0.0.0
 	golang.org/x/sync v0.19.0
