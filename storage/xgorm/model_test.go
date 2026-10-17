@@ -78,7 +78,32 @@ func TestFromEntityPayloadAndHeaders(t *testing.T) {
 	if p.Headers != `{"h":"v"}` {
 		t.Fatalf("headers = %q", p.Headers)
 	}
-	if p.Status != enum.StatusPending {
+	if p.Status != Status(enum.StatusPending) {
 		t.Fatalf("status = %s", p.Status)
+	}
+}
+
+func TestStatusGormDBDataType(t *testing.T) {
+	db, _ := openStorage(t)
+	if got := (Status(0)).GormDBDataType(db, nil); got != mysqlStatusType {
+		t.Fatalf("mysql status type = %q, want %q", got, mysqlStatusType)
+	}
+}
+
+func TestStatusSQLRoundTrip(t *testing.T) {
+	value, err := Status(enum.StatusPending).Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value != "Pending" {
+		t.Fatalf("value = %#v", value)
+	}
+
+	var status Status
+	if err := status.Scan([]byte("Succeeded")); err != nil {
+		t.Fatal(err)
+	}
+	if status != Status(enum.StatusSucceeded) {
+		t.Fatalf("status = %s", status)
 	}
 }

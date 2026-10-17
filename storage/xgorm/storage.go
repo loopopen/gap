@@ -203,11 +203,11 @@ func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, src enum.S
 	} else {
 		db.Where(&Model{
 			Version: s.gapOpts.Version,
-			Status:  src,
+			Status:  Status(src),
 		})
 	}
 
-	err := db.Updates(&Model{Status: status}).Error
+	err := db.Updates(&Model{Status: Status(status)}).Error
 	if err != nil {
 		return err
 	}
@@ -339,10 +339,10 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.St
 	if id != 0 {
 		db.Where(&Model{ID: id})
 	} else {
-		db.Where(&Model{Version: s.gapOpts.Version, Status: src})
+		db.Where(&Model{Version: s.gapOpts.Version, Status: Status(src)})
 	}
 
-	err := db.Updates(&Model{Status: status}).Error
+	err := db.Updates(&Model{Status: Status(status)}).Error
 	if err != nil {
 		return err
 	}
