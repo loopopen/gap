@@ -48,6 +48,9 @@ gen-modules:
 build-ui:
 	cd ./internal/dashboard/app && npm run build
 
+# The aggregate tag target enables this when the root module and all
+# submodules are released at the same version. Standalone submodule targets
+# preserve their existing github.com/loopopen/gap requirement.
 define tag_func
 	@set -e; \
 	prefix="$(2)"; \
@@ -65,7 +68,7 @@ define tag_func
 			exit 1; \
 		fi; \
 		set -- "$(1)"; \
-		if [ -n "$$prefix" ]; then \
+		if [ -n "$$prefix" ] && [ "$(SYNC_ROOT_VERSION)" = "1" ]; then \
 			module_dir="$${prefix%/}"; \
 			(cd "$$module_dir" && go mod edit -require="$(ROOT_MODULE)@$(tag)"); \
 			(cd "$$module_dir" && \
@@ -153,7 +156,7 @@ tag: $(TAG_CHECK_DEPS)
 		git push origin "refs/tags/$(tag)"; \
 	fi
 	@for target in tag-xgorm tag-xmysql tag-xkafka tag-xconfluent tag-xrabbitmq; do \
-		$(MAKE) --no-print-directory $$target tag="$(tag)" SKIP_TAG_CHECKS=1 || exit 1; \
+		$(MAKE) --no-print-directory $$target tag="$(tag)" SKIP_TAG_CHECKS=1 SYNC_ROOT_VERSION=1 || exit 1; \
 	done
 
 tidy: tidy-modules
