@@ -30,6 +30,8 @@ type Storage interface {
 type StorageX interface {
 	GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error)
 
+	DashboardStats(ctx context.Context) (*entity.DashboardStats, error)
+
 	QueryPublished(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error)
 
 	QueryReceived(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error)

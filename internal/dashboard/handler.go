@@ -16,6 +16,7 @@ func NewHandler(gapOpts *gap.Options, opts *dashboard.Options) http.Handler {
 	svc := NewBoardSvc(gapOpts, opts)
 
 	h.Handle("GET /api/metas", svc.QueryMetas())
+	h.Handle("GET /api/stats", svc.QueryDashboardStats())
 	h.Handle("GET /api/messages/published", svc.QueryPublished())
 	h.Handle("GET /api/messages/published/{id}", svc.GetPublishedByID())
 	h.Handle("GET /api/messages/received", svc.QueryReceived())

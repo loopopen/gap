@@ -4,6 +4,12 @@
 
 一个轻量、事件驱动的 Go 消息库。它实现了 Outbox 模式，并支持 RabbitMQ、Kafka 和 MySQL（或基于 GORM 的存储），同时设计上可扩展以支持更多的 broker 和数据库。
 
+## 运行看板
+
+通过内置的运行看板快速掌握消息投递情况，在一个页面中查看消息发布与消费健康状态、成功率、处理中任务、失败消息、积压时长以及当前运行组件。
+
+[![GAP 运行看板](./docs/images/dashboard-overview.jpg)](./docs/images/dashboard-overview.jpg)
+
 ## 功能
 
 - **Outbox Pattern**：通过数据库事务保证可靠的消息发布

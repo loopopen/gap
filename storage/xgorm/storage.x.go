@@ -3,6 +3,7 @@ package xgorm
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/loopopen/gap/internal/entity"
 	"gorm.io/gorm"
@@ -13,6 +14,55 @@ const (
 	MaxPageSize int = 200
 	DefPageSize int = 20
 )
+
+func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, error) {
+	published, err := messageStats(s.db.WithContext(ctx).Model(&Published{}))
+	if err != nil {
+		return nil, err
+	}
+	received, err := messageStats(s.db.WithContext(ctx).Model(&Received{}))
+	if err != nil {
+		return nil, err
+	}
+	return &entity.DashboardStats{Published: published, Received: received}, nil
+}
+
+func messageStats(db *gorm.DB) (entity.MessageStats, error) {
+	type statsRow struct {
+		Total         int64
+		Pending       int64
+		Processing    int64
+		Succeeded     int64
+		Failed        int64
+		Retries       int64
+		LastActivity  *time.Time
+		OldestBacklog *time.Time
+	}
+	var row statsRow
+	err := db.Select(`
+		COUNT(*) AS total,
+		COALESCE(SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END), 0) AS pending,
+		COALESCE(SUM(CASE WHEN status = 'Processing' THEN 1 ELSE 0 END), 0) AS processing,
+		COALESCE(SUM(CASE WHEN status = 'Succeeded' THEN 1 ELSE 0 END), 0) AS succeeded,
+		COALESCE(SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END), 0) AS failed,
+		COALESCE(SUM(retries), 0) AS retries,
+		MAX(created_at) AS last_activity,
+		MIN(CASE WHEN status IN ('Pending', 'Processing') THEN created_at END) AS oldest_backlog`,
+	).Scan(&row).Error
+	if err != nil {
+		return entity.MessageStats{}, err
+	}
+	return entity.MessageStats{
+		Total:         row.Total,
+		Pending:       row.Pending,
+		Processing:    row.Processing,
+		Succeeded:     row.Succeeded,
+		Failed:        row.Failed,
+		Retries:       row.Retries,
+		LastActivity:  row.LastActivity,
+		OldestBacklog: row.OldestBacklog,
+	}, nil
+}
 
 func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
 	var pub *Published
