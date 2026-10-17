@@ -9,15 +9,35 @@ import {
   Badge,
   Box,
   Button,
+  Card,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
   Flex,
   H1,
+  Input,
+  Label,
   Select,
   Text,
   Tooltip,
   Ul,
   Li,
 } from '@traefik-labs/faency'
-import { FiChevronLeft, FiChevronRight, FiCopy } from 'react-icons/fi'
+import { useSearchParams } from 'react-router-dom'
+import {
+  FiChevronDown,
+  FiChevronLeft,
+  FiChevronRight,
+  FiChevronUp,
+  FiCopy,
+  FiFilter,
+  FiSearch,
+  FiX,
+} from 'react-icons/fi'
+import { MdRefresh } from 'react-icons/md'
 
 import { usePubMsgs, useRecMsgs, type MsgQueryParams } from '../hooks/useMsgs'
 import PageTitle from '../layout/PageTitle'
@@ -31,6 +51,60 @@ const statusVariant: Record<MsgStatusValue, 'green' | 'blue' | 'orange' | 'red'>
 }
 
 const statuses = [MsgStatus.Succeeded, MsgStatus.Processing, MsgStatus.Pending, MsgStatus.Failed]
+
+type MessageType = 'pub' | 'rec'
+
+type MessageFilters = {
+  status: MsgStatusValue | ''
+  topic: string
+  group: string
+  created_from: string
+  created_to: string
+  payload: string
+}
+
+const emptyFilters: MessageFilters = {
+  status: '',
+  topic: '',
+  group: '',
+  created_from: '',
+  created_to: '',
+  payload: '',
+}
+
+const filterParamKeys = ['status', 'topic', 'group', 'created_from', 'created_to', 'payload'] as const
+
+const readMessageType = (params: URLSearchParams): MessageType => {
+  const type = params.get('type')
+  return type === 'received' || type === 'rec' ? 'rec' : 'pub'
+}
+
+const readFilters = (params: URLSearchParams, msgType: MessageType): MessageFilters => {
+  const status = params.get('status')
+
+  return {
+    status: statuses.includes(status as MsgStatusValue) ? status as MsgStatusValue : '',
+    topic: params.get('topic') || '',
+    group: msgType === 'rec' ? params.get('group') || '' : '',
+    created_from: params.get('created_from') || '',
+    created_to: params.get('created_to') || '',
+    payload: params.get('payload') || '',
+  }
+}
+
+const writeFilters = (params: URLSearchParams, filters: MessageFilters, msgType: MessageType) => {
+  filterParamKeys.forEach((key) => {
+    const value = key === 'group' && msgType === 'pub' ? '' : filters[key]
+    if (value) params.set(key, value)
+    else params.delete(key)
+  })
+}
+
+const toApiDateTime = (value: string) => {
+  if (!value) return undefined
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toISOString()
+}
 
 const formatJson = (raw: string) => {
   try {
@@ -174,11 +248,41 @@ const MessageBody = ({ headers, payload }: { headers: string; payload: string })
 }
 
 const Message = () => {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const [status, setStatus] = useState<MsgStatusValue | undefined>()
-  const [msgType, setMsgType] = useState<'pub' | 'rec'>('pub')
   const [copied, setCopied] = useState<string>()
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
+  const msgType = readMessageType(searchParams)
+  const appliedFilters = readFilters(searchParams, msgType)
+  const serializedSearchParams = searchParams.toString()
+  const [filterDraft, setFilterDraft] = useState(() => ({
+    source: serializedSearchParams,
+    value: appliedFilters,
+  }))
+  const filters = filterDraft.source === serializedSearchParams ? filterDraft.value : appliedFilters
+
+  const setFilters = (nextValue: MessageFilters | ((current: MessageFilters) => MessageFilters)) => {
+    setFilterDraft((current) => {
+      const currentFilters = current.source === serializedSearchParams ? current.value : appliedFilters
+      return {
+        source: serializedSearchParams,
+        value: typeof nextValue === 'function' ? nextValue(currentFilters) : nextValue,
+      }
+    })
+  }
+
+  useEffect(() => {
+    const canonicalType = msgType === 'pub' ? 'published' : 'received'
+    if (searchParams.get('type') === canonicalType) return
+
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.set('type', canonicalType)
+      if (msgType === 'pub') next.delete('group')
+      return next
+    }, { replace: true })
+  }, [msgType, searchParams, setSearchParams])
 
   useEffect(() => {
     if (!copied) return
@@ -189,57 +293,291 @@ const Message = () => {
   const params: MsgQueryParams = {
     page,
     per_page: pageSize,
-    status,
+    status: appliedFilters.status || undefined,
+    topic: appliedFilters.topic || undefined,
+    created_from: toApiDateTime(appliedFilters.created_from),
+    created_to: toApiDateTime(appliedFilters.created_to),
+    payload: appliedFilters.payload || undefined,
+  }
+
+  const recParams = {
+    ...params,
+    group: appliedFilters.group || undefined,
   }
 
   const pub = usePubMsgs(params, { enabled: msgType === 'pub' })
-  const rec = useRecMsgs(params, { enabled: msgType === 'rec' })
-  const { msgs, total, loading, error } = msgType === 'pub' ? pub : rec
+  const rec = useRecMsgs(recParams, { enabled: msgType === 'rec' })
+  const { msgs, total, loading, error, refetch } = msgType === 'pub' ? pub : rec
   const totalPages = Math.max(1, Math.ceil((total || 0) / pageSize))
 
-  const switchType = (next: 'pub' | 'rec') => {
-    setMsgType(next)
+  const switchType = (next: MessageType) => {
+    const currentFilters = readFilters(searchParams, msgType)
+    const nextFilters: MessageFilters = {
+      ...currentFilters,
+      status: '',
+      group: next === 'pub' ? '' : currentFilters.group,
+    }
+
     setPage(1)
-    setStatus(undefined)
+    setFilters(nextFilters)
+    setSearchParams((current) => {
+      const params = new URLSearchParams(current)
+      params.set('type', next === 'pub' ? 'published' : 'received')
+      writeFilters(params, nextFilters, next)
+      return params
+    }, { replace: true })
   }
+
+  const applyFilters = () => {
+    const next = new URLSearchParams(searchParams)
+    next.set('type', msgType === 'pub' ? 'published' : 'received')
+    writeFilters(next, filters, msgType)
+
+    const filtersUnchanged = next.toString() === searchParams.toString()
+    if (filtersUnchanged && page === 1) {
+      refetch()
+      return
+    }
+
+    setPage(1)
+    if (!filtersUnchanged) setSearchParams(next, { replace: true })
+  }
+
+  const hasFilters = Object.values(filters).some(Boolean)
 
   return (
     <Flex direction="column" gap={4}>
       <PageTitle title="Messages" />
-      <H1>Messages</H1>
-      <Flex gap={2}>
-        <Button variant={msgType === 'pub' ? 'primary' : 'secondary'} onClick={() => switchType('pub')}>
-          Published
-        </Button>
-        <Button variant={msgType === 'rec' ? 'primary' : 'secondary'} onClick={() => switchType('rec')}>
-          Received
-        </Button>
-      </Flex>
-      <Flex gap={2} align="center" css={{ flexWrap: 'wrap' }}>
-        <Button
-          ghost={status !== undefined}
-          variant={status === undefined ? 'primary' : 'secondary'}
-          onClick={() => {
-            setStatus(undefined)
-            setPage(1)
-          }}
-        >
-          All
-        </Button>
-        {statuses.map((item) => (
-          <Button
-            key={item}
-            ghost={status !== item}
-            variant={status === item ? 'primary' : 'secondary'}
-            onClick={() => {
-              setStatus(item)
-              setPage(1)
+      <Flex justify="space-between" align="center" gap={3} css={{ flexWrap: 'wrap' }}>
+        <H1>Messages</H1>
+        <Flex gap={2}>
+          <Box
+            as="button"
+            type="button"
+            aria-label="Refresh messages"
+            disabled={loading}
+            onClick={refetch}
+            css={{
+              appearance: 'none',
+              width: '$6',
+              height: '$6',
+              p: 0,
+              border: 0,
+              backgroundColor: 'transparent',
+              color: '$buttonPrimaryBg',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              '&:hover': { opacity: 0.8 },
+              '&:focus-visible': { outline: '2px solid $focusOutline', borderRadius: '$2' },
+              '&:disabled': { opacity: 0.45, cursor: 'default' },
             }}
           >
-            {item}
+            <MdRefresh size={24} aria-hidden />
+          </Box>
+          <Button variant={msgType === 'pub' ? 'primary' : 'secondary'} onClick={() => switchType('pub')}>
+            Published
           </Button>
-        ))}
+          <Button variant={msgType === 'rec' ? 'primary' : 'secondary'} onClick={() => switchType('rec')}>
+            Received
+          </Button>
+        </Flex>
       </Flex>
+      <Card role="search" aria-label="Message filters" css={{ p: 0, overflow: 'hidden' }}>
+        <Flex
+          justify="space-between"
+          align="center"
+          gap={3}
+          css={{
+            px: '$3',
+            py: '$2',
+            backgroundColor: '$tableHeaderLayerBackground',
+            borderBottom: '1px solid $tableRowBorder',
+          }}
+        >
+          <Flex align="center" gap={2} css={{ color: '$textDefault' }}>
+            <FiFilter aria-hidden />
+            <Text css={{ fontWeight: 600 }}>Filters</Text>
+          </Flex>
+          <Flex align="center" gap={1}>
+            <Button
+              ghost
+              variant="secondary"
+              disabled={!hasFilters}
+              onClick={() => {
+                setFilters(emptyFilters)
+              }}
+              css={{ height: 28, px: '$2' }}
+            >
+              <FiX aria-hidden />
+              Clear
+            </Button>
+            <Button
+              ghost
+              variant="secondary"
+              aria-label={filtersExpanded ? 'Collapse filters' : 'Expand filters'}
+              aria-expanded={filtersExpanded}
+              aria-controls="message-filter-content"
+              onClick={() => setFiltersExpanded((current) => !current)}
+              css={{ width: 28, height: 28, px: 0, boxShadow: 'none' }}
+            >
+              {filtersExpanded ? <FiChevronUp aria-hidden /> : <FiChevronDown aria-hidden />}
+            </Button>
+          </Flex>
+        </Flex>
+        {filtersExpanded && (
+          <Box id="message-filter-content">
+        <Box
+          css={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr)',
+            columnGap: '$7',
+            rowGap: '$3',
+            p: '$3',
+            '@bp1': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
+            '@bp2': { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
+            '@bp3': { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
+            '@bp4': { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
+          }}
+        >
+          <Flex direction="column" gap={1} css={{ minWidth: 0 }}>
+            <Label htmlFor="message-filter-status" size="1" weight="semiBold">
+              Status
+            </Label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  id="message-filter-status"
+                  variant="secondary"
+                  css={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    height: '$5',
+                    justifyContent: 'space-between',
+                    px: '$2',
+                    boxShadow: 'none',
+                  }}
+                >
+                  {filters.status ? (
+                    <Badge variant={statusVariant[filters.status]}>{filters.status}</Badge>
+                  ) : (
+                    <Badge
+                      variant="gray"
+                      css={{
+                        backgroundColor: 'rgba(0, 0, 0, 0.12)',
+                        borderColor: 'rgba(0, 0, 0, 0.55)',
+                        color: '$slate12',
+                      }}
+                    >
+                      Any status
+                    </Badge>
+                  )}
+                  <FiChevronDown aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuContent
+                  align="start"
+                  sideOffset={4}
+                  css={{ width: 'var(--radix-dropdown-menu-trigger-width)', minWidth: 180, zIndex: 9999 }}
+                >
+                  <DropdownMenuRadioGroup
+                    value={filters.status || 'any'}
+                    onValueChange={(value: string) => {
+                      setFilters((current) => ({
+                        ...current,
+                        status: value === 'any' ? '' : value as MsgStatusValue,
+                      }))
+                    }}
+                  >
+                    <DropdownMenuRadioItem value="any" css={{ height: '$6', cursor: 'pointer' }}>
+                      <Text size="1">Any status</Text>
+                    </DropdownMenuRadioItem>
+                    {statuses.map((item) => (
+                      <DropdownMenuRadioItem key={item} value={item} css={{ height: '$6', cursor: 'pointer' }}>
+                        <Badge variant={statusVariant[item]}>{item}</Badge>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenuPortal>
+            </DropdownMenu>
+          </Flex>
+          <Flex direction="column" gap={1} css={{ minWidth: 0 }}>
+            <Label htmlFor="message-filter-topic" size="1" weight="semiBold">
+              Topic
+            </Label>
+            <Input
+              id="message-filter-topic"
+              size="small"
+              placeholder="e.g. topic.greet.hello"
+              value={filters.topic}
+              onChange={(event) => setFilters((current) => ({ ...current, topic: event.target.value }))}
+            />
+          </Flex>
+          {msgType === 'rec' && (
+            <Flex direction="column" gap={1} css={{ minWidth: 0 }}>
+              <Label htmlFor="message-filter-group" size="1" weight="semiBold">
+                Group
+              </Label>
+              <Input
+                id="message-filter-group"
+                size="small"
+                placeholder="e.g. notification-workers"
+                value={filters.group}
+                onChange={(event) => setFilters((current) => ({ ...current, group: event.target.value }))}
+              />
+            </Flex>
+          )}
+          <Flex direction="column" gap={1} css={{ minWidth: 0 }}>
+            <Label htmlFor="message-filter-created-from" size="1" weight="semiBold">
+              CreatedAt
+            </Label>
+            <Flex align="center" gap={2} css={{ minWidth: 0 }}>
+              <Input
+                id="message-filter-created-from"
+                aria-label="Created from"
+                type="datetime-local"
+                size="small"
+                value={filters.created_from}
+                onChange={(event) => setFilters((current) => ({ ...current, created_from: event.target.value }))}
+                css={{ minWidth: 0 }}
+              />
+              <Text size="1" css={{ color: '$textSubtle', flexShrink: 0 }}>
+                to
+              </Text>
+              <Input
+                aria-label="Created to"
+                type="datetime-local"
+                size="small"
+                value={filters.created_to}
+                onChange={(event) => setFilters((current) => ({ ...current, created_to: event.target.value }))}
+                css={{ minWidth: 0 }}
+              />
+            </Flex>
+          </Flex>
+          <Flex direction="column" gap={1} css={{ minWidth: 0 }}>
+            <Label htmlFor="message-filter-payload" size="1" weight="semiBold">
+              Payload
+            </Label>
+            <Input
+              id="message-filter-payload"
+              size="small"
+              placeholder="Search payload content"
+              value={filters.payload}
+              onChange={(event) => setFilters((current) => ({ ...current, payload: event.target.value }))}
+            />
+          </Flex>
+        </Box>
+        <Flex justify="end" css={{ px: '$3', pb: '$3' }}>
+          <Button variant="primary" onClick={applyFilters} aria-label="Search messages">
+            <FiSearch aria-hidden />
+          </Button>
+        </Flex>
+          </Box>
+        )}
+      </Card>
       {error && <Text css={{ color: '$red10' }}>{error}</Text>}
       {loading && !error && <Text css={{ color: '$textSubtle' }}>Loading…</Text>}
       {!loading && !error && msgs.length === 0 && <Text css={{ color: '$textSubtle' }}>No messages</Text>}
@@ -248,8 +586,8 @@ const Message = () => {
         css={{
           display: 'grid',
           gridTemplateColumns: msgType === 'rec'
-            ? 'max-content minmax(0, 2fr) max-content max-content max-content minmax(0, 1.4fr) max-content'
-            : 'max-content minmax(0, 2fr) max-content max-content max-content minmax(0, 1.4fr)',
+            ? 'max-content minmax(0, 2fr) max-content max-content max-content max-content minmax(0, 1.4fr) max-content'
+            : 'max-content minmax(0, 2fr) max-content max-content max-content max-content minmax(0, 1.4fr)',
           '& [role="rowgroup"]': { display: 'contents' },
           '& [role="row"]': { display: 'contents' },
           '& [role="columnheader"]': { backgroundColor: '$tableHeaderLayerBackground' },
@@ -277,6 +615,7 @@ const Message = () => {
               <AriaTh>Version</AriaTh>
               <AriaTh>CreatedAt</AriaTh>
               <AriaTh>Status</AriaTh>
+              <AriaTh>Retries</AriaTh>
               <AriaTh>Topic</AriaTh>
               {msgType === 'rec' && <AriaTh>Group</AriaTh>}
             </AriaTr>
@@ -303,12 +642,13 @@ const Message = () => {
                   </Flex>
                 </AriaTd>
                 <AriaTd>
-                  <Badge variant="green">{row.version}</Badge>
+                  <Badge variant="blue">{row.version}</Badge>
                 </AriaTd>
                 <AriaTd>{row.createdAt}</AriaTd>
                 <AriaTd>
                   <Badge variant={statusVariant[row.status]}>{row.status}</Badge>
                 </AriaTd>
+                <AriaTd>{row.retries}</AriaTd>
                 <AriaTd>{row.topic}</AriaTd>
                 {msgType === 'rec' && <AriaTd>{row.group}</AriaTd>}
               </AriaTr>

@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -31,15 +30,10 @@ func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelo
 	return en, nil
 }
 
-func (s *Storage) QueryPublished(ctx context.Context, status enum.Status, topic string, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
+func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
 	var pubs []*Published
 	db := s.db.WithContext(ctx).Model(&Published{})
-	if status != 0 {
-		db.Where(&Model{Status: status})
-	}
-	if topic != "" {
-		db.Where(&Model{Topic: topic})
-	}
+	db = applyMessageFilters(db, filter, false)
 
 	var count int64
 	err := db.Count(&count).Error
@@ -63,18 +57,10 @@ func (s *Storage) QueryPublished(ctx context.Context, status enum.Status, topic 
 	return es, &pg, nil
 }
 
-func (s *Storage) QueryReceived(ctx context.Context, status enum.Status, topic string, group string, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
+func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
 	var recs []*Received
 	db := s.db.WithContext(ctx).Model(&Received{})
-	if status != 0 {
-		db.Where(&Model{Status: status})
-	}
-	if topic != "" {
-		db.Where(&Model{Topic: topic})
-	}
-	if group != "" {
-		db.Where(&Received{Group: group})
-	}
+	db = applyMessageFilters(db, filter, true)
 
 	var count int64
 	err := db.Count(&count).Error
@@ -96,6 +82,31 @@ func (s *Storage) QueryReceived(ctx context.Context, status enum.Status, topic s
 	}
 	pg.SetTotal(int(count))
 	return es, &pg, nil
+}
+
+func applyMessageFilters(db *gorm.DB, filter *entity.MessageFilter, includeGroup bool) *gorm.DB {
+	if filter == nil {
+		return db
+	}
+	if filter.Status != 0 {
+		db = db.Where(clause.Eq{Column: clause.Column{Name: "status"}, Value: filter.Status})
+	}
+	if filter.Topic != "" {
+		db = db.Where(clause.Eq{Column: clause.Column{Name: "topic"}, Value: filter.Topic})
+	}
+	if includeGroup && filter.Group != "" {
+		db = db.Where(clause.Eq{Column: clause.Column{Name: "group"}, Value: filter.Group})
+	}
+	if filter.CreatedFrom != nil {
+		db = db.Where(clause.Gte{Column: clause.Column{Name: "created_at"}, Value: *filter.CreatedFrom})
+	}
+	if filter.CreatedTo != nil {
+		db = db.Where(clause.Lte{Column: clause.Column{Name: "created_at"}, Value: *filter.CreatedTo})
+	}
+	if filter.Payload != "" {
+		db = db.Where(clause.Like{Column: clause.Column{Name: "payload"}, Value: "%" + filter.Payload + "%"})
+	}
+	return db
 }
 
 func paginate(page entity.Pagination) func(db *gorm.DB) *gorm.DB {

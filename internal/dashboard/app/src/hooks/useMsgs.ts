@@ -5,6 +5,9 @@ import type { Msg, MsgStatus, PagedResult } from '../types'
 export interface MsgQueryParams {
   status?: MsgStatus
   topic?: string
+  created_from?: string
+  created_to?: string
+  payload?: string
   page?: number
   per_page?: number
 }
@@ -20,11 +23,13 @@ const useMsgs = <T extends MsgQueryParams>(url: string, params: T, enabled: bool
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
+  const [refreshKey, setRefreshKey] = useState(0)
+  const serializedParams = JSON.stringify(params)
 
   useEffect(() => {
     if (!enabled) return
     axios
-      .get<PagedResult<Msg>>(url, { params })
+      .get<PagedResult<Msg>>(url, { params: JSON.parse(serializedParams) as T })
       .then((resp) => {
         setMsgs(resp.data?.data || [])
         setTotal(resp.data?.pagination?.total || 0)
@@ -36,9 +41,14 @@ const useMsgs = <T extends MsgQueryParams>(url: string, params: T, enabled: bool
       .finally(() => {
         setLoading(false)
       })
-  }, [url, JSON.stringify(params), enabled])
+  }, [url, serializedParams, enabled, refreshKey])
 
-  return { msgs, total, loading, error }
+  const refetch = () => {
+    setLoading(true)
+    setRefreshKey((current) => current + 1)
+  }
+
+  return { msgs, total, loading, error, refetch }
 }
 
 export const usePubMsgs = (params: PubMsgQueryParams, options?: { enabled: boolean }) => {

@@ -98,6 +98,7 @@ export const SideBarPanel = ({
       side="left"
       css={{ width: 264, p: 0 }}
       description="Expanded side navigation"
+      noOverlay
       noCloseIcon
     >
       <VisuallyHidden>
