@@ -14,14 +14,14 @@ import (
 type Status enum.Status
 
 type Model struct {
-	ID        uint        `gorm:"primarykey"`
-	CreatedAt time.Time   `gorm:"not null"`
-	Version   string      `gorm:"not null;size:16"`
-	Topic     string      `gorm:"not null;size:256"`
-	Status    enum.Status `gorm:"not null;mysql:type:ENUM('Pending','Processing','Succeeded','Failed')"`
-	Headers   string      `gorm:"type:text"`
-	Payload   string      `gorm:"mysql:type:longtext;postgres:type:text"`
-	Retries   int         `gorm:"default:0"`
+	ID        uint      `gorm:"primarykey"`
+	CreatedAt time.Time `gorm:"not null"`
+	Version   string    `gorm:"not null;size:16"`
+	Topic     string    `gorm:"not null;size:256"`
+	Status    Status    `gorm:"not null"`
+	Headers   string    `gorm:"type:text"`
+	Payload   string
+	Retries   int `gorm:"default:0"`
 	ExpiredAt sql.Null[time.Time]
 	err       error `gorm:"-"`
 }
@@ -60,7 +60,7 @@ func (p *Published) readEntity(e *entity.Envelope) {
 	}
 	p.Payload = string(payload)
 	if p.Status == 0 {
-		p.Status = enum.StatusPending
+		p.Status = Status(enum.StatusPending)
 	}
 	headers, err := e.HeadersBytes()
 	if err != nil {
@@ -102,7 +102,7 @@ func (r *Received) readEntity(e *entity.Envelope) {
 	}
 	r.Payload = string(payload)
 	if r.Status == 0 {
-		r.Status = enum.StatusPending
+		r.Status = Status(enum.StatusPending)
 	}
 	headers, err := e.HeadersBytes()
 	if err != nil {
