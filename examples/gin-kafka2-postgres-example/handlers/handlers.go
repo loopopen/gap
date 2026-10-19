@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"examples/gin-kafka-mysql-example2/service"
+	"examples/gin-kafka2-postgres-example/service"
 
 	"github.com/gin-gonic/gin"
 )
