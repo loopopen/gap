@@ -20,7 +20,7 @@ MODULES := \
 	storage/xmysql \
 	examples/fiber-rabbitmq-mysql-example \
 	examples/gin-kafka-mysql-example \
-	examples/gin-kafka-mysql-example2 \
+	examples/gin-kafka2-postgres-example \
 	examples/kafka-gorm-postgres-example \
 	examples/rabbitmq-gorm-mysql-example \
 	examples/rabbitmq-mysql-example

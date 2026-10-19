@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"examples/gin-kafka-mysql-example2/event"
+	"examples/gin-kafka2-postgres-example/event"
 
 	"github.com/loopopen/gap"
 )

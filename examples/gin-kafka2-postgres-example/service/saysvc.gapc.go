@@ -5,7 +5,7 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"examples/gin-kafka-mysql-example2/event"
+	"examples/gin-kafka2-postgres-example/event"
 
 	"github.com/loopopen/gap"
 	"github.com/loopopen/gap/gapc"
@@ -34,7 +34,7 @@ func init() {
 				return nil
 			},
 			event.SomethingSaid{}.Topic(),
-			"examples.gin-kafka-mysql-example2",
+			"examples.gin-kafka2-postgres-example",
 		),
 	)
 }
