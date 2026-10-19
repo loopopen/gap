@@ -1,4 +1,5 @@
 import { Badge, Box, Button, Card, Flex, H1, Text } from '@traefik-labs/faency'
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FiActivity,
@@ -7,7 +8,6 @@ import {
   FiClock,
   FiDatabase,
   FiDownload,
-  FiRefreshCw,
   FiRepeat,
   FiSend,
 } from 'react-icons/fi'
@@ -16,6 +16,40 @@ import { useDashboardStats } from '../hooks/useDashboardStats'
 import { useMetas } from '../hooks/useMetas'
 import PageTitle from '../layout/PageTitle'
 import type { MessageStats } from '../types'
+
+const PROGRESS_RADIUS = 6.25
+const PROGRESS_CIRCUMFERENCE = 2 * Math.PI * PROGRESS_RADIUS
+
+const RefreshProgress = ({ startedAt, intervalMs }: { startedAt: number; intervalMs: number }) => {
+  const arcRef = useRef<SVGCircleElement>(null)
+
+  useEffect(() => {
+    const arc = arcRef.current
+    if (!arc || startedAt === 0) return
+    const animation = arc.animate(
+      [{ strokeDashoffset: PROGRESS_CIRCUMFERENCE }, { strokeDashoffset: 0 }],
+      { duration: intervalMs, easing: 'linear', fill: 'forwards' },
+    )
+    return () => animation.cancel()
+  }, [startedAt, intervalMs])
+
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r={PROGRESS_RADIUS} stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
+      <circle
+        ref={arcRef}
+        cx="8"
+        cy="8"
+        r={PROGRESS_RADIUS}
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeDasharray={PROGRESS_CIRCUMFERENCE}
+        strokeDashoffset={PROGRESS_CIRCUMFERENCE}
+        transform="rotate(-90 8 8)"
+      />
+    </svg>
+  )
+}
 
 const numberFormatter = new Intl.NumberFormat()
 const formatNumber = (value: number) => numberFormatter.format(value)
@@ -132,7 +166,7 @@ const StreamCard = ({ title, stats, received }: { title: string; stats: MessageS
 }
 
 const Home = () => {
-  const { stats, loading, error, updatedAt, refetch } = useDashboardStats()
+  const { stats, loading, error, updatedAt, refetch, cycleStartedAt, refreshIntervalMs, cycleRefreshInterval } = useDashboardStats()
   const { metas, loading: metasLoading, error: metasError } = useMetas()
   const published = stats?.published
   const received = stats?.received
@@ -154,9 +188,20 @@ const Home = () => {
             {error ? 'Unavailable' : healthy ? 'Operational' : 'Needs attention'}
           </Badge>
           {updatedAt && <Text size="1" css={{ color: '$textSubtle' }}>{`Updated ${updatedAt.toLocaleTimeString()}`}</Text>}
-          <Button ghost variant="secondary" aria-label="Refresh dashboard" disabled={loading} onClick={refetch} css={{ width: 32, height: 32, px: 0 }}>
-            <FiRefreshCw />
-          </Button>
+          <Flex align="center" css={{ gap: '3px' }}>
+            <Button ghost variant="secondary" aria-label="Refresh dashboard" disabled={loading} onClick={refetch} css={{ width: 32, height: 32, px: 0 }}>
+              <RefreshProgress startedAt={cycleStartedAt} intervalMs={refreshIntervalMs} />
+            </Button>
+            <Button
+              ghost
+              variant="secondary"
+              aria-label={`Refresh interval ${refreshIntervalMs / 1000}s`}
+              onClick={cycleRefreshInterval}
+              css={{ width: 32, height: 32, minWidth: 32, px: 0, fontSize: '$1', fontWeight: 600 }}
+            >
+              {`${refreshIntervalMs / 1000}s`}
+            </Button>
+          </Flex>
         </Flex>
       </Flex>
 
@@ -188,7 +233,9 @@ const Home = () => {
           gridTemplateColumns: 'minmax(0, 1fr)',
           gap: '$3',
           '@bp1': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
+          '@bp2': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
           '@bp3': { gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' },
+          '@bp4': { gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' },
         }}
       >
         <MetricCard label="Published" value={published?.total || 0} hint="Messages created by this node" tone="blue" icon={<FiSend size={20} />} />
@@ -198,7 +245,7 @@ const Home = () => {
       </Box>
 
       {loading && !stats ? <Text css={{ color: '$textSubtle' }}>Loading message statistics…</Text> : stats && (
-        <Box css={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '$4', '@bp3': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' } }}>
+        <Box css={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '$4', '@bp3': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }, '@bp4': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' } }}>
           <StreamCard title="Published messages" stats={stats.published} />
           <StreamCard title="Received messages" stats={stats.received} received />
         </Box>
