@@ -130,6 +130,9 @@ tag-xgorm: $(TAG_CHECK_DEPS)
 tag-xmysql: $(TAG_CHECK_DEPS)
 	$(call tag_func,./storage/xmysql/options.go,storage/xmysql/)
 
+tag-xpostgres: $(TAG_CHECK_DEPS)
+	$(call tag_func,./storage/xpostgres/options.go,storage/xpostgres/)
+
 tag-xkafka: $(TAG_CHECK_DEPS)
 	$(call tag_func,./broker/xkafka/options.go,broker/xkafka/)
 
