@@ -3,9 +3,9 @@ module examples/kafka-gorm-postgres-example
 go 1.24.0
 
 require (
-	github.com/loopopen/gap v0.3.0-beta.3
-	github.com/loopopen/gap/broker/xkafka v0.0.0
-	github.com/loopopen/gap/storage/xgorm v0.0.0
+	github.com/loopopen/gap v99.0.0+incompatible
+	github.com/loopopen/gap/broker/xkafka v0.0.0-00010101000000-000000000000
+	github.com/loopopen/gap/storage/xgorm v0.0.0-00010101000000-000000000000
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
 )

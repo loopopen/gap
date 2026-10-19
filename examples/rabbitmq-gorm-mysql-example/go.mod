@@ -4,9 +4,9 @@ go 1.24.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/loopopen/gap v0.3.0-beta.3
-	github.com/loopopen/gap/broker/xrabbitmq v0.0.0
-	github.com/loopopen/gap/storage/xgorm v0.0.0
+	github.com/loopopen/gap v99.0.0+incompatible
+	github.com/loopopen/gap/broker/xrabbitmq v0.0.0-00010101000000-000000000000
+	github.com/loopopen/gap/storage/xgorm v0.0.0-00010101000000-000000000000
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/gorm v1.31.1
 )
