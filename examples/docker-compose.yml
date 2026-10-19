@@ -14,6 +14,19 @@ services:
     networks:
       - examples-net
 
+  postgres:
+    image: postgres:15-alpine 
+    container_name: examples-postgres
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: example
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgresdata:/var/lib/postgresql/data
+    networks:
+      examples-net:
+
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: examples-rabbitmq
@@ -71,6 +84,7 @@ services:
 
 volumes:
   mysqldata:
+  postgresdata:
   rabbitmqata:
   rabbitmqlog:
   kafkadata:

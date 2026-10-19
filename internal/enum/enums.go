@@ -34,4 +34,5 @@ const (
 	PluginRabbitMQ
 	PluginKafka
 	PluginConfluent
+	PluginPostgres
 )

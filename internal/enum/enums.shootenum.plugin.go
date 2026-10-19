@@ -17,13 +17,14 @@ func _() {
 	_ = x[PluginRabbitMQ-3]
 	_ = x[PluginKafka-4]
 	_ = x[PluginConfluent-5]
+	_ = x[PluginPostgres-6]
 }
 
-const _plugin_max = PluginNone | PluginMySQL | PluginGORM | PluginRabbitMQ | PluginKafka | PluginConfluent
+const _plugin_max = PluginNone | PluginMySQL | PluginGORM | PluginRabbitMQ | PluginKafka | PluginConfluent | PluginPostgres
 
-var _plugin_values = []Plugin{PluginNone, PluginMySQL, PluginGORM, PluginRabbitMQ, PluginKafka, PluginConfluent}
+var _plugin_values = []Plugin{PluginNone, PluginMySQL, PluginGORM, PluginRabbitMQ, PluginKafka, PluginConfluent, PluginPostgres}
 
-var _plugin_strings = []string{"None", "MySQL", "GORM", "RabbitMQ", "Kafka", "Confluent"}
+var _plugin_strings = []string{"None", "MySQL", "GORM", "RabbitMQ", "Kafka", "Confluent", "Postgres"}
 
 var _plugin_string_map = map[Plugin]string{
 	PluginNone:      "None",
@@ -32,6 +33,7 @@ var _plugin_string_map = map[Plugin]string{
 	PluginRabbitMQ:  "RabbitMQ",
 	PluginKafka:     "Kafka",
 	PluginConfluent: "Confluent",
+	PluginPostgres:  "Postgres",
 }
 
 var _plugin_value_map = map[string]Plugin{
@@ -41,6 +43,7 @@ var _plugin_value_map = map[string]Plugin{
 	"RabbitMQ":  PluginRabbitMQ,
 	"Kafka":     PluginKafka,
 	"Confluent": PluginConfluent,
+	"Postgres":  PluginPostgres,
 }
 
 // String returns the string value of type Plugin
