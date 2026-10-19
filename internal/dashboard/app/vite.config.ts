@@ -19,7 +19,7 @@ export default defineConfig({
   server: {
     proxy: {
       '^/dashboard/api/': {
-        target: 'http://localhost:8084',
+        target: 'http://localhost:8080',
         changeOrigin: true
       }
     }
