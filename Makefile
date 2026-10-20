@@ -67,7 +67,7 @@ define tag_func
 			echo "tag already exists: $$full_tag" >&2; \
 			exit 1; \
 		fi; \
-		set -- "$(1)"; \
+		set -- "$(1)" $(3); \
 		if [ -n "$$prefix" ] && [ "$(SYNC_ROOT_VERSION)" = "1" ]; then \
 			module_dir="$${prefix%/}"; \
 			(cd "$$module_dir" && go mod edit -require="$(ROOT_MODULE)@$(tag)"); \
@@ -122,7 +122,8 @@ endif
 endif
 
 tag-gap: $(TAG_CHECK_DEPS)
-	$(call tag_func,./gap.go,)
+	$(MAKE) --no-print-directory build-ui
+	$(call tag_func,./gap.go,,./internal/dashboard/app/dist)
 
 tag-xgorm: $(TAG_CHECK_DEPS)
 	$(call tag_func,./storage/xgorm/options.go,storage/xgorm/)
