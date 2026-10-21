@@ -6,28 +6,30 @@ import (
 	"github.com/loopopen/gap/internal/gap"
 )
 
-type FactoryIface interface {
+type Factory interface {
 	CreateProducer(opts *gap.Options) (Producer, error)
 
 	CreateConsumer(opts *gap.Options, group string) (Consumer, error)
 }
 
-type Factory struct {
-	factory   FactoryIface
-	mu        *sync.Mutex
+type CachedFactory struct {
+	factory   Factory
+	mu        sync.Mutex
 	producer  Producer
 	consumers map[string]Consumer
 }
 
-func NewFactory(factory FactoryIface) *Factory {
-	return &Factory{
+func Cache(factory Factory) Factory {
+	return &CachedFactory{
 		factory:   factory,
-		mu:        &sync.Mutex{},
 		consumers: make(map[string]Consumer),
 	}
 }
 
-func (f *Factory) CreateProducer(gapOpts *gap.Options) (Producer, error) {
+func (f *CachedFactory) CreateProducer(gapOpts *gap.Options) (Producer, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	if f.producer == nil {
 		producer, err := f.factory.CreateProducer(gapOpts)
 		if err != nil {
@@ -39,7 +41,10 @@ func (f *Factory) CreateProducer(gapOpts *gap.Options) (Producer, error) {
 	return f.producer, nil
 }
 
-func (f *Factory) CreateConsumer(gapOpts *gap.Options, group string) (Consumer, error) {
+func (f *CachedFactory) CreateConsumer(gapOpts *gap.Options, group string) (Consumer, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	consumer, ok := f.consumers[group]
 	if !ok {
 		var err error

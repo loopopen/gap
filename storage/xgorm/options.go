@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-const version = "v0.3.0-beta.5"
+const version = "v0.3.0-beta.7"
 
 //go:generate go tool shoot new -opt -short -type=Options
 

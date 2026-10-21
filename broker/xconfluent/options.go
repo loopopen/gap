@@ -8,7 +8,7 @@ import (
 	"github.com/loopopen/gap/internal/plugin"
 )
 
-const version = "v0.3.0-beta.5"
+const version = "v0.3.0-beta.7"
 
 type Options = internal.Options
 
@@ -30,6 +30,6 @@ var (
 )
 
 func init() {
-	plugin.Register[broker.FactoryIface](enum.PluginConfluent, broker.NewFactory(&internal.Factory{}))
+	plugin.Register[broker.Factory](enum.PluginConfluent, broker.Cache(&internal.Factory{}))
 	dashboard.AddMeta(enum.PluginKindBroker, enum.PluginConfluent, version)
 }

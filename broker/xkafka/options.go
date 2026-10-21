@@ -8,7 +8,7 @@ import (
 	"github.com/loopopen/gap/internal/plugin"
 )
 
-const version = "v0.3.0-beta.5"
+const version = "v0.3.0-beta.7"
 
 type Options = internal.Options
 
@@ -29,6 +29,6 @@ var (
 )
 
 func init() {
-	plugin.Register[broker.FactoryIface](enum.PluginKafka, broker.NewFactory(&internal.Factory{}))
+	plugin.Register[broker.Factory](enum.PluginKafka, broker.Cache(&internal.Factory{}))
 	dashboard.AddMeta(enum.PluginKindBroker, enum.PluginKafka, version)
 }

@@ -43,7 +43,7 @@ func MustGetProducer(gapOpts *gap.Options) broker.Producer {
 	if opts == nil {
 		return nil
 	}
-	f := mustGet[broker.FactoryIface](opts.PluginType())
+	f := mustGet[broker.Factory](opts.PluginType())
 	producer, err := f.CreateProducer(gapOpts)
 	if err != nil {
 		panic(err)
@@ -56,7 +56,7 @@ func MustGetConsumer(gapOpts *gap.Options, group string) broker.Consumer {
 	if opts == nil {
 		return nil
 	}
-	f := mustGet[broker.FactoryIface](opts.PluginType())
+	f := mustGet[broker.Factory](opts.PluginType())
 	consumer, err := f.CreateConsumer(gapOpts, group)
 	if err != nil {
 		panic(err)
