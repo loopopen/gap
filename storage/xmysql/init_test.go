@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -44,15 +45,41 @@ func TestCreateStorageEmptyDSN(t *testing.T) {
 	}
 }
 
-func TestMySQLPoolLimits(t *testing.T) {
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:1)/gap")
-	if err != nil {
-		t.Fatal(err)
+func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
+	resetPools(t)
+	orig := openPoolDB
+	t.Cleanup(func() { openPoolDB = orig })
+
+	var opens atomic.Int32
+	var opened *sql.DB
+	openPoolDB = func(context.Context, string, poolRole) (*sql.DB, error) {
+		opens.Add(1)
+		db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:1)/gap?timeout=1s")
+		opened = db
+		return db, err
 	}
-	t.Cleanup(func() { _ = db.Close() })
-	configurePool(db)
-	if got := db.Stats().MaxOpenConnections; got != maxOpenConns {
-		t.Fatalf("max open connections = %d", got)
+
+	opts := &gap.Options{
+		Context: context.Background(),
+		StorageOptions: &Options{
+			Schema: "gap",
+			DSN:    "dsn-init-fail",
+		},
+	}
+	for range 2 {
+		_, err := Factory{}.CreateStorage(opts)
+		if err == nil {
+			t.Fatal("expected init to fail")
+		}
+	}
+	if got := opens.Load(); got != 1 {
+		t.Fatalf("opens = %d", got)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err := opened.PingContext(ctx)
+	if err != nil && strings.Contains(err.Error(), "database is closed") {
+		t.Fatal(err)
 	}
 }
 

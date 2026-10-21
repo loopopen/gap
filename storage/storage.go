@@ -40,3 +40,10 @@ type StorageX interface {
 type FactoryIface interface {
 	CreateStorage(opts *gap.Options) (Storage, error)
 }
+
+// DashboardFactory serves dashboard reads from a pool that is separate from
+// the publisher, pump, and subscriber pool. Plugins that do not implement it
+// keep serving those reads through CreateStorage.
+type DashboardFactory interface {
+	CreateDashboardStorage(opts *gap.Options) (Storage, error)
+}
