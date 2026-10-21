@@ -4,7 +4,7 @@ import axios from 'axios'
 import type { DashboardStats } from '../types'
 
 export const DASHBOARD_REFRESH_INTERVALS_MS = [1_000, 5_000, 15_000]
-export const DASHBOARD_REFRESH_INTERVAL_MS = 15_000
+export const DASHBOARD_REFRESH_INTERVAL_MS = 5_000
 
 export const useDashboardStats = () => {
   const [stats, setStats] = useState<DashboardStats>()
