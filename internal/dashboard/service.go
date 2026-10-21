@@ -33,7 +33,7 @@ type BoardSvc struct {
 }
 
 func NewBoardSvc(gapOpts *gap.Options, opts *dashboard.Options) *BoardSvc {
-	stor := plugin.MustGetStorage(gapOpts)
+	stor := plugin.MustGetDashboardStorage(gapOpts)
 
 	return &BoardSvc{
 		gapOpts: gapOpts,

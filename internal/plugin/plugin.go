@@ -65,12 +65,34 @@ func MustGetConsumer(gapOpts *gap.Options, group string) broker.Consumer {
 }
 
 func MustGetStorage(gapOpts *gap.Options) storage.Storage {
+	return mustStorage(gapOpts, false)
+}
+
+// MustGetDashboardStorage opens the dashboard read pool when the storage
+// plugin provides one. Otherwise it uses the same storage as the data plane.
+func MustGetDashboardStorage(gapOpts *gap.Options) storage.Storage {
+	return mustStorage(gapOpts, true)
+}
+
+func mustStorage(gapOpts *gap.Options, dashboard bool) storage.Storage {
 	sp := gapOpts.StorageOptions
 	if sp == nil {
 		return nil
 	}
 	f := mustGet[storage.FactoryIface](sp.PluginType())
-	stor, err := f.CreateStorage(gapOpts)
+	var (
+		stor storage.Storage
+		err  error
+	)
+	if dashboard {
+		if df, ok := f.(storage.DashboardFactory); ok {
+			stor, err = df.CreateDashboardStorage(gapOpts)
+		} else {
+			stor, err = f.CreateStorage(gapOpts)
+		}
+	} else {
+		stor, err = f.CreateStorage(gapOpts)
+	}
 	if err != nil {
 		panic(err)
 	}
