@@ -43,7 +43,7 @@ func main() {
 			),
 		),
 		xgorm.UseGorm(
-			xgorm.DB(db),
+			xgorm.DSN(dsn, postgres.Open),
 		),
 	)
 

@@ -115,15 +115,32 @@ type Pool struct {
 }
 
 func newPool(db *sql.DB, maxOpen, maxIdle int) *Pool {
-	db.SetMaxOpenConns(maxOpen)
-	db.SetMaxIdleConns(maxIdle)
-	db.SetConnMaxLifetime(connMaxLifetime)
-	db.SetConnMaxIdleTime(connMaxIdleTime)
+	configurePool(db, maxOpen, maxIdle)
 	return &Pool{
 		DB:      db,
 		maxOpen: maxOpen,
 		schemas: map[string]struct{}{},
 	}
+}
+
+// ConfigureDashboardPool applies the shared dashboard connection limits.
+func ConfigureDashboardPool(db *sql.DB) {
+	configurePool(db, dashboardMaxOpen, dashboardMaxIdle)
+}
+
+// ConfigureDataPool applies the shared data-plane connection limits.
+func ConfigureDataPool(db *sql.DB, maxOpen int) {
+	if maxOpen < 1 {
+		maxOpen = 1
+	}
+	configurePool(db, maxOpen, dataPlaneMaxIdle)
+}
+
+func configurePool(db *sql.DB, maxOpen, maxIdle int) {
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxLifetime(connMaxLifetime)
+	db.SetConnMaxIdleTime(connMaxIdleTime)
 }
 
 func (p *Pool) grow(maxOpen int) {
