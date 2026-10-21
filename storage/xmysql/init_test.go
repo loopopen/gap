@@ -10,6 +10,7 @@ import (
 
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/storage/xsql"
 )
 
 func TestOpenMySQLEmptyDSN(t *testing.T) {
@@ -45,6 +46,12 @@ func TestCreateStorageEmptyDSN(t *testing.T) {
 	}
 }
 
+func resetPools(t *testing.T) {
+	t.Helper()
+	registry.Reset()
+	t.Cleanup(registry.Reset)
+}
+
 func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
 	resetPools(t)
 	orig := openPoolDB
@@ -52,7 +59,7 @@ func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
 
 	var opens atomic.Int32
 	var opened *sql.DB
-	openPoolDB = func(context.Context, string, poolRole) (*sql.DB, error) {
+	openPoolDB = func(context.Context, string, xsql.Role) (*sql.DB, error) {
 		opens.Add(1)
 		db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:1)/gap?timeout=1s")
 		opened = db

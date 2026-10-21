@@ -3,7 +3,6 @@ package xpostgres
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -12,6 +11,7 @@ import (
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/storage/xsql"
 )
 
 func TestQuotedTable(t *testing.T) {
@@ -92,6 +92,18 @@ func TestOpenPostgresEmptyDSN(t *testing.T) {
 	}
 }
 
+func TestOpenDashboardPingFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	db, err := openDashboard(ctx, "postgres://root@127.0.0.1:1/gap?sslmode=disable&connect_timeout=1")
+	if err == nil || db != nil {
+		t.Fatalf("db=%v err=%v", db, err)
+	}
+	if strings.Contains(err.Error(), "session setup") {
+		t.Fatal(err)
+	}
+}
+
 func TestOpenPostgresPingFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -113,124 +125,64 @@ func TestCreateStorageEmptyDSN(t *testing.T) {
 	}
 }
 
-func TestSharedPoolReusesDB(t *testing.T) {
-	resetDSNPools(t)
-	orig := openPoolDB
-	t.Cleanup(func() { openPoolDB = orig })
-
-	var opens atomic.Int32
-	openPoolDB = func(context.Context, string) (*sql.DB, error) {
-		opens.Add(1)
-		return sql.Open("pgx", "postgres://postgres@127.0.0.1:1/gap?sslmode=disable")
-	}
-
-	ctx := context.Background()
-	first, err := sharedPool(ctx, "dsn-a")
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := sharedPool(ctx, "dsn-a")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.db != second.db {
-		t.Fatal("same dsn opened two pools")
-	}
-	other, err := sharedPool(ctx, "dsn-b")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if other.db == first.db {
-		t.Fatal("different dsn shared a pool")
-	}
-	if got := opens.Load(); got != 2 {
-		t.Fatalf("opens = %d", got)
+func TestDashboardLimitSQL(t *testing.T) {
+	if got, want := dashboardLimitSQL(), "SET statement_timeout = 10000"; got != want {
+		t.Fatalf("sql = %q", got)
 	}
 }
 
-func TestSharedPoolDoesNotCacheOpenError(t *testing.T) {
-	resetDSNPools(t)
+func TestOpenDashboardEmptyDSN(t *testing.T) {
+	db, err := openDashboard(context.Background(), " ")
+	if err == nil || db != nil {
+		t.Fatalf("db=%v err=%v", db, err)
+	}
+	if !strings.Contains(err.Error(), "empty") {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
+	resetPools(t)
 	orig := openPoolDB
 	t.Cleanup(func() { openPoolDB = orig })
 
 	var opens atomic.Int32
-	openPoolDB = func(context.Context, string) (*sql.DB, error) {
+	var opened *sql.DB
+	openPoolDB = func(context.Context, string, xsql.Role) (*sql.DB, error) {
 		opens.Add(1)
-		return nil, errors.New("down")
+		db, err := sql.Open("pgx", "postgres://postgres@127.0.0.1:1/gap?sslmode=disable&connect_timeout=1")
+		opened = db
+		return db, err
+	}
+
+	opts := &gap.Options{
+		Context: context.Background(),
+		StorageOptions: &Options{
+			Schema: "gap",
+			DSN:    "dsn-init-fail",
+		},
 	}
 	for range 2 {
-		db, err := sharedPool(context.Background(), "dsn-down")
-		if err == nil || db != nil {
-			t.Fatalf("db=%v err=%v", db, err)
+		_, err := Factory{}.CreateStorage(opts)
+		if err == nil {
+			t.Fatal("expected init to fail")
 		}
 	}
-	if got := opens.Load(); got != 2 {
+	if got := opens.Load(); got != 1 {
 		t.Fatalf("opens = %d", got)
 	}
-}
-
-func TestEnsureSchemaRetriesAfterFailure(t *testing.T) {
-	pool := &dsnPool{schemas: map[string]struct{}{}}
-	var calls int
-	if err := pool.ensureSchema("gap", func() error {
-		calls++
-		return nil
-	}); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err := opened.PingContext(ctx)
+	if err != nil && strings.Contains(err.Error(), "database is closed") {
 		t.Fatal(err)
-	}
-	if err := pool.ensureSchema("gap", func() error {
-		calls++
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := pool.ensureSchema("other", func() error {
-		calls++
-		return errors.New("boom")
-	}); err == nil {
-		t.Fatal("expected init error")
-	}
-	if err := pool.ensureSchema("other", func() error {
-		calls++
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if calls != 3 {
-		t.Fatalf("init calls = %d", calls)
 	}
 }
 
-func resetDSNPools(t *testing.T) {
+func resetPools(t *testing.T) {
 	t.Helper()
-	t.Cleanup(func() {
-		dsnPools.Range(func(key, value any) bool {
-			dsnPools.Delete(key)
-			if pool, ok := value.(*dsnPool); ok && pool.db != nil {
-				_ = pool.db.Close()
-			}
-			return true
-		})
-	})
-	dsnPools.Range(func(key, value any) bool {
-		dsnPools.Delete(key)
-		if pool, ok := value.(*dsnPool); ok && pool.db != nil {
-			_ = pool.db.Close()
-		}
-		return true
-	})
-}
-
-func TestPostgresPoolLimits(t *testing.T) {
-	db, err := sql.Open("pgx", "postgres://root@127.0.0.1:1/gap?sslmode=disable")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	configurePool(db)
-	if got := db.Stats().MaxOpenConnections; got != maxOpenConns {
-		t.Fatalf("max open connections = %d", got)
-	}
+	registry.Reset()
+	t.Cleanup(registry.Reset)
 }
 
 func TestCreateStoragePluginMismatch(t *testing.T) {

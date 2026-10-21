@@ -9,38 +9,39 @@ import (
 	"github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/internal/plugin"
 	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/storage/xsql"
 )
 
 type Factory struct{}
 
 func (f Factory) CreateStorage(gapOpts *gap.Options) (storage.Storage, error) {
-	return f.create(gapOpts, roleData)
+	return f.create(gapOpts, xsql.RoleData)
 }
 
 func (f Factory) CreateDashboardStorage(gapOpts *gap.Options) (storage.Storage, error) {
-	return f.create(gapOpts, roleDashboard)
+	return f.create(gapOpts, xsql.RoleDashboard)
 }
 
-func (f Factory) create(gapOpts *gap.Options, role poolRole) (storage.Storage, error) {
+func (f Factory) create(gapOpts *gap.Options, role xsql.Role) (storage.Storage, error) {
 	opts, err := mysqlOptions(gapOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	var pool *connPool
+	var pool *xsql.Pool
 	switch role {
-	case roleDashboard:
-		pool, err = dashboardPool(gapOpts.Context, opts.DSN)
+	case xsql.RoleDashboard:
+		pool, err = registry.Dashboard(gapOpts.Context, opts.DSN)
 	default:
-		pool, err = dataPool(gapOpts.Context, opts.DSN, dataPlaneMaxOpen(gapOpts))
+		pool, err = registry.Data(gapOpts.Context, opts.DSN, xsql.DataPlaneMaxOpen(gapOpts))
 	}
 	if err != nil {
 		slog.Error("failed to connect mysql database", slog.Any("err", err))
 		return nil, err
 	}
 
-	stor := NewStorage(gapOpts, pool.db)
-	if err = pool.ensureSchema(opts.Schema, stor.init); err != nil {
+	stor := NewStorage(gapOpts, pool.DB)
+	if err = pool.EnsureSchema(opts.Schema, stor.init); err != nil {
 		slog.Error("failed to init storage", slog.Any("err", err))
 		return nil, err
 	}
