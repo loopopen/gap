@@ -22,8 +22,7 @@ type Producer struct {
 	ensurer  *Ensurer
 }
 
-func NewProducer(gapOpts *gap.Options) (*Producer, error) {
-	opts := gapOpts.BrokerOptions.(*Options)
+func NewProducer(gapOpts *gap.Options, opts *Options) (*Producer, error) {
 	ensurer, err := SingleEnsurer(opts)
 	if err != nil {
 		return nil, err

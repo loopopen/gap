@@ -114,12 +114,11 @@ func TestOpenPostgresPingFails(t *testing.T) {
 }
 
 func TestCreateStorageEmptyDSN(t *testing.T) {
-	_, err := Factory{}.CreateStorage(&gap.Options{
-		Context: context.Background(),
-		StorageOptions: &Options{
-			Schema: "gap",
-		},
-	})
+	storOpts := &Options{Schema: "gap"}
+	_, err := storOpts.OpenStorage(&gap.Options{
+		Context:        context.Background(),
+		StorageOptions: storOpts,
+	}, false)
 	if err == nil || !strings.Contains(err.Error(), "empty") {
 		t.Fatal(err)
 	}
@@ -155,15 +154,16 @@ func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
 		return db, err
 	}
 
+	storOpts := &Options{
+		Schema: "gap",
+		DSN:    "dsn-init-fail",
+	}
 	opts := &gap.Options{
-		Context: context.Background(),
-		StorageOptions: &Options{
-			Schema: "gap",
-			DSN:    "dsn-init-fail",
-		},
+		Context:        context.Background(),
+		StorageOptions: storOpts,
 	}
 	for range 2 {
-		_, err := Factory{}.CreateStorage(opts)
+		_, err := storOpts.OpenStorage(opts, false)
 		if err == nil {
 			t.Fatal("expected init to fail")
 		}
@@ -184,19 +184,6 @@ func resetPools(t *testing.T) {
 	registry.Reset()
 	t.Cleanup(registry.Reset)
 }
-
-func TestCreateStoragePluginMismatch(t *testing.T) {
-	_, err := Factory{}.CreateStorage(&gap.Options{
-		StorageOptions: mismatchPlugin{},
-	})
-	if err == nil {
-		t.Fatal("expected plugin mismatch")
-	}
-}
-
-type mismatchPlugin struct{}
-
-func (mismatchPlugin) PluginType() enum.Plugin { return enum.PluginMySQL }
 
 func TestToEntityInvalidHeaders(t *testing.T) {
 	p := &Published{ID: 7, Headers: "{"}

@@ -1,11 +1,9 @@
 package xconfluent
 
 import (
-	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/broker/xconfluent/internal"
 	"github.com/loopopen/gap/internal/dashboard"
 	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/plugin"
 )
 
 const version = "v0.3.0-beta.7"
@@ -30,6 +28,5 @@ var (
 )
 
 func init() {
-	plugin.Register[broker.Factory](enum.PluginConfluent, broker.Cache(&internal.Factory{}))
-	dashboard.AddMeta(enum.PluginKindBroker, enum.PluginConfluent, version)
+	dashboard.AddMeta(enum.PluginKindBroker, enum.PluginKafka, version)
 }

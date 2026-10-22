@@ -23,9 +23,7 @@ type Producer struct {
 	ctag    string
 }
 
-func NewProducer(gapOpts *gap.Options) *Producer {
-	opts := gapOpts.BrokerOptions.(*Options)
-
+func NewProducer(gapOpts *gap.Options, opts *Options) *Producer {
 	producer := &Producer{
 		gapOpts: gapOpts,
 		opts:    opts,

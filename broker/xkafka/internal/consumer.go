@@ -119,12 +119,11 @@ type Consumer struct {
 }
 
 // NewConsumer creates a new Kafka consumer broker instance.
-func NewConsumer(gapOpts *gap.Options, group string) *Consumer {
+func NewConsumer(gapOpts *gap.Options, opts *Options, group string) *Consumer {
 	if group == "" {
 		panic("group should not be empty")
 	}
 
-	opts := gapOpts.BrokerOptions.(*Options)
 	dialer := SingleDialer(opts)
 	groupID := fmt.Sprintf("gap.%s.g.%s", gapOpts.Version, group)
 

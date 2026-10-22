@@ -21,9 +21,10 @@ func (o *Options) PluginType() enum.Plugin {
 	return enum.PluginMySQL
 }
 
+var _ gap.StoragePlugin = (*Options)(nil)
+
 func UseMySQL(opts ...shoot.Option[Options, *Options]) shoot.Option[gap.Options, *gap.Options] {
 	return func(o *gap.Options) {
-		options := new(Options).With(opts...)
-		o.StorageOptions = options
+		o.StorageOptions = new(Options).With(opts...)
 	}
 }

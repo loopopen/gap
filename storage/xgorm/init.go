@@ -11,7 +11,6 @@ import (
 	"github.com/loopopen/gap/internal/dashboard"
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/gap"
-	"github.com/loopopen/gap/internal/plugin"
 	"github.com/loopopen/gap/storage"
 	"github.com/loopopen/gap/storage/xsql"
 	"gorm.io/gorm"
@@ -26,48 +25,34 @@ type gormPools struct {
 	dashboardDB   *gorm.DB
 }
 
-type Factory struct {
-	pools sync.Map
-}
+var gormPoolCache sync.Map
 
-func (f *Factory) CreateStorage(gapOpts *gap.Options) (storage.Storage, error) {
-	opts, err := gormOptions(gapOpts)
+func (o *Options) OpenStorage(gapOpts *gap.Options, dashboard bool) (storage.Storage, error) {
+	if err := o.validate(); err != nil {
+		return nil, err
+	}
+	pools := poolsFor(o)
+	dataDB, err := pools.loadData(gapOpts, o)
 	if err != nil {
 		return nil, err
 	}
-	pools := f.getPools(opts)
-	dataDB, err := pools.loadData(gapOpts, opts)
-	if err != nil {
-		return nil, err
-	}
-	return createStorage(gapOpts, dataDB)
-}
-
-func (f *Factory) CreateDashboardStorage(gapOpts *gap.Options) (storage.Storage, error) {
-	opts, err := gormOptions(gapOpts)
-	if err != nil {
-		return nil, err
+	if !dashboard {
+		return createStorage(gapOpts, o, dataDB)
 	}
 
-	pools := f.getPools(opts)
-	dataDB, err := pools.loadData(gapOpts, opts)
-	if err != nil {
-		return nil, err
-	}
 	pools.dashboardOnce.Do(func() {
 		var openErr error
-		pools.dashboardDB, _, openErr = openDashboardDB(opts, dataDB)
+		pools.dashboardDB, _, openErr = openDashboardDB(o, dataDB)
 		if openErr != nil {
 			slog.Warn("dashboard is sharing the data-plane gorm pool", slog.Any("err", openErr))
 			pools.dashboardDB = dataDB
 		}
 	})
-
-	return createStorage(gapOpts, pools.dashboardDB)
+	return createStorage(gapOpts, o, pools.dashboardDB)
 }
 
-func (f *Factory) getPools(opts *Options) *gormPools {
-	value, _ := f.pools.LoadOrStore(opts, new(gormPools))
+func poolsFor(opts *Options) *gormPools {
+	value, _ := gormPoolCache.LoadOrStore(opts, new(gormPools))
 	return value.(*gormPools)
 }
 
@@ -77,7 +62,7 @@ func (p *gormPools) loadData(gapOpts *gap.Options, opts *Options) (*gorm.DB, err
 			p.dataDB = opts.DB
 			return
 		}
-		dialector := opts._dialector(opts._dsn)
+		dialector := opts.dialector(opts.dsn)
 		if dialector == nil {
 			p.dataErr = errors.New("gorm dialector is nil")
 			return
@@ -97,8 +82,8 @@ func (p *gormPools) loadData(gapOpts *gap.Options, opts *Options) (*gorm.DB, err
 	return p.dataDB, p.dataErr
 }
 
-func createStorage(gapOpts *gap.Options, db *gorm.DB) (storage.Storage, error) {
-	stor := NewStorage(gapOpts, db)
+func createStorage(gapOpts *gap.Options, opts *Options, db *gorm.DB) (storage.Storage, error) {
+	stor := NewStorage(gapOpts, opts, db)
 	if err := stor.init(); err != nil {
 		slog.Error("failed to init storage", slog.Any("err", err))
 		return nil, err
@@ -106,25 +91,17 @@ func createStorage(gapOpts *gap.Options, db *gorm.DB) (storage.Storage, error) {
 	return stor, nil
 }
 
-func gormOptions(gapOpts *gap.Options) (*Options, error) {
-	o := gapOpts.StorageOptions
-	if o == nil {
-		return nil, errors.New("no storage plugin configured")
-	}
-	if o.PluginType() != enum.PluginGORM {
-		return nil, errors.New("storage plugin does not match")
-	}
-	opts := o.(*Options)
-	hasDB := opts.DB != nil
-	hasDSN := strings.TrimSpace(opts._dsn) != ""
-	hasDialector := opts._dialector != nil
+func (o *Options) validate() error {
+	hasDB := o.DB != nil
+	hasDSN := strings.TrimSpace(o.dsn) != ""
+	hasDialector := o.dialector != nil
 	if hasDSN != hasDialector {
-		return nil, errors.New("gorm dsn and dialector must be configured together")
+		return errors.New("gorm dsn and dialector must be configured together")
 	}
 	if hasDB == hasDSN {
-		return nil, errors.New("configure either gorm db or dsn with dialector")
+		return errors.New("configure either gorm db or dsn with dialector")
 	}
-	return opts, nil
+	return nil
 }
 
 func openDashboardDB(opts *Options, dataDB *gorm.DB) (*gorm.DB, bool, error) {
@@ -134,8 +111,8 @@ func openDashboardDB(opts *Options, dataDB *gorm.DB) (*gorm.DB, bool, error) {
 	}
 
 	dialector := dataDB.Dialector
-	if opts._dialector != nil {
-		dialector = opts._dialector(opts._dsn)
+	if opts.dialector != nil {
+		dialector = opts.dialector(opts.dsn)
 	}
 	if dialector == nil {
 		return nil, false, errors.New("dashboard gorm dialector is nil")
@@ -185,11 +162,5 @@ func cloneGormConfig(src *gorm.Config) *gorm.Config {
 }
 
 func init() {
-	plugin.Register[storage.FactoryIface](enum.PluginGORM, &Factory{})
 	dashboard.AddMeta(enum.PluginKindStorage, enum.PluginGORM, version)
 }
-
-var (
-	_ storage.FactoryIface     = (*Factory)(nil)
-	_ storage.DashboardFactory = (*Factory)(nil)
-)

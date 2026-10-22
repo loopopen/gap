@@ -26,9 +26,7 @@ type Producer struct {
 }
 
 // NewProducer creates a new Kafka producer broker instance.
-func NewProducer(gapOpts *gap.Options) *Producer {
-	opts := gapOpts.BrokerOptions.(*Options)
-
+func NewProducer(gapOpts *gap.Options, opts *Options) *Producer {
 	producer := &Producer{
 		gapOpts:   gapOpts,
 		opts:      opts,
