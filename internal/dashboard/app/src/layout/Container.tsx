@@ -2,7 +2,7 @@ import { Flex, styled } from '@traefik-labs/faency'
 
 import breakpoints from '../utils/breakpoints'
 
-export default styled(Flex, {
+const Container = styled(Flex, {
   flexGrow: 1,
   margin: '0 24px',
 
@@ -11,3 +11,5 @@ export default styled(Flex, {
     margin: '0 auto',
   },
 })
+
+export default Container

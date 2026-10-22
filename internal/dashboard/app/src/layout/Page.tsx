@@ -6,10 +6,10 @@ import Container from './Container'
 import PageTitle from './PageTitle'
 import { LAPTOP_BP, SideBarPanel, SideNav, TopNav } from './navigation'
 
-export const LIGHT_PRIMARY_COLOR = '#217F97'
-export const DARK_PRIMARY_COLOR = '#2AA2C1'
+const LIGHT_PRIMARY_COLOR = '#217F97'
+const DARK_PRIMARY_COLOR = '#2AA2C1'
 
-export const globalStyles = globalCss({
+const globalStyles = globalCss({
   '.light': {
     '--colors-primary': LIGHT_PRIMARY_COLOR,
   },

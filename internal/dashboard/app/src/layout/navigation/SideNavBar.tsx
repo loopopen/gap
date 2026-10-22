@@ -10,7 +10,7 @@ import {
   Tooltip,
   VisuallyHidden,
 } from '@traefik-labs/faency'
-import { type MouseEvent, useEffect, useMemo, useState } from 'react'
+import { type MouseEvent, useMemo } from 'react'
 import { BsChevronDoubleLeft, BsChevronDoubleRight } from 'react-icons/bs'
 import { matchPath, useHref, useLocation, useNavigate } from 'react-router-dom'
 import { useWindowSize } from 'usehooks-ts'
@@ -121,13 +121,8 @@ export const SideNav = ({
   const windowSize = useWindowSize()
   const homeHref = useHref('/')
   const navigate = useNavigate()
-  const [isSmallScreen, setIsSmallScreen] = useState(false)
-
-  useEffect(() => {
-    setIsSmallScreen(windowSize.width <= LAPTOP_BP)
-  }, [isExpanded, windowSize.width])
-
-  const isSmallAndResponsive = useMemo(() => isSmallScreen && isResponsive, [isResponsive, isSmallScreen])
+  const isSmallScreen = windowSize.width <= LAPTOP_BP
+  const isSmallAndResponsive = isSmallScreen && isResponsive
 
   return (
     <NavigationDrawer
