@@ -18,6 +18,7 @@ MODULES := \
 	broker/xrabbitmq \
 	storage/xgorm \
 	storage/xmysql \
+	storage/xpostgres \
 	examples/fiber-rabbitmq-mysql-example \
 	examples/gin-kafka-mysql-example \
 	examples/gin-kafka2-postgres-example \

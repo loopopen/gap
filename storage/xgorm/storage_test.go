@@ -137,9 +137,8 @@ func openStorage(t *testing.T) (*gorm.DB, *Storage) {
 		t.Fatalf("open gorm: %v", err)
 	}
 	stor := NewStorage(&gap.Options{
-		Version:        "v1",
-		StorageOptions: &Options{Schema: "gap"},
-	}, db)
+		Version: "v1",
+	}, &Options{Schema: "gap"}, db)
 	return db, stor
 }
 

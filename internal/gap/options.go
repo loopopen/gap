@@ -4,8 +4,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/dashboard"
 	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/storage"
 	"github.com/loopopen/shoot"
 )
 
@@ -49,17 +51,27 @@ type Options struct {
 	//@def=1
 	WorkConcurrencyFactor int
 
-	DashboardOptions     *dashboard.Options
-	StorageOptions       PluginOptions
-	BrokerOptions        PluginOptions
-	HandlerOptsLst       []HandlerOptions
-	DependencyOptsLst    []DependencyOptions
-	Dependencies         []any
-	_registerHandlerOnly bool
+	DashboardOptions    *dashboard.Options  `new:"-"`
+	StorageOptions      StoragePlugin       `new:"-"`
+	BrokerOptions       BrokerPlugin        `new:"-"`
+	HandlerOptsLst      []HandlerOptions    `new:"-"`
+	DependencyOptsLst   []DependencyOptions `new:"-"`
+	Dependencies        []any               `new:"-"`
+	registerHandlerOnly bool                `new:"-"`
 }
 
-type PluginOptions interface {
+// StoragePlugin is the selected storage driver. The concrete options open the
+// database themselves, so dispatch does not go through a plugin registry.
+type StoragePlugin interface {
 	PluginType() enum.Plugin
+	OpenStorage(opts *Options, dashboard bool) (storage.Storage, error)
+}
+
+// BrokerPlugin is the selected broker driver.
+type BrokerPlugin interface {
+	PluginType() enum.Plugin
+	OpenProducer(opts *Options) (broker.Producer, error)
+	OpenConsumer(opts *Options, group string) (broker.Consumer, error)
 }
 
 type HandlerOptions struct {
@@ -96,6 +108,6 @@ func Inject(values ...any) shoot.Option[Options, *Options] {
 
 func GoGenerated() shoot.Option[Options, *Options] {
 	return func(o *Options) {
-		o._registerHandlerOnly = true
+		o.registerHandlerOnly = true
 	}
 }

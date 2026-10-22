@@ -11,7 +11,7 @@ import (
 type Handler[T any] func(ctx context.Context, msg T, headers map[string]string) error
 
 func RegisterHandlerOnly(o *Options) bool {
-	return o._registerHandlerOnly
+	return o.registerHandlerOnly
 }
 
 func checkType[T any]() {

@@ -124,10 +124,10 @@ func TestGormOptionsRequiresOneConnectionMode(t *testing.T) {
 		{name: "managed", opts: new(Options).With(DSN("dsn", func(string) gorm.Dialector { return poolTestDialector{} }))},
 		{name: "both", opts: new(Options).With(DB(db), DSN("dsn", func(string) gorm.Dialector { return poolTestDialector{} })), wantErr: true},
 		{name: "neither", opts: &Options{}, wantErr: true},
-		{name: "partial", opts: &Options{_dsn: "dsn"}, wantErr: true},
+		{name: "partial", opts: &Options{dsn: "dsn"}, wantErr: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := gormOptions(&gap.Options{StorageOptions: test.opts})
+			err := test.opts.validate()
 			if (err != nil) != test.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, test.wantErr)
 			}

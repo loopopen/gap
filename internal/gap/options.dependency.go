@@ -9,15 +9,15 @@ import (
 //go:generate go tool shoot new -opt -short -file=$GOFILE
 
 type DependencyOptions struct {
-	FileName   string
-	PkgPath    string
-	FuncName   string
-	_resolvers []func(values []any) string
+	FileName  string
+	PkgPath   string
+	FuncName  string
+	resolvers []func(values []any) string `new:"-"`
 }
 
 func ResolveType[T any](typeName string, resolve func(v T)) shoot.Option[DependencyOptions, *DependencyOptions] {
 	return func(o *DependencyOptions) {
-		o._resolvers = append(o._resolvers, func(values []any) string {
+		o.resolvers = append(o.resolvers, func(values []any) string {
 			var dep T
 			var resolved bool
 			for _, v := range values {
@@ -45,7 +45,7 @@ func Resolve(opts ...shoot.Option[DependencyOptions, *DependencyOptions]) shoot.
 
 func (d *DependencyOptions) Resolve(values []any) {
 	var unresolved string
-	for _, r := range d._resolvers {
+	for _, r := range d.resolvers {
 		tname := r(values)
 		if tname != "" {
 			unresolved += fmt.Sprintf("\n🧩 %s", tname)

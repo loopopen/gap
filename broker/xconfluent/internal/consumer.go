@@ -115,11 +115,10 @@ type Consumer struct {
 	commitRetryMax time.Duration
 }
 
-func NewConsumer(gapOpts *gap.Options, group string) (*Consumer, error) {
+func NewConsumer(gapOpts *gap.Options, opts *Options, group string) (*Consumer, error) {
 	if group == "" {
 		panic("group should not be empty")
 	}
-	opts := gapOpts.BrokerOptions.(*Options)
 	ensurer, err := SingleEnsurer(opts)
 	if err != nil {
 		return nil, err

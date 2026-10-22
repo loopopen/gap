@@ -22,25 +22,25 @@ type Options struct {
 
 	DB *gorm.DB
 
-	_dsn string
-
-	_dialector DialectorFactory
+	dsn       string           `new:"-"`
+	dialector DialectorFactory `new:"-"`
 }
 
 func (o *Options) PluginType() enum.Plugin {
 	return enum.PluginGORM
 }
 
+var _ gap.StoragePlugin = (*Options)(nil)
+
 func UseGorm(opts ...shoot.Option[Options, *Options]) shoot.Option[gap.Options, *gap.Options] {
 	return func(o *gap.Options) {
-		options := new(Options).With(opts...)
-		o.StorageOptions = options
+		o.StorageOptions = new(Options).With(opts...)
 	}
 }
 
 func DSN(dsn string, dialector DialectorFactory) shoot.Option[Options, *Options] {
 	return func(o *Options) {
-		o._dsn = dsn
-		o._dialector = dialector
+		o.dsn = dsn
+		o.dialector = dialector
 	}
 }

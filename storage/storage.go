@@ -5,7 +5,6 @@ import (
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/internal/txer"
 )
 
@@ -35,15 +34,4 @@ type StorageX interface {
 	QueryPublished(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error)
 
 	QueryReceived(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error)
-}
-
-type FactoryIface interface {
-	CreateStorage(opts *gap.Options) (Storage, error)
-}
-
-// DashboardFactory serves dashboard reads from a pool that is separate from
-// the publisher, pump, and subscriber pool. Plugins that do not implement it
-// keep serving those reads through CreateStorage.
-type DashboardFactory interface {
-	CreateDashboardStorage(opts *gap.Options) (Storage, error)
 }

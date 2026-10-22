@@ -313,11 +313,10 @@ func (s *Storage) updateStatus(ctx context.Context, base string, id uint, src en
 	return nil
 }
 
-func NewStorage(gapOpts *gap.Options, db *sql.DB) *Storage {
-	sp := gapOpts.StorageOptions
+func NewStorage(gapOpts *gap.Options, opts *Options, db *sql.DB) *Storage {
 	s := &Storage{
 		gapOpts: gapOpts,
-		opts:    sp.(*Options),
+		opts:    opts,
 		db:      db,
 	}
 	var _ storage.Storage = s

@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/storage/xsql"
 )
@@ -35,12 +34,11 @@ func TestOpenMySQLPingFails(t *testing.T) {
 }
 
 func TestCreateStorageEmptyDSN(t *testing.T) {
-	_, err := Factory{}.CreateStorage(&gap.Options{
-		Context: context.Background(),
-		StorageOptions: &Options{
-			Schema: "gap",
-		},
-	})
+	storOpts := &Options{Schema: "gap"}
+	_, err := storOpts.OpenStorage(&gap.Options{
+		Context:        context.Background(),
+		StorageOptions: storOpts,
+	}, false)
 	if err == nil || !strings.Contains(err.Error(), "empty") {
 		t.Fatal(err)
 	}
@@ -66,15 +64,16 @@ func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
 		return db, err
 	}
 
+	storOpts := &Options{
+		Schema: "gap",
+		DSN:    "dsn-init-fail",
+	}
 	opts := &gap.Options{
-		Context: context.Background(),
-		StorageOptions: &Options{
-			Schema: "gap",
-			DSN:    "dsn-init-fail",
-		},
+		Context:        context.Background(),
+		StorageOptions: storOpts,
 	}
 	for range 2 {
-		_, err := Factory{}.CreateStorage(opts)
+		_, err := storOpts.OpenStorage(opts, false)
 		if err == nil {
 			t.Fatal("expected init to fail")
 		}
@@ -89,16 +88,3 @@ func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-func TestCreateStoragePluginMismatch(t *testing.T) {
-	_, err := Factory{}.CreateStorage(&gap.Options{
-		StorageOptions: mismatchPlugin{},
-	})
-	if err == nil {
-		t.Fatal("expected plugin mismatch")
-	}
-}
-
-type mismatchPlugin struct{}
-
-func (mismatchPlugin) PluginType() enum.Plugin { return enum.PluginGORM }

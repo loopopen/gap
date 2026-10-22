@@ -26,12 +26,10 @@ type Consumer struct {
 	ctag    string
 }
 
-func NewConsumer(gapOpts *gap.Options, group string) *Consumer {
+func NewConsumer(gapOpts *gap.Options, opts *Options, group string) *Consumer {
 	if group == "" {
 		panic("group should not be empty")
 	}
-
-	opts := gapOpts.BrokerOptions.(*Options)
 
 	consumer := &Consumer{
 		gapOpts: gapOpts,

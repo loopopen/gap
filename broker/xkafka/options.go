@@ -1,11 +1,9 @@
 package xkafka
 
 import (
-	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/broker/xkafka/internal"
 	"github.com/loopopen/gap/internal/dashboard"
 	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/plugin"
 )
 
 const version = "v0.3.0-beta.7"
@@ -29,6 +27,5 @@ var (
 )
 
 func init() {
-	plugin.Register[broker.Factory](enum.PluginKafka, broker.Cache(&internal.Factory{}))
 	dashboard.AddMeta(enum.PluginKindBroker, enum.PluginKafka, version)
 }

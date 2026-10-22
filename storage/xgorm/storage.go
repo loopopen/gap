@@ -71,11 +71,10 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 	return nil
 }
 
-func NewStorage(gapOpts *gap.Options, db *gorm.DB) *Storage {
-	opts := gapOpts.StorageOptions
+func NewStorage(gapOpts *gap.Options, opts *Options, db *gorm.DB) *Storage {
 	stor := &Storage{
 		gapOpts: gapOpts,
-		opts:    opts.(*Options),
+		opts:    opts,
 	}
 	stor.setDB(db)
 

@@ -33,6 +33,5 @@ const (
 	PluginGORM
 	PluginRabbitMQ
 	PluginKafka
-	PluginConfluent
 	PluginPostgres
 )

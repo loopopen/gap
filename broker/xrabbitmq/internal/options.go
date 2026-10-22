@@ -2,13 +2,17 @@ package internal
 
 import (
 	"fmt"
+	"log/slog"
 
+	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/shoot"
 )
 
 //go:generate go tool shoot new -opt -short -type=Options,QueueOptions
+
+var _ gap.BrokerPlugin = (*Options)(nil)
 
 const ExchangeKind = "topic"
 
@@ -73,7 +77,30 @@ func ConfigQueue(opts ...shoot.Option[QueueOptions, *QueueOptions]) shoot.Option
 
 func UseRabbitMQ(opts ...shoot.Option[Options, *Options]) shoot.Option[gap.Options, *gap.Options] {
 	return func(o *gap.Options) {
-		options := new(Options).With(opts...)
-		o.BrokerOptions = options
+		o.BrokerOptions = new(Options).With(opts...)
 	}
+}
+
+var clients = broker.NewClientCache()
+
+func (o *Options) OpenProducer(gapOpts *gap.Options) (broker.Producer, error) {
+	return clients.Producer(func() (broker.Producer, error) {
+		producer := NewProducer(gapOpts, o)
+		if err := producer.init(); err != nil {
+			slog.Error("failed to init producer", slog.Any("err", err))
+			return nil, err
+		}
+		return producer, nil
+	})
+}
+
+func (o *Options) OpenConsumer(gapOpts *gap.Options, group string) (broker.Consumer, error) {
+	return clients.Consumer(group, func() (broker.Consumer, error) {
+		consumer := NewConsumer(gapOpts, o, group)
+		if err := consumer.init(); err != nil {
+			slog.Error("failed to init consumer", slog.Any("err", err))
+			return nil, err
+		}
+		return consumer, nil
+	})
 }
