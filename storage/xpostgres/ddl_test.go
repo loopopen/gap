@@ -118,7 +118,7 @@ func TestCreateStorageEmptyDSN(t *testing.T) {
 	_, err := storOpts.OpenStorage(&gap.Options{
 		Context:        context.Background(),
 		StorageOptions: storOpts,
-	}, false)
+	}, xsql.RoleData)
 	if err == nil || !strings.Contains(err.Error(), "empty") {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
 		StorageOptions: storOpts,
 	}
 	for range 2 {
-		_, err := storOpts.OpenStorage(opts, false)
+		_, err := storOpts.OpenStorage(opts, xsql.RoleData)
 		if err == nil {
 			t.Fatal("expected init to fail")
 		}

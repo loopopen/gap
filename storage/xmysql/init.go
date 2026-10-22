@@ -10,25 +10,8 @@ import (
 	"github.com/loopopen/gap/storage/xsql"
 )
 
-func (o *Options) OpenStorage(gapOpts *gap.Options, dashboard bool) (storage.Storage, error) {
-	role := xsql.RoleData
-	if dashboard {
-		role = xsql.RoleDashboard
-	}
-	return o.open(gapOpts, role)
-}
-
-func (o *Options) open(gapOpts *gap.Options, role xsql.Role) (storage.Storage, error) {
-	var (
-		pool *xsql.Pool
-		err  error
-	)
-	switch role {
-	case xsql.RoleDashboard:
-		pool, err = registry.Dashboard(gapOpts.Context, o.DSN)
-	default:
-		pool, err = registry.Data(gapOpts.Context, o.DSN, xsql.DataPlaneMaxOpen(gapOpts))
-	}
+func (o *Options) OpenStorage(gapOpts *gap.Options, role storage.Role) (storage.Storage, error) {
+	pool, err := registry.Open(gapOpts.Context, o.DSN, role, xsql.DataPlaneMaxOpen(gapOpts))
 	if err != nil {
 		slog.Error("failed to connect mysql database", slog.Any("err", err))
 		return nil, err
