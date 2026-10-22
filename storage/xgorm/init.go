@@ -27,6 +27,11 @@ type gormPools struct {
 
 var gormPoolCache sync.Map
 
+type gormPoolKey struct {
+	dsn string
+	db  *gorm.DB
+}
+
 func (o *Options) OpenStorage(gapOpts *gap.Options, dashboard bool) (storage.Storage, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
@@ -52,7 +57,11 @@ func (o *Options) OpenStorage(gapOpts *gap.Options, dashboard bool) (storage.Sto
 }
 
 func poolsFor(opts *Options) *gormPools {
-	value, _ := gormPoolCache.LoadOrStore(opts, new(gormPools))
+	key := gormPoolKey{dsn: strings.TrimSpace(opts.dsn)}
+	if opts.DB != nil {
+		key = gormPoolKey{db: opts.DB}
+	}
+	value, _ := gormPoolCache.LoadOrStore(key, new(gormPools))
 	return value.(*gormPools)
 }
 
@@ -79,7 +88,20 @@ func (p *gormPools) loadData(gapOpts *gap.Options, opts *Options) (*gorm.DB, err
 		}
 		xsql.ConfigureDataPool(sqlDB, xsql.DataPlaneMaxOpen(gapOpts))
 	})
-	return p.dataDB, p.dataErr
+	if p.dataErr != nil || p.dataDB == nil {
+		return p.dataDB, p.dataErr
+	}
+	if opts.DB != nil {
+		return p.dataDB, nil
+	}
+	sqlDB, err := p.dataDB.DB()
+	if err != nil {
+		return nil, fmt.Errorf("get data-plane sql db: %w", err)
+	}
+	if maxOpen := xsql.DataPlaneMaxOpen(gapOpts); sqlDB.Stats().MaxOpenConnections < maxOpen {
+		xsql.ConfigureDataPool(sqlDB, maxOpen)
+	}
+	return p.dataDB, nil
 }
 
 func createStorage(gapOpts *gap.Options, opts *Options, db *gorm.DB) (storage.Storage, error) {

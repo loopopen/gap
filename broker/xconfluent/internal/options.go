@@ -61,7 +61,7 @@ func UseKafka(opts ...shoot.Option[Options, *Options]) shoot.Option[gap.Options,
 var clients = broker.NewClientCache()
 
 func (o *Options) OpenProducer(gapOpts *gap.Options) (broker.Producer, error) {
-	return clients.Producer(func() (broker.Producer, error) {
+	return clients.Producer(o.producerKey(), func() (broker.Producer, error) {
 		producer, err := NewProducer(gapOpts, o)
 		if err != nil {
 			return nil, err
@@ -75,7 +75,7 @@ func (o *Options) OpenProducer(gapOpts *gap.Options) (broker.Producer, error) {
 }
 
 func (o *Options) OpenConsumer(gapOpts *gap.Options, group string) (broker.Consumer, error) {
-	return clients.Consumer(group, func() (broker.Consumer, error) {
+	return clients.Consumer(o.consumerKey(gapOpts.Version, group), func() (broker.Consumer, error) {
 		consumer, err := NewConsumer(gapOpts, o, group)
 		if err != nil {
 			return nil, err
