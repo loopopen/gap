@@ -62,8 +62,12 @@ func (g *GroupedSubs) SubscribeAll(gapOpts *gap.Options) error {
 
 func (g *GroupedSubs) subscribeOne(gapOpts *gap.Options, opts *gap.HandlerOptions) error {
 	group := opts.Group
+	brokerName := plugin.BrokerName(gapOpts)
+	pluginType := plugin.PluginType(gapOpts)
+	configIdentity := plugin.BrokerConfigIdentity(gapOpts)
+	key := pluginType + "\x00" + brokerName + "\x00" + group
 
-	sub, ok := g.subs[group]
+	sub, ok := g.subs[key]
 	if !ok {
 		consumer := plugin.MustGetConsumer(gapOpts, group)
 		if consumer == nil {
@@ -79,8 +83,8 @@ func (g *GroupedSubs) subscribeOne(gapOpts *gap.Options, opts *gap.HandlerOption
 			})
 		}
 
-		sub = NewSub(gapOpts, &opts.GroupOptions, consumer, stor)
-		g.subs[group] = sub
+		sub = NewSub(gapOpts, &opts.GroupOptions, consumer, stor, pluginType, brokerName, configIdentity)
+		g.subs[key] = sub
 	}
 	err := sub.Subscribe(opts.Topic, opts.Handler)
 	if err != nil {
@@ -100,12 +104,16 @@ func (g *GroupedSubs) ListeningAll() error {
 }
 
 type Sub struct {
-	opts      *gap.Options
-	groupOpts *gap.GroupOptions
-	storage   storage.Storage
-	consumer  broker.Consumer
-	handlers  map[string]gap.Handler[[]byte]
-	pump      *pump.Pump
+	opts       *gap.Options
+	groupOpts  *gap.GroupOptions
+	storage    storage.Storage
+	consumer   broker.Consumer
+	brokerName string
+	pluginType string
+	handlers   map[string]gap.Handler[[]byte]
+	pump       *pump.Pump
+	listenOnce sync.Once
+	listenErr  error
 }
 
 // Subscribe implements [Subscriber].
@@ -127,22 +135,26 @@ func (s *Sub) Subscribe(topic string, handler gap.Handler[[]byte]) error {
 	return nil
 }
 
-func NewSub(opts *gap.Options, groupOpts *gap.GroupOptions, consumer broker.Consumer, storage storage.Storage) *Sub {
+func NewSub(opts *gap.Options, groupOpts *gap.GroupOptions, consumer broker.Consumer, storage storage.Storage, pluginType, brokerName, configIdentity string) *Sub {
 	if consumer == nil {
 		panic(errx.ErrNoBroker)
 	}
 
 	sub := &Sub{
-		opts:      opts,
-		groupOpts: groupOpts,
-		storage:   storage,
-		consumer:  consumer,
-		handlers:  make(map[string]gap.Handler[[]byte]),
+		opts:       opts,
+		groupOpts:  groupOpts,
+		storage:    storage,
+		consumer:   consumer,
+		brokerName: brokerName,
+		pluginType: pluginType,
+		handlers:   make(map[string]gap.Handler[[]byte]),
 	}
 
 	if storage != nil {
 		pump := pump.Singleton(opts)
-		pump.SetHandler(groupOpts.Group, sub)
+		if err := pump.SetHandler(pluginType, brokerName, configIdentity, groupOpts.Group, sub); err != nil {
+			panic(err)
+		}
 		sub.pump = pump
 	} else {
 		slog.Debug("sub works on no-persistence mode")
@@ -151,6 +163,13 @@ func NewSub(opts *gap.Options, groupOpts *gap.GroupOptions, consumer broker.Cons
 }
 
 func (s *Sub) Listening() error {
+	s.listenOnce.Do(func() {
+		s.listenErr = s.startListening()
+	})
+	return s.listenErr
+}
+
+func (s *Sub) startListening() error {
 	ctx := s.opts.DrainContext
 	enCh, err := s.consumer.Consume(ctx)
 	if err != nil {
@@ -235,6 +254,8 @@ func (s *Sub) ingestSerial(ctx context.Context, envelope *entity.Envelope) {
 	s.pump.AddOne()
 	defer s.pump.Done()
 
+	envelope.AddHeader(KeysBrokerName, s.brokerName)
+	envelope.AddHeader(KeysPluginType, s.pluginType)
 	err := s.storage.CreateReceived(ctx, envelope)
 	if err != nil {
 		envelope.Log().Error("failed to create received record", slog.Any("err", err))

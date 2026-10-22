@@ -10,11 +10,12 @@ import (
 )
 
 // NewOptions constructs a new instance of type Options
-func NewOptions(context context.Context, drainContext context.Context, serviceName string, version string, defaultGroup string, claimBatchSize int, maxRetries int, lookbackSeconds int, pumpIntervalSeconds int, maxPublishConcurrency int, workerId int64, publishBufferSize int, workConcurrencyFactor int) *Options {
+func NewOptions(context context.Context, drainContext context.Context, serviceName string, brokerName string, version string, defaultGroup string, claimBatchSize int, maxRetries int, lookbackSeconds int, pumpIntervalSeconds int, maxPublishConcurrency int, workerId int64, publishBufferSize int, workConcurrencyFactor int) *Options {
 	return &Options{
 		Context:               context,
 		DrainContext:          drainContext,
 		ServiceName:           serviceName,
+		BrokerName:            brokerName,
 		Version:               version,
 		DefaultGroup:          defaultGroup,
 		ClaimBatchSize:        claimBatchSize,
@@ -55,6 +56,13 @@ func DrainContext(drainContext_ context.Context) shoot.Option[Options, *Options]
 func ServiceName(serviceName_ string) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		o.ServiceName = serviceName_
+	}
+}
+
+// BrokerName is a configuration for the filed BrokerName
+func BrokerName(brokerName_ string) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.BrokerName = brokerName_
 	}
 }
 

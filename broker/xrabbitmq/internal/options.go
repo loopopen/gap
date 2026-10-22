@@ -82,6 +82,10 @@ func (o *Options) producerKey() string {
 	}, "\x00")
 }
 
+func (o *Options) ConfigIdentity() string {
+	return broker.ConfigIdentity("xrabbitmq", o.producerKey())
+}
+
 func (o *Options) consumerKey(version, group string) string {
 	return strings.Join([]string{
 		o.producerKey(),

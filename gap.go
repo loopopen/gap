@@ -17,6 +17,8 @@ const (
 	KeysMessageType   = internal.KeysMessageType
 	KeysGroup         = internal.KeysGroup
 	KeysCorrelationID = internal.KeysCorrelationID
+	KeysBrokerName    = internal.KeysBrokerName
+	KeysPluginType    = internal.KeysPluginType
 )
 
 var Pair = internal.Pair

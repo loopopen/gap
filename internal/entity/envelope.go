@@ -13,6 +13,11 @@ import (
 	"github.com/loopopen/gap/internal/errx"
 )
 
+const (
+	BrokerNameHeader = "gap-broker-name"
+	PluginTypeHeader = "gap-plugin-type"
+)
+
 var sfNode *snowflake.Node
 var initOnce sync.Once
 

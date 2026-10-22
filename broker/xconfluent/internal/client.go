@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/loopopen/gap/broker"
 )
 
 func clientConfig(opts *Options) kafka.ConfigMap {
@@ -69,6 +70,10 @@ func (o *Options) connectionKey() string {
 
 func (o *Options) producerKey() string {
 	return o.connectionKey()
+}
+
+func (o *Options) ConfigIdentity() string {
+	return broker.ConfigIdentity("xconfluent", o.producerKey())
 }
 
 func (o *Options) consumerKey(version, group string) string {

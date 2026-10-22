@@ -22,6 +22,10 @@ type Options struct {
 
 	ServiceName string
 
+	// BrokerName is the stable logical name used to route persisted messages.
+	// It must not contain connection details such as hosts or credentials.
+	BrokerName string
+
 	//@def="v1"
 	Version string
 

@@ -19,6 +19,7 @@ MODULES := \
 	storage/xgorm \
 	storage/xmysql \
 	storage/xpostgres \
+	examples/fiber-rabbitmq-kafka-mysql-example \
 	examples/fiber-rabbitmq-mysql-example \
 	examples/gin-kafka-mysql-example \
 	examples/gin-kafka2-postgres-example \

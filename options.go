@@ -11,6 +11,7 @@ import (
 var (
 	Version               = gap.Version
 	ServiceName           = gap.ServiceName
+	BrokerName            = gap.BrokerName
 	DefaultGroup          = gap.DefaultGroup
 	WorkerID              = gap.WorkerID
 	ClaimBatchSize        = gap.ClaimBatchSize

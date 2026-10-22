@@ -11,17 +11,21 @@ import (
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/errx"
 	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/internal/plugin"
 	"github.com/loopopen/gap/internal/pump"
 	"github.com/loopopen/gap/internal/txer"
 	"github.com/loopopen/gap/storage"
 )
 
 type Pub[T any] struct {
-	opts     *gap.Options
-	storage  storage.Storage
-	producer broker.Producer
-	pump     *pump.Pump
-	txer     txer.Txer
+	opts           *gap.Options
+	storage        storage.Storage
+	producer       broker.Producer
+	pump           *pump.Pump
+	txer           txer.Txer
+	brokerName     string
+	pluginType     string
+	configIdentity string
 }
 
 func NewPub[T any](opts *gap.Options, producer broker.Producer, storage storage.Storage) *Pub[T] {
@@ -30,14 +34,19 @@ func NewPub[T any](opts *gap.Options, producer broker.Producer, storage storage.
 	}
 
 	pub := &Pub[T]{
-		opts:     opts,
-		storage:  storage,
-		producer: producer,
+		opts:           opts,
+		storage:        storage,
+		producer:       producer,
+		brokerName:     plugin.BrokerName(opts),
+		pluginType:     plugin.PluginType(opts),
+		configIdentity: plugin.BrokerConfigIdentity(opts),
 	}
 
 	if storage != nil {
 		pump := pump.Singleton(opts)
-		pump.SetSender(pub)
+		if err := pump.SetSender(pub.pluginType, pub.brokerName, pub.configIdentity, pub); err != nil {
+			panic(err)
+		}
 		pub.pump = pump
 	} else {
 		slog.Debug("pub works on no-persistence mode")
@@ -65,11 +74,14 @@ func (p *Pub[T]) bind(txer txer.Txer) (*Pub[T], error) {
 		return nil, err
 	}
 	pub := &Pub[T]{
-		opts:     p.opts,
-		storage:  stor,
-		producer: p.producer,
-		pump:     p.pump,
-		txer:     txer,
+		opts:           p.opts,
+		storage:        stor,
+		producer:       p.producer,
+		pump:           p.pump,
+		txer:           txer,
+		brokerName:     p.brokerName,
+		pluginType:     p.pluginType,
+		configIdentity: p.configIdentity,
 	}
 	txer.SetFlushHandler(func(e *entity.Envelope) {
 		pub.dispatch(pub.opts.DrainContext, e)
@@ -95,6 +107,8 @@ func (p *Pub[T]) Publish(ctx context.Context, topic string, msg T, args ...any) 
 	for k, v := range headers {
 		en.AddHeader(k, v)
 	}
+	en.AddHeader(KeysBrokerName, p.brokerName)
+	en.AddHeader(KeysPluginType, p.pluginType)
 	if err := en.Verify(); err != nil {
 		return err
 	}

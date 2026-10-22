@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"examples/rabbitmq-mysql-example/sqltx"
 	"fmt"
 	"log/slog"
 	"os/signal"
@@ -14,6 +13,7 @@ import (
 	"github.com/loopopen/gap"
 	"github.com/loopopen/gap/broker/xrabbitmq"
 	"github.com/loopopen/gap/storage/xmysql"
+	"github.com/loopopen/gap/storage/xsql"
 )
 
 func main() {
@@ -52,28 +52,19 @@ func runjob(ctx context.Context, db *sql.DB, pub gap.Publisher[time.Time]) {
 	for range ticker.C {
 		slog.Info("running job...")
 
-		_ = func() (err error) {
-			var tx *sql.Tx
-			tx, err = db.Begin()
-			if err != nil {
-				return nil
-			}
-			defer func() {
+		func() {
+			xsql.DoInTx(ctx, func(ctx context.Context, txer gap.Txer) error {
+				pub := must(pub.Bind(txer))
+
+				//do biz db change...
+
+				err := pub.Publish(ctx, "topic.time.now", time.Now())
 				if err != nil {
-					_ = tx.Rollback()
-				} else {
-					err = tx.Commit()
+					return err
 				}
-			}()
-			pub := must(pub.Bind(sqltx.New(tx)))
 
-			//do biz db change...
-
-			err = pub.Publish(ctx, "topic.time.now", time.Now())
-			if err != nil {
-				return err
-			}
-			return nil
+				return nil
+			}, db, nil)
 		}()
 	}
 }
