@@ -32,7 +32,7 @@ type gormPoolKey struct {
 	db  *gorm.DB
 }
 
-func (o *Options) OpenStorage(gapOpts *internalgap.Options, dashboard bool) (storage.Storage, error) {
+func (o *Options) OpenStorage(gapOpts *internalgap.Options, role storage.Role) (storage.Storage, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
 	}
@@ -41,7 +41,7 @@ func (o *Options) OpenStorage(gapOpts *internalgap.Options, dashboard bool) (sto
 	if err != nil {
 		return nil, err
 	}
-	if !dashboard {
+	if role != storage.RoleDashboard {
 		return createStorage(gapOpts, o, dataDB)
 	}
 

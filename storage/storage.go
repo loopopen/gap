@@ -8,6 +8,14 @@ import (
 	"github.com/loopopen/gap/v2/internal/txer"
 )
 
+// Role selects the data-plane pool or the dashboard read pool.
+type Role uint8
+
+const (
+	RoleData Role = iota
+	RoleDashboard
+)
+
 type Storage interface {
 	Bind(txer txer.Txer) (Storage, error)
 

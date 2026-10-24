@@ -8,6 +8,7 @@ import (
 	"time"
 
 	internalgap "github.com/loopopen/gap/v2/internal/gap"
+	"github.com/loopopen/gap/v2/storage"
 )
 
 const (
@@ -30,11 +31,11 @@ const (
 )
 
 // Role selects which pool of a DSN a caller borrows.
-type Role uint8
+type Role = storage.Role
 
 const (
-	RoleData Role = iota
-	RoleDashboard
+	RoleData      = storage.RoleData
+	RoleDashboard = storage.RoleDashboard
 )
 
 type poolKey struct {
@@ -56,14 +57,25 @@ func NewRegistry(open Opener) *Registry {
 	return &Registry{open: open}
 }
 
+// Open returns the pool for a DSN and role. The dashboard pool uses a fixed small limit.
+// The data-plane pool uses maxOpen and only raises that limit on later calls.
+func (r *Registry) Open(ctx context.Context, dsn string, role Role, maxOpen int) (*Pool, error) {
+	maxIdle := dataPlaneMaxIdle
+	if role == RoleDashboard {
+		maxOpen = dashboardMaxOpen
+		maxIdle = dashboardMaxIdle
+	}
+	return r.load(ctx, poolKey{dsn: dsn, role: role}, maxOpen, maxIdle)
+}
+
 // Data returns the shared data-plane pool, raising its open limit when maxOpen is higher.
 func (r *Registry) Data(ctx context.Context, dsn string, maxOpen int) (*Pool, error) {
-	return r.load(ctx, poolKey{dsn: dsn, role: RoleData}, maxOpen, dataPlaneMaxIdle)
+	return r.Open(ctx, dsn, RoleData, maxOpen)
 }
 
 // Dashboard returns the small read pool for a DSN.
 func (r *Registry) Dashboard(ctx context.Context, dsn string) (*Pool, error) {
-	return r.load(ctx, poolKey{dsn: dsn, role: RoleDashboard}, dashboardMaxOpen, dashboardMaxIdle)
+	return r.Open(ctx, dsn, RoleDashboard, 0)
 }
 
 // Reset closes and drops every pool. Tests use it to isolate global registries.

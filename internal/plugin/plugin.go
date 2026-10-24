@@ -73,20 +73,20 @@ func MustGetConsumer(gapOpts *internalgap.Options, brokerOpts *internalgap.Broke
 }
 
 func MustGetStorage(gapOpts *internalgap.Options) storage.Storage {
-	return mustStorage(gapOpts, false)
+	return mustStorage(gapOpts, storage.RoleData)
 }
 
 // MustGetDashboardStorage opens the storage plugin's dashboard read pool.
 func MustGetDashboardStorage(gapOpts *internalgap.Options) storage.Storage {
-	return mustStorage(gapOpts, true)
+	return mustStorage(gapOpts, storage.RoleDashboard)
 }
 
-func mustStorage(gapOpts *internalgap.Options, dashboard bool) storage.Storage {
+func mustStorage(gapOpts *internalgap.Options, role storage.Role) storage.Storage {
 	sp := gapOpts.StorageOptions
 	if sp == nil {
 		return nil
 	}
-	stor, err := sp.OpenStorage(gapOpts, dashboard)
+	stor, err := sp.OpenStorage(gapOpts, role)
 	if err != nil {
 		panic(err)
 	}
