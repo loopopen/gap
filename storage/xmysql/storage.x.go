@@ -125,10 +125,10 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 	}
 
 	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` " +
-		"FROM %s %s ORDER BY `id` %s"
+		"FROM %s %s ORDER BY `id` %s %s"
 
 	pg := page.Normalize()
-	script = fmt.Sprintf(script1, table, wh.String(), paginate(pg))
+	script = fmt.Sprintf(script1, table, wh.String(), messageOrder(filter), paginate(pg))
 	slog.Info(script, slog.Any("args", params))
 	rows, err := s.db.QueryContext(ctx, script, params...)
 	if err != nil {
@@ -186,10 +186,10 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 	}
 
 	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` " +
-		"FROM %s %s ORDER BY `id` %s"
+		"FROM %s %s ORDER BY `id` %s %s"
 
 	pg := page.Normalize()
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(script1, table, h.String(), paginate(pg)), h.Params()...)
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(script1, table, h.String(), messageOrder(filter), paginate(pg)), h.Params()...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -225,6 +225,13 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 	return es, &pg, nil
 }
 
+func messageOrder(filter *entity.MessageFilter) string {
+	if filter != nil && filter.Descending {
+		return "DESC"
+	}
+	return "ASC"
+}
+
 func addMessageFilters(h *WhereHelper, filter *entity.MessageFilter, includeGroup bool) {
 	if filter == nil {
 		return
@@ -242,6 +249,9 @@ func addMessageFilters(h *WhereHelper, filter *entity.MessageFilter, includeGrou
 	}
 	if filter.CreatedTo != nil {
 		Add(h, "`created_at` <= ?", *filter.CreatedTo)
+	}
+	if pattern := filter.HeaderLikePattern(); pattern != "" {
+		Add(h, "`headers` LIKE ? ESCAPE '!'", pattern)
 	}
 	if filter.Payload != "" {
 		Add(h, "`payload` LIKE ?", "%"+filter.Payload+"%")

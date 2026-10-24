@@ -29,6 +29,8 @@ func TestApplyMessageFilters(t *testing.T) {
 		Group:       "notifications",
 		CreatedFrom: &from,
 		CreatedTo:   &to,
+		HeaderKey:   "tenant-id",
+		HeaderValue: "customer-42",
 		Payload:     "customer-42",
 	}, true)
 
@@ -40,11 +42,24 @@ func TestApplyMessageFilters(t *testing.T) {
 		"`group` = ?",
 		"`created_at` >= ?",
 		"`created_at` <= ?",
+		"headers LIKE ? ESCAPE '!'",
 		"`payload` LIKE ?",
 	} {
 		if !strings.Contains(where, condition) {
 			t.Fatalf("where clause %q does not contain %q", where, condition)
 		}
+	}
+}
+
+func TestMessageOrderByID(t *testing.T) {
+	ascending := messageOrderByID(nil)
+	if ascending.Column.Name != "id" || ascending.Desc {
+		t.Fatalf("ascending order = %#v, want id ASC", ascending)
+	}
+
+	descending := messageOrderByID(&entity.MessageFilter{Descending: true})
+	if descending.Column.Name != "id" || !descending.Desc {
+		t.Fatalf("descending order = %#v, want id DESC", descending)
 	}
 }
 

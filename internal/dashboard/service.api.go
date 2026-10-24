@@ -146,8 +146,17 @@ func (s *BoardSvc) QueryReceived() http.Handler {
 
 func messageFilterFromRequest(r *http.Request, includeGroup bool) (*entity.MessageFilter, error) {
 	filter := &entity.MessageFilter{
-		Topic:   r.FormValue("topic"),
-		Payload: r.FormValue("payload"),
+		Topic:       r.FormValue("topic"),
+		HeaderKey:   r.FormValue("header_key"),
+		HeaderValue: r.FormValue("header_value"),
+		Payload:     r.FormValue("payload"),
+	}
+	switch order := r.FormValue("order"); order {
+	case "", "asc":
+	case "desc":
+		filter.Descending = true
+	default:
+		return nil, fmt.Errorf("invalid order %q: must be asc or desc", order)
 	}
 	if value := r.FormValue("id"); value != "" {
 		id, err := strconv.ParseUint(value, 10, strconv.IntSize)

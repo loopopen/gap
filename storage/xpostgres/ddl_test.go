@@ -75,7 +75,8 @@ func TestWherePlaceholders(t *testing.T) {
 	h := NewWhereHelper()
 	Add(h, `"status" = ?`, enum.StatusFailed)
 	Add(h, `"topic" = ?`, "orders")
-	if h.String() != `WHERE "status" = $1 AND "topic" = $2` {
+	Add(h, `"headers" LIKE ? ESCAPE '!'`, `%"tenant-id":"customer-42"%`)
+	if h.String() != `WHERE "status" = $1 AND "topic" = $2 AND "headers" LIKE $3 ESCAPE '!'` {
 		t.Fatal(h.String())
 	}
 }

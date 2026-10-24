@@ -17,7 +17,10 @@ func TestMessageFilterFromRequest(t *testing.T) {
 		"group":        {"notifications"},
 		"created_from": {"2026-10-17T09:30:00+09:00"},
 		"created_to":   {"2026-10-17T10:30:00+09:00"},
+		"header_key":   {"tenant-id"},
+		"header_value": {"customer-42"},
 		"payload":      {"customer-42"},
+		"order":        {"desc"},
 	}
 	request := httptest.NewRequest("GET", "/?"+values.Encode(), nil)
 
@@ -27,6 +30,12 @@ func TestMessageFilterFromRequest(t *testing.T) {
 	}
 	if filter.Status != enum.StatusPending || filter.Topic != "orders.created" || filter.Group != "notifications" || filter.Payload != "customer-42" {
 		t.Fatalf("unexpected filter: %#v", filter)
+	}
+	if filter.HeaderKey != "tenant-id" || filter.HeaderValue != "customer-42" {
+		t.Fatalf("unexpected header filter: %#v", filter)
+	}
+	if !filter.Descending {
+		t.Fatal("expected descending order")
 	}
 	if filter.ID == nil || *filter.ID != 1844674407370955 {
 		t.Fatalf("unexpected id filter: %#v", filter.ID)
@@ -53,5 +62,23 @@ func TestMessageFilterFromRequestRejectsInvalidRange(t *testing.T) {
 	request := httptest.NewRequest("GET", "/?created_from=2026-10-17T11%3A00&created_to=2026-10-17T10%3A00", nil)
 	if _, err := messageFilterFromRequest(request, false); err == nil {
 		t.Fatal("expected an invalid time range error")
+	}
+}
+
+func TestMessageFilterFromRequestDefaultsToAscendingOrder(t *testing.T) {
+	request := httptest.NewRequest("GET", "/", nil)
+	filter, err := messageFilterFromRequest(request, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filter.Descending {
+		t.Fatal("default order should be ascending")
+	}
+}
+
+func TestMessageFilterFromRequestRejectsInvalidOrder(t *testing.T) {
+	request := httptest.NewRequest("GET", "/?order=random", nil)
+	if _, err := messageFilterFromRequest(request, false); err == nil {
+		t.Fatal("expected an invalid order error")
 	}
 }

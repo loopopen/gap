@@ -104,10 +104,10 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 	if err := s.addMessageFilters(wh, filter, false); err != nil {
 		return nil, nil, err
 	}
-	return s.queryPublished(ctx, wh, page)
+	return s.queryPublished(ctx, wh, filter, page)
 }
 
-func (s *Storage) queryPublished(ctx context.Context, wh *WhereHelper, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
+func (s *Storage) queryPublished(ctx context.Context, wh *WhereHelper, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
 	table, err := s.quotedTable("published")
 	if err != nil {
 		return nil, nil, err
@@ -120,7 +120,7 @@ func (s *Storage) queryPublished(ctx context.Context, wh *WhereHelper, page *ent
 
 	pg := page.Normalize()
 	script := `SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at" FROM ` +
-		table + " " + wh.String() + ` ORDER BY "id" ` + paginate(pg)
+		table + " " + wh.String() + ` ORDER BY "id" ` + messageOrder(filter) + " " + paginate(pg)
 	rows, err := s.db.QueryContext(ctx, script, wh.Params()...)
 	if err != nil {
 		return nil, nil, err
@@ -176,7 +176,7 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 
 	pg := page.Normalize()
 	script := `SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at","group" FROM ` +
-		table + " " + h.String() + ` ORDER BY "id" ` + paginate(pg)
+		table + " " + h.String() + ` ORDER BY "id" ` + messageOrder(filter) + " " + paginate(pg)
 	rows, err := s.db.QueryContext(ctx, script, h.Params()...)
 	if err != nil {
 		return nil, nil, err
@@ -214,6 +214,13 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 	return es, &pg, nil
 }
 
+func messageOrder(filter *entity.MessageFilter) string {
+	if filter != nil && filter.Descending {
+		return "DESC"
+	}
+	return "ASC"
+}
+
 func (s *Storage) addMessageFilters(h *WhereHelper, filter *entity.MessageFilter, includeGroup bool) error {
 	if filter == nil {
 		return nil
@@ -237,6 +244,9 @@ func (s *Storage) addMessageFilters(h *WhereHelper, filter *entity.MessageFilter
 	}
 	if filter.CreatedTo != nil {
 		Add(h, `"created_at" <= ?`, *filter.CreatedTo)
+	}
+	if pattern := filter.HeaderLikePattern(); pattern != "" {
+		Add(h, `"headers" LIKE ? ESCAPE '!'`, pattern)
 	}
 	if filter.Payload != "" {
 		Add(h, `"payload" LIKE ?`, "%"+filter.Payload+"%")

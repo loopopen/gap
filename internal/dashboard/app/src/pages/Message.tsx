@@ -28,6 +28,8 @@ import {
   FiChevronRight,
   FiChevronUp,
   FiAlertTriangle,
+  FiArrowDown,
+  FiArrowUp,
   FiCopy,
   FiFilter,
   FiInbox,
@@ -48,8 +50,10 @@ const statusVariant: Record<MsgStatusValue, 'green' | 'blue' | 'orange' | 'red'>
 }
 
 const statuses = [MsgStatus.Succeeded, MsgStatus.Processing, MsgStatus.Pending, MsgStatus.Failed]
+const pageSizes = [10, 20, 50, 100] as const
 
 type MessageType = 'pub' | 'rec'
+type MessageOrder = 'asc' | 'desc'
 
 type MessageFilters = {
   id: string
@@ -58,6 +62,8 @@ type MessageFilters = {
   group: string
   created_from: string
   created_to: string
+  header_key: string
+  header_value: string
   payload: string
 }
 
@@ -68,14 +74,30 @@ const emptyFilters: MessageFilters = {
   group: '',
   created_from: '',
   created_to: '',
+  header_key: '',
+  header_value: '',
   payload: '',
 }
 
-const filterParamKeys = ['id', 'status', 'topic', 'group', 'created_from', 'created_to', 'payload'] as const
+const filterParamKeys = ['id', 'status', 'topic', 'group', 'created_from', 'created_to', 'header_key', 'header_value', 'payload'] as const
 
 const readMessageType = (params: URLSearchParams): MessageType => {
   const type = params.get('type')
   return type === 'received' || type === 'rec' ? 'rec' : 'pub'
+}
+
+const readMessageOrder = (params: URLSearchParams): MessageOrder => (
+  params.get('order') === 'desc' ? 'desc' : 'asc'
+)
+
+const readPage = (params: URLSearchParams) => {
+  const value = Number(params.get('page'))
+  return Number.isInteger(value) && value > 0 ? value : 1
+}
+
+const readPageSize = (params: URLSearchParams) => {
+  const value = Number(params.get('per_page'))
+  return pageSizes.includes(value as typeof pageSizes[number]) ? value : 10
 }
 
 const readFilters = (params: URLSearchParams, msgType: MessageType): MessageFilters => {
@@ -88,6 +110,8 @@ const readFilters = (params: URLSearchParams, msgType: MessageType): MessageFilt
     group: msgType === 'rec' ? params.get('group') || '' : '',
     created_from: params.get('created_from') || '',
     created_to: params.get('created_to') || '',
+    header_key: params.get('header_key') || '',
+    header_value: params.get('header_value') || '',
     payload: params.get('payload') || '',
   }
 }
@@ -256,12 +280,13 @@ const MessageBody = ({ headers, payload }: { headers: string; payload: string })
 
 const Message = () => {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
   const [copied, setCopied] = useState<string>()
-  const [expandedMessage, setExpandedMessage] = useState<string>()
+  const [expandedMessages, setExpandedMessages] = useState<Set<string>>(() => new Set())
   const [filtersExpanded, setFiltersExpanded] = useState(false)
   const msgType = readMessageType(searchParams)
+  const messageOrder = readMessageOrder(searchParams)
+  const page = readPage(searchParams)
+  const pageSize = readPageSize(searchParams)
   const appliedFilters = readFilters(searchParams, msgType)
   const serializedSearchParams = searchParams.toString()
   const [filterDraft, setFilterDraft] = useState(() => ({
@@ -282,15 +307,29 @@ const Message = () => {
 
   useEffect(() => {
     const canonicalType = msgType === 'pub' ? 'published' : 'received'
-    if (searchParams.get('type') === canonicalType) return
+    const canonicalOrder = messageOrder === 'desc' ? 'desc' : null
+    const canonicalPage = page === 1 ? null : String(page)
+    const canonicalPageSize = pageSize === 10 ? null : String(pageSize)
+    if (
+      searchParams.get('type') === canonicalType
+      && searchParams.get('order') === canonicalOrder
+      && searchParams.get('page') === canonicalPage
+      && searchParams.get('per_page') === canonicalPageSize
+    ) return
 
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
       next.set('type', canonicalType)
+      if (canonicalPage) next.set('page', canonicalPage)
+      else next.delete('page')
+      if (canonicalPageSize) next.set('per_page', canonicalPageSize)
+      else next.delete('per_page')
+      if (canonicalOrder) next.set('order', canonicalOrder)
+      else next.delete('order')
       if (msgType === 'pub') next.delete('group')
       return next
     }, { replace: true })
-  }, [msgType, searchParams, setSearchParams])
+  }, [messageOrder, msgType, page, pageSize, searchParams, setSearchParams])
 
   useEffect(() => {
     if (!copied) return
@@ -306,7 +345,10 @@ const Message = () => {
     topic: appliedFilters.topic || undefined,
     created_from: toApiDateTime(appliedFilters.created_from),
     created_to: toApiDateTime(appliedFilters.created_to),
+    header_key: appliedFilters.header_key || undefined,
+    header_value: appliedFilters.header_value || undefined,
     payload: appliedFilters.payload || undefined,
+    order: messageOrder === 'desc' ? 'desc' : undefined,
   }
 
   const recParams = {
@@ -330,11 +372,11 @@ const Message = () => {
       group: next === 'pub' ? '' : currentFilters.group,
     }
 
-    setPage(1)
     setFilters(nextFilters)
     setSearchParams((current) => {
       const params = new URLSearchParams(current)
       params.set('type', next === 'pub' ? 'published' : 'received')
+      params.delete('page')
       writeFilters(params, nextFilters, next)
       return params
     }, { replace: true })
@@ -343,19 +385,41 @@ const Message = () => {
   const applyFilters = () => {
     const next = new URLSearchParams(searchParams)
     next.set('type', msgType === 'pub' ? 'published' : 'received')
+    next.delete('page')
     writeFilters(next, filters, msgType)
 
     const filtersUnchanged = next.toString() === searchParams.toString()
-    if (filtersUnchanged && page === 1) {
+    if (filtersUnchanged) {
       refetch()
       return
     }
 
-    setPage(1)
-    if (!filtersUnchanged) setSearchParams(next, { replace: true })
+    setSearchParams(next, { replace: true })
   }
 
   const hasFilters = Object.values(filters).some(Boolean)
+
+  const toggleMessageOrder = () => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete('page')
+      if (messageOrder === 'asc') next.set('order', 'desc')
+      else next.delete('order')
+      return next
+    }, { replace: true })
+  }
+
+  const toggleMessage = (id: string) => {
+    setExpandedMessages((current) => {
+      const next = new Set(current)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
 
   return (
     <Flex direction="column" gap={5}>
@@ -529,6 +593,29 @@ const Message = () => {
             </Flex>
           )}
           <Flex direction="column" gap={1} css={{ minWidth: 0 }}>
+            <Label htmlFor="message-filter-header-key" size="1" weight="semiBold">
+              Headers
+            </Label>
+            <Flex align="center" gap={2} css={{ minWidth: 0 }}>
+              <Input
+                id="message-filter-header-key"
+                size="small"
+                placeholder="Key"
+                value={filters.header_key}
+                onChange={(event) => setFilters((current) => ({ ...current, header_key: event.target.value }))}
+                css={{ flex: '1 1 0%', minWidth: 0 }}
+              />
+              <Input
+                aria-label="Header value"
+                size="small"
+                placeholder="Value"
+                value={filters.header_value}
+                onChange={(event) => setFilters((current) => ({ ...current, header_value: event.target.value }))}
+                css={{ flex: '1 1 0%', minWidth: 0 }}
+              />
+            </Flex>
+          </Flex>
+          <Flex direction="column" gap={1} css={{ minWidth: 0 }}>
             <Label htmlFor="message-filter-payload" size="1" weight="semiBold">
               Payload
             </Label>
@@ -635,14 +722,29 @@ const Message = () => {
                 }}
               >
                 <Box role="columnheader" />
-                {['ID', 'Version', 'CreatedAt', 'Status', 'Retries', 'Topic'].map((label) => (
+                <Flex role="columnheader" align="center" gap={1} css={{ px: '$2', color: '$textSubtle' }}>
+                  <Text size="1" css={{ fontWeight: 600 }}>ID</Text>
+                  <Tooltip content={messageOrder === 'asc' ? 'Ascending' : 'Descending'}>
+                    <Button
+                      ghost
+                      variant="secondary"
+                      aria-label={messageOrder === 'asc' ? 'Sort messages descending' : 'Sort messages ascending'}
+                      aria-pressed={messageOrder === 'desc'}
+                      onClick={toggleMessageOrder}
+                      css={{ width: 24, height: 24, minHeight: 24, px: 0, color: '$buttonPrimaryBg', boxShadow: 'none' }}
+                    >
+                      {messageOrder === 'asc' ? <FiArrowUp size={14} aria-hidden /> : <FiArrowDown size={14} aria-hidden />}
+                    </Button>
+                  </Tooltip>
+                </Flex>
+                {['Version', 'CreatedAt', 'Status', 'Retries', 'Topic'].map((label) => (
                   <Text key={label} role="columnheader" size="1" css={{ px: '$2', color: '$textSubtle', fontWeight: 600 }}>{label}</Text>
                 ))}
                 {msgType === 'rec' && <Text role="columnheader" size="1" css={{ px: '$2', color: '$textSubtle', fontWeight: 600 }}>Group</Text>}
               </Box>
               <Box role="rowgroup">
                 {msgs.map((row) => {
-                  const isExpanded = expandedMessage === row.id
+                  const isExpanded = expandedMessages.has(row.id)
                   const cellCss = { minWidth: 0, px: '$2', py: '$3' }
 
                   return (
@@ -663,7 +765,7 @@ const Message = () => {
                             variant="secondary"
                             aria-label={isExpanded ? `Collapse message ${row.id}` : `Expand message ${row.id}`}
                             aria-expanded={isExpanded}
-                            onClick={() => setExpandedMessage(isExpanded ? undefined : row.id)}
+                            onClick={() => toggleMessage(row.id)}
                             css={{ width: 24, height: 24, minHeight: 24, px: 0, boxShadow: 'none' }}
                           >
                             <FiChevronRight aria-hidden style={{ transition: 'transform 0.2s ease', transform: isExpanded ? 'rotate(90deg)' : 'none' }} />
@@ -712,19 +814,49 @@ const Message = () => {
             <Select
               value={pageSize}
               onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                setPageSize(Number(event.target.value))
-                setPage(1)
+                setSearchParams((current) => {
+                  const next = new URLSearchParams(current)
+                  next.delete('page')
+                  if (event.target.value === '10') next.delete('per_page')
+                  else next.set('per_page', event.target.value)
+                  return next
+                })
               }}
             >
-              {[10, 20, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+              {pageSizes.map((size) => <option key={size} value={size}>{size}</option>)}
             </Select>
           </Flex>
           <Flex align="center" gap={2}>
-            <Button ghost variant="secondary" disabled={page <= 1} aria-label="Previous page" onClick={() => setPage((current) => current - 1)}>
+            <Button
+              ghost
+              variant="secondary"
+              disabled={page <= 1}
+              aria-label="Previous page"
+              onClick={() => {
+                setSearchParams((current) => {
+                  const next = new URLSearchParams(current)
+                  if (page - 1 === 1) next.delete('page')
+                  else next.set('page', String(page - 1))
+                  return next
+                })
+              }}
+            >
               <FiChevronLeft />
             </Button>
             <Text size="1" css={{ color: '$textSubtle' }}>{`Page ${page} of ${totalPages}`}</Text>
-            <Button ghost variant="secondary" disabled={page >= totalPages} aria-label="Next page" onClick={() => setPage((current) => current + 1)}>
+            <Button
+              ghost
+              variant="secondary"
+              disabled={page >= totalPages}
+              aria-label="Next page"
+              onClick={() => {
+                setSearchParams((current) => {
+                  const next = new URLSearchParams(current)
+                  next.set('page', String(page + 1))
+                  return next
+                })
+              }}
+            >
               <FiChevronRight />
             </Button>
           </Flex>

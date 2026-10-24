@@ -92,7 +92,7 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 	}
 
 	pg := page.Normalize()
-	err = db.Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}}).
+	err = db.Order(messageOrderByID(filter)).
 		Scopes(paginate(pg)).
 		Scan(&pubs).Error
 	if err != nil {
@@ -119,7 +119,7 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 	}
 
 	pg := page.Normalize()
-	err = db.Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}}).
+	err = db.Order(messageOrderByID(filter)).
 		Scopes(paginate(pg)).
 		Scan(&recs).Error
 	if err != nil {
@@ -132,6 +132,13 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 	}
 	pg.SetTotal(int(count))
 	return es, &pg, nil
+}
+
+func messageOrderByID(filter *entity.MessageFilter) clause.OrderByColumn {
+	return clause.OrderByColumn{
+		Column: clause.Column{Name: "id"},
+		Desc:   filter != nil && filter.Descending,
+	}
 }
 
 func applyMessageFilters(db *gorm.DB, filter *entity.MessageFilter, includeGroup bool) *gorm.DB {
@@ -155,6 +162,9 @@ func applyMessageFilters(db *gorm.DB, filter *entity.MessageFilter, includeGroup
 	}
 	if filter.CreatedTo != nil {
 		db = db.Where(clause.Lte{Column: clause.Column{Name: "created_at"}, Value: *filter.CreatedTo})
+	}
+	if pattern := filter.HeaderLikePattern(); pattern != "" {
+		db = db.Where("headers LIKE ? ESCAPE '!'", pattern)
 	}
 	if filter.Payload != "" {
 		db = db.Where(clause.Like{Column: clause.Column{Name: "payload"}, Value: "%" + filter.Payload + "%"})

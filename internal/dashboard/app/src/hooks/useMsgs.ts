@@ -8,7 +8,10 @@ export interface MsgQueryParams {
   topic?: string
   created_from?: string
   created_to?: string
+  header_key?: string
+  header_value?: string
   payload?: string
+  order?: 'asc' | 'desc'
   page?: number
   per_page?: number
 }
