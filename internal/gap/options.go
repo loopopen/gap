@@ -64,7 +64,7 @@ type Options struct {
 // database themselves, so dispatch does not go through a plugin registry.
 type StoragePlugin interface {
 	PluginType() enum.Plugin
-	OpenStorage(opts *Options, dashboard bool) (storage.Storage, error)
+	OpenStorage(opts *Options, role storage.Role) (storage.Storage, error)
 }
 
 // BrokerPlugin is the selected broker driver.

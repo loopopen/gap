@@ -27,7 +27,7 @@ type gormPools struct {
 
 var gormPoolCache sync.Map
 
-func (o *Options) OpenStorage(gapOpts *gap.Options, dashboard bool) (storage.Storage, error) {
+func (o *Options) OpenStorage(gapOpts *gap.Options, role storage.Role) (storage.Storage, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func (o *Options) OpenStorage(gapOpts *gap.Options, dashboard bool) (storage.Sto
 	if err != nil {
 		return nil, err
 	}
-	if !dashboard {
+	if role != storage.RoleDashboard {
 		return createStorage(gapOpts, o, dataDB)
 	}
 
