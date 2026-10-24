@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal"
@@ -17,17 +18,21 @@ type Producer struct {
 	gapOpts *ingap.Options
 	opts    *Options
 	group   string
-	chPool  ChanPool
+	chPool  *pubChannelPool
+	release func() error
+	closed  atomic.Bool
 	x       string
 	q       string
 	ctag    string
 }
 
 func NewProducer(gapOpts *ingap.Options, opts *Options) *Producer {
+	resources, release := opts.acquireRuntime(gapOpts)
 	producer := &Producer{
 		gapOpts: gapOpts,
 		opts:    opts,
-		chPool:  NewDefaultPool(opts),
+		chPool:  resources.publishers,
+		release: release,
 	}
 
 	var _ broker.Producer = producer
@@ -35,16 +40,18 @@ func NewProducer(gapOpts *ingap.Options, opts *Options) *Producer {
 }
 
 func (p *Producer) init() error {
-	ch, err := p.chPool.Rent()
+	pooled, err := p.chPool.Rent(p.gapOpts.Context)
 	if err != nil {
 		return err
 	}
-	defer ch.Close()
+	reusable := false
+	defer func() { p.chPool.Return(pooled, reusable) }()
 
-	err = ch.ExchangeDeclare(p.exchange(), ExchangeKind, true, false, false, false, nil)
+	err = pooled.channel.ExchangeDeclare(p.exchange(), ExchangeKind, true, false, false, false, nil)
 	if err != nil {
 		return err
 	}
+	reusable = true
 
 	return nil
 }
@@ -63,11 +70,17 @@ func (p *Producer) Produce(ctx context.Context, envelope *entity.Envelope) error
 }
 
 func (p *Producer) send(ctx context.Context, routingKey string, headers map[string]string, body []byte) error {
-	ch, err := p.chPool.Rent()
+	if p.closed.Load() {
+		return errPoolClosed
+	}
+
+	pooled, err := p.chPool.Rent(ctx)
 	if err != nil {
 		return err
 	}
-	defer p.chPool.Return(ch)
+	reusable := false
+	defer func() { p.chPool.Return(pooled, reusable) }()
+	ch := pooled.channel
 
 	tbl := make(map[string]any)
 	for k, v := range headers {
@@ -86,12 +99,8 @@ func (p *Producer) send(ctx context.Context, routingKey string, headers map[stri
 		if err != nil {
 			return err
 		}
+		reusable = true
 	} else {
-		var returns <-chan amqp.Return
-		if p.opts.Mandatory {
-			returns = ch.NotifyReturn(make(chan amqp.Return, 1))
-		}
-
 		confirm, err := ch.PublishWithDeferredConfirmWithContext(
 			ctx, p.exchange(), routingKey, p.opts.Mandatory, false, publishing,
 		)
@@ -106,15 +115,17 @@ func (p *Producer) send(ctx context.Context, routingKey string, headers map[stri
 			return err
 		}
 		if !acked {
+			reusable = true
 			return errors.New("rabbitmq: message was nacked by broker")
 		}
+		reusable = true
 
 		// RabbitMQ sends basic.return before basic.ack for an unroutable
 		// mandatory message. Since the return channel is buffered, a completed
 		// confirmation makes this non-blocking check deterministic.
 		if p.opts.Mandatory {
 			select {
-			case ret, ok := <-returns:
+			case ret, ok := <-pooled.returns:
 				if ok {
 					return fmt.Errorf(
 						"rabbitmq: message was returned: code=%d reason=%q exchange=%q routing_key=%q",
@@ -137,8 +148,11 @@ func (p *Producer) exchange() string {
 }
 
 func (p *Producer) Close() error {
-	if closer, ok := p.chPool.(broker.Closer); ok {
-		return closer.Close()
+	if !p.closed.CompareAndSwap(false, true) {
+		return nil
+	}
+	if p.release != nil {
+		return p.release()
 	}
 	return nil
 }

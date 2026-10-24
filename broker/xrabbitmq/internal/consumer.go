@@ -2,9 +2,11 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/loopopen/gap/broker"
@@ -20,7 +22,12 @@ type Consumer struct {
 	gapOpts *ingap.Options
 	opts    *Options
 	group   string
-	chPool  ChanPool
+	conn    *sharedConn
+	release func() error
+	mu      sync.Mutex
+	ch      *amqp.Channel
+	topics  map[string]struct{}
+	closed  bool
 	x       string
 	q       string
 	ctag    string
@@ -31,10 +38,13 @@ func NewConsumer(gapOpts *ingap.Options, opts *Options, group string) *Consumer 
 		panic("group should not be empty")
 	}
 
+	resources, release := opts.acquireRuntime(gapOpts)
 	consumer := &Consumer{
 		gapOpts: gapOpts,
 		opts:    opts,
-		chPool:  NewDefaultPool(opts),
+		conn:    resources.conn,
+		release: release,
+		topics:  make(map[string]struct{}),
 		q:       fmt.Sprintf("gap.%s.q.%s", gapOpts.Version, group),
 		group:   group,
 	}
@@ -44,37 +54,34 @@ func NewConsumer(gapOpts *ingap.Options, opts *Options, group string) *Consumer 
 }
 
 func (c *Consumer) init() error {
-	ch, err := c.chPool.Rent()
-	if err != nil {
-		return err
-	}
-	defer ch.Close()
-
-	err = ch.ExchangeDeclare(c.exchange(), ExchangeKind, true, false, false, false, nil)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, err := c.channelLocked()
+	return err
 }
 
 func (c *Consumer) Subscribe(_ context.Context, topic string) error {
-	ch, err := c.chPool.Rent()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	ch, err := c.channelLocked()
 	if err != nil {
 		return err
 	}
-	defer c.chPool.Return(ch)
 
 	o := c.opts.QueueOpts
 	q, err := ch.QueueDeclare(c.q, o.Durable, o.AutoDelete, o.Exclusive, false, nil)
 	if err != nil {
+		c.discardChannelLocked(ch)
 		return err
 	}
 
 	err = ch.QueueBind(q.Name, topic, c.exchange(), false, nil)
 	if err != nil {
+		c.discardChannelLocked(ch)
 		return err
 	}
+	c.topics[topic] = struct{}{}
 
 	slog.Debug("rabbitmq: routing key bound successfully", slog.String("queue", c.q), slog.String("routing_key", topic))
 	return nil
@@ -88,9 +95,12 @@ func (c *Consumer) Consume(ctx context.Context) (<-chan *entity.Envelope, error)
 
 		for {
 			var deliCh <-chan amqp.Delivery
-			ch, err := c.chPool.Rent()
+			ch, err := c.consumerChannel()
 			if err != nil {
-				slog.Error("failed to rent a channel", slog.Any("err", err))
+				if ctx.Err() != nil {
+					return
+				}
+				slog.Error("failed to open consumer channel", slog.Any("err", err))
 				goto RETRY
 			}
 
@@ -125,7 +135,7 @@ func (c *Consumer) Consume(ctx context.Context) (<-chan *entity.Envelope, error)
 			}
 
 		RETRY:
-			c.chPool.Return(ch)
+			c.invalidateChannel(ch)
 
 			select {
 			case <-ctx.Done():
@@ -166,11 +176,94 @@ func (c *Consumer) consumerTag() string {
 	return c.ctag
 }
 
-func (c *Consumer) Close() error {
-	if closer, ok := c.chPool.(broker.Closer); ok {
-		return closer.Close()
+func (c *Consumer) consumerChannel() (*amqp.Channel, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.channelLocked()
+}
+
+func (c *Consumer) channelLocked() (*amqp.Channel, error) {
+	if c.closed {
+		return nil, errConnClosed
 	}
-	return nil
+	if c.ch != nil && !c.ch.IsClosed() {
+		return c.ch, nil
+	}
+
+	ch, err := c.conn.Channel()
+	if err != nil {
+		return nil, err
+	}
+	if err = ch.Qos(c.opts.PrefetchCount, 0, false); err != nil {
+		_ = ch.Close()
+		return nil, err
+	}
+	if err = ch.ExchangeDeclare(c.exchange(), ExchangeKind, true, false, false, false, nil); err != nil {
+		_ = ch.Close()
+		return nil, err
+	}
+
+	if len(c.topics) > 0 {
+		o := c.opts.QueueOpts
+		q, declareErr := ch.QueueDeclare(c.q, o.Durable, o.AutoDelete, o.Exclusive, false, nil)
+		if declareErr != nil {
+			_ = ch.Close()
+			return nil, declareErr
+		}
+		for topic := range c.topics {
+			if bindErr := ch.QueueBind(q.Name, topic, c.exchange(), false, nil); bindErr != nil {
+				_ = ch.Close()
+				return nil, bindErr
+			}
+		}
+	}
+
+	c.ch = ch
+	return ch, nil
+}
+
+func (c *Consumer) invalidateChannel(ch *amqp.Channel) {
+	if ch == nil {
+		return
+	}
+	c.mu.Lock()
+	if c.ch == ch {
+		c.ch = nil
+	}
+	c.mu.Unlock()
+	if !ch.IsClosed() {
+		_ = ch.Close()
+	}
+}
+
+func (c *Consumer) discardChannelLocked(ch *amqp.Channel) {
+	if c.ch == ch {
+		c.ch = nil
+	}
+	if ch != nil && !ch.IsClosed() {
+		_ = ch.Close()
+	}
+}
+
+func (c *Consumer) Close() error {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	c.closed = true
+	ch := c.ch
+	c.ch = nil
+	c.mu.Unlock()
+
+	var closeErr error
+	if ch != nil && !ch.IsClosed() {
+		closeErr = ch.Close()
+	}
+	if c.release != nil {
+		closeErr = errors.Join(closeErr, c.release())
+	}
+	return closeErr
 }
 
 var _ broker.Closer = (*Consumer)(nil)

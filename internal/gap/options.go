@@ -2,6 +2,7 @@ package gap
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/loopopen/gap/broker"
@@ -14,6 +15,8 @@ import (
 //go:generate go tool shoot new -opt -short -type=Options,BrokerOptions
 
 type Options struct {
+	runtimeID uint64
+
 	//@def=context.Background()
 	Context context.Context
 
@@ -56,6 +59,22 @@ type Options struct {
 	HandlerOptsLst    []HandlerOptions    `new:"-"`
 	DependencyOptsLst []DependencyOptions `new:"-"`
 	Dependencies      []any               `new:"-"`
+}
+
+var nextRuntimeID atomic.Uint64
+
+// RuntimeIdentity identifies all option snapshots owned by the same Gap.
+// Cloning Options preserves the identity, while independently created runtimes
+// receive different identities.
+func (o *Options) RuntimeIdentity() uint64 {
+	if id := atomic.LoadUint64(&o.runtimeID); id != 0 {
+		return id
+	}
+	id := nextRuntimeID.Add(1)
+	if atomic.CompareAndSwapUint64(&o.runtimeID, 0, id) {
+		return id
+	}
+	return atomic.LoadUint64(&o.runtimeID)
 }
 
 type BrokerOptions struct {

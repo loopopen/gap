@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal/enum"
@@ -48,7 +49,21 @@ type Options struct {
 
 	//@def=new(QueueOptions).With()
 	QueueOpts *QueueOptions
+
+	runtimeRegistry *runtimeRegistry
 }
+
+type runtimeResourceRef struct {
+	resources *runtimeResources
+	refs      int
+}
+
+type runtimeRegistry struct {
+	mu       sync.Mutex
+	runtimes map[uint64]*runtimeResourceRef
+}
+
+var runtimeRegistryInitMu sync.Mutex
 
 func (o *Options) PluginType() enum.Plugin {
 	return enum.PluginRabbitMQ
@@ -84,6 +99,55 @@ func (o *Options) producerKey() string {
 
 func (o *Options) ConfigIdentity() string {
 	return broker.ConfigIdentity("xrabbitmq", o.producerKey())
+}
+
+func (o *Options) acquireRuntime(gapOpts *ingap.Options) (*runtimeResources, func() error) {
+	registry := o.registry()
+	runtimeID := gapOpts.RuntimeIdentity()
+	registry.mu.Lock()
+	if registry.runtimes == nil {
+		registry.runtimes = make(map[uint64]*runtimeResourceRef)
+	}
+	ref := registry.runtimes[runtimeID]
+	if ref == nil {
+		ref = &runtimeResourceRef{
+			resources: newRuntimeResources(o, gapOpts.MaxPublishConcurrency),
+		}
+		registry.runtimes[runtimeID] = ref
+	}
+	ref.refs++
+	registry.mu.Unlock()
+
+	var once sync.Once
+	var closeErr error
+	return ref.resources, func() error {
+		once.Do(func() {
+			registry.mu.Lock()
+			current := registry.runtimes[runtimeID]
+			if current != ref {
+				registry.mu.Unlock()
+				return
+			}
+			ref.refs--
+			if ref.refs > 0 {
+				registry.mu.Unlock()
+				return
+			}
+			delete(registry.runtimes, runtimeID)
+			registry.mu.Unlock()
+			closeErr = ref.resources.Close()
+		})
+		return closeErr
+	}
+}
+
+func (o *Options) registry() *runtimeRegistry {
+	runtimeRegistryInitMu.Lock()
+	defer runtimeRegistryInitMu.Unlock()
+	if o.runtimeRegistry == nil {
+		o.runtimeRegistry = &runtimeRegistry{}
+	}
+	return o.runtimeRegistry
 }
 
 func ConfigQueue(opts ...shoot.Option[QueueOptions, *QueueOptions]) shoot.Option[Options, *Options] {
