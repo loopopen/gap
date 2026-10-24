@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/loopopen/gap"
-	"github.com/loopopen/gap/broker/xrabbitmq"
-	"github.com/loopopen/gap/storage/xgorm"
+	"github.com/loopopen/gap/v2"
+	"github.com/loopopen/gap/broker/xrabbitmq/v2"
+	"github.com/loopopen/gap/storage/xgorm/v2"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -27,20 +27,22 @@ func main() {
 		Logger: logger.Default.LogMode(logger.Info),
 	}))
 
-	pub := gap.NewEventPublisher(
+	g := gap.New(
 		gap.WithDrain(ctx, 5),
-		xrabbitmq.UseRabbitMQ(
-			xrabbitmq.URL(url),
-		),
 		xgorm.UseGorm(
 			xgorm.DB(db),
+		),
+	)
+	pub := g.NewEventPublisher(
+		xrabbitmq.UseRabbitMQ(
+			xrabbitmq.URL(url),
 		),
 	)
 
 	mySvc := service.NewMySvc(db, pub)
 
-	gap.Subscribe(
-		gap.From(pub),
+	g.Subscribe(
+		pub,
 		gap.Inject(mySvc),
 	)
 

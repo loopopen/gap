@@ -7,13 +7,12 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/loopopen/gap"
-	"github.com/loopopen/gap/gapc"
+	"github.com/loopopen/gap/v2"
+	"github.com/loopopen/gap/v2/gapc"
 )
 
 func init() {
-	gap.Subscribe(
-		gapc.GoGenerated(),
+	gap.Register(
 		gapc.HandleTopicWithinGroupRaw(
 			func(ctx context.Context, data_ []byte, headers_ map[string]string) error {
 				var msg_ time.Time

@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/loopopen/gap"
-	"github.com/loopopen/gap/broker/xkafka"
-	"github.com/loopopen/gap/storage/xgorm"
+	"github.com/loopopen/gap/v2"
+	"github.com/loopopen/gap/broker/xkafka/v2"
+	"github.com/loopopen/gap/storage/xgorm/v2"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -33,8 +33,13 @@ func main() {
 		Logger: logger.Default.LogMode(logger.Info),
 	}))
 
-	pub := gap.NewPublisher[time.Time](
+	g := gap.New(
 		gap.WithDrain(ctx, 5),
+		xgorm.UseGorm(
+			xgorm.DSN(dsn, postgres.Open),
+		),
+	)
+	pub := gap.NewPublisher[time.Time](g,
 		xkafka.UseKafka(
 			xkafka.Brokers(brokers),
 			xkafka.ConfigTopic(
@@ -42,13 +47,10 @@ func main() {
 				xkafka.ReplicationFactor(3),
 			),
 		),
-		xgorm.UseGorm(
-			xgorm.DSN(dsn, postgres.Open),
-		),
 	)
 
-	gap.Subscribe(
-		gap.From(pub),
+	g.Subscribe(
+		pub,
 		gap.ServiceName("kafka-gorm-postgres-example.worker"),
 	)
 
@@ -90,7 +92,7 @@ func must[T any](v T, err error) T {
 	return v
 }
 
-//go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
+//go:generate go run github.com/loopopen/gap/v2/cmd/gapc -file=$GOFILE
 
 // @subscribe: topic="topic.time.now"
 func handle() gap.Handler[time.Time] {

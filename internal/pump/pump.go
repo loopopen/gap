@@ -9,16 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/errx"
-	"github.com/loopopen/gap/internal/gap"
-	"github.com/loopopen/gap/internal/plugin"
-	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/v2/internal/entity"
+	"github.com/loopopen/gap/v2/internal/enum"
+	"github.com/loopopen/gap/v2/internal/errx"
+	internalgap "github.com/loopopen/gap/v2/internal/gap"
+	"github.com/loopopen/gap/v2/storage"
 )
-
-var pump *Pump
-var newOnce sync.Once
 
 type Sender interface {
 	SendAndUpdate(ctx context.Context, envelope *entity.Envelope) error
@@ -29,7 +25,7 @@ type Handler interface {
 }
 
 type Pump struct {
-	gapOpts        *gap.Options
+	gapOpts        *internalgap.Options
 	storage        storage.Storage
 	sendCh         chan *entity.Envelope
 	handleCh       chan *entity.Envelope
@@ -42,34 +38,29 @@ type Pump struct {
 	wg             *sync.WaitGroup
 }
 
-func Singleton(gapOpts *gap.Options) *Pump {
-	stor := plugin.MustGetStorage(gapOpts)
+func New(gapOpts *internalgap.Options, stor storage.Storage) *Pump {
 	if stor == nil {
 		panic(errx.ErrNoStorage)
 	}
 
-	newOnce.Do(func() {
-		pump = &Pump{
-			gapOpts:        gapOpts,
-			storage:        stor,
-			senders:        make(map[string]Sender),
-			senderConfigs:  make(map[string]string),
-			handlers:       &sync.Map{},
-			handlerConfigs: &sync.Map{},
-			wg:             &sync.WaitGroup{},
-		}
-
-		pump.startSender()
-	})
-
-	return pump
+	p := &Pump{
+		gapOpts:        gapOpts,
+		storage:        stor,
+		senders:        make(map[string]Sender),
+		senderConfigs:  make(map[string]string),
+		handlers:       &sync.Map{},
+		handlerConfigs: &sync.Map{},
+		wg:             &sync.WaitGroup{},
+	}
+	p.startSender()
+	return p
 }
 
-func routeKey(pluginType, brokerName string) string {
-	return pluginType + "\x00" + brokerName
+func routeKey(brokerType, brokerName string) string {
+	return brokerType + "\x00" + brokerName
 }
 
-func (p *Pump) SetSender(pluginType, brokerName, configIdentity string, sender Sender) error {
+func (p *Pump) SetSender(brokerType, brokerName, configIdentity string, sender Sender) error {
 	p.senderMu.Lock()
 	defer p.senderMu.Unlock()
 	if p.senders == nil {
@@ -78,9 +69,9 @@ func (p *Pump) SetSender(pluginType, brokerName, configIdentity string, sender S
 	if p.senderConfigs == nil {
 		p.senderConfigs = make(map[string]string)
 	}
-	key := routeKey(pluginType, brokerName)
+	key := routeKey(brokerType, brokerName)
 	if existing, ok := p.senderConfigs[key]; ok && existing != configIdentity {
-		return fmt.Errorf("broker route %q (%s) has multiple configurations; set a unique BrokerName", brokerName, pluginType)
+		return fmt.Errorf("broker route %q (%s) has multiple configurations; set a unique BrokerName", brokerName, brokerType)
 	}
 	if _, ok := p.senders[key]; !ok {
 		p.senders[key] = sender
@@ -89,22 +80,22 @@ func (p *Pump) SetSender(pluginType, brokerName, configIdentity string, sender S
 	return nil
 }
 
-func handlerKey(pluginType, brokerName, group string) string {
-	return routeKey(pluginType, brokerName) + "\x00" + group
+func handlerKey(brokerType, brokerName, group string) string {
+	return routeKey(brokerType, brokerName) + "\x00" + group
 }
 
-func (p *Pump) SetHandler(pluginType, brokerName, configIdentity, group string, handler Handler) error {
+func (p *Pump) SetHandler(brokerType, brokerName, configIdentity, group string, handler Handler) error {
 	if p.handlers == nil {
 		p.handlers = &sync.Map{}
 	}
 	if p.handlerConfigs == nil {
 		p.handlerConfigs = &sync.Map{}
 	}
-	key := routeKey(pluginType, brokerName)
+	key := routeKey(brokerType, brokerName)
 	if existing, loaded := p.handlerConfigs.LoadOrStore(key, configIdentity); loaded && existing != configIdentity {
-		return fmt.Errorf("broker route %q (%s) has multiple configurations; set a unique BrokerName", brokerName, pluginType)
+		return fmt.Errorf("broker route %q (%s) has multiple configurations; set a unique BrokerName", brokerName, brokerType)
 	}
-	p.handlers.LoadOrStore(handlerKey(pluginType, brokerName, group), handler)
+	p.handlers.LoadOrStore(handlerKey(brokerType, brokerName, group), handler)
 	return nil
 }
 
@@ -363,14 +354,14 @@ func (p *Pump) pollingHandle(ctx context.Context) {
 
 func (p *Pump) send(ctx context.Context, envelope *entity.Envelope) error {
 	p.senderMu.RLock()
-	pluginType := envelope.Headers[entity.PluginTypeHeader]
+	brokerType := envelope.Headers[entity.BrokerTypeHeader]
 	brokerName := envelope.Headers[entity.BrokerNameHeader]
-	if sender, ok := p.senders[routeKey(pluginType, brokerName)]; ok {
+	if sender, ok := p.senders[routeKey(brokerType, brokerName)]; ok {
 		p.senderMu.RUnlock()
 		return sender.SendAndUpdate(ctx, envelope)
 	}
 	p.senderMu.RUnlock()
-	return p.failPublished(ctx, envelope, fmt.Errorf("sender not found for broker %q (%s)", brokerName, pluginType))
+	return p.failPublished(ctx, envelope, fmt.Errorf("sender not found for broker %q (%s)", brokerName, brokerType))
 }
 
 func (p *Pump) failPublished(ctx context.Context, envelope *entity.Envelope, cause error) error {
@@ -390,9 +381,9 @@ func (p *Pump) hasSender() bool {
 }
 
 func (p *Pump) handler(envelope *entity.Envelope) (any, bool) {
-	pluginType := envelope.Headers[entity.PluginTypeHeader]
+	brokerType := envelope.Headers[entity.BrokerTypeHeader]
 	brokerName := envelope.Headers[entity.BrokerNameHeader]
-	return p.handlers.Load(handlerKey(pluginType, brokerName, envelope.Group))
+	return p.handlers.Load(handlerKey(brokerType, brokerName, envelope.Group))
 }
 
 func wait(ctx context.Context, duration time.Duration) {
@@ -410,14 +401,10 @@ func (p *Pump) Done() {
 	p.wg.Done()
 }
 
-func WaitDrain(ctx context.Context) error {
-	if pump == nil {
-		return nil
-	}
-
+func (p *Pump) WaitDrain(ctx context.Context) error {
 	done := make(chan struct{})
 	go func() {
-		pump.wg.Wait()
+		p.wg.Wait()
 		close(done)
 	}()
 	select {
@@ -429,8 +416,6 @@ func WaitDrain(ctx context.Context) error {
 	}
 }
 
-func StartHandler() {
-	if pump != nil {
-		pump.startHandler()
-	}
+func (p *Pump) StartHandler() {
+	p.startHandler()
 }

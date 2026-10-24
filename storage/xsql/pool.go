@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopopen/gap/internal/gap"
+	internalgap "github.com/loopopen/gap/v2/internal/gap"
 )
 
 const (
@@ -174,7 +174,7 @@ func (p *Pool) EnsureSchema(schema string, init func() error) error {
 // hold at once: two claim transactions, publish updates, handler updates,
 // ingest inserts across groups, plus a little headroom.
 // A later subscriber raises the limit; it is never lowered.
-func DataPlaneMaxOpen(opts *gap.Options) int {
+func DataPlaneMaxOpen(opts *internalgap.Options) int {
 	publish := opts.MaxPublishConcurrency
 	if publish < 1 {
 		publish = 1
@@ -186,7 +186,7 @@ func DataPlaneMaxOpen(opts *gap.Options) int {
 	return dataPlaneClaims + publish + handle + ingestSlots(opts) + dataPlaneHeadroom
 }
 
-func ingestSlots(opts *gap.Options) int {
+func ingestSlots(opts *internalgap.Options) int {
 	perGroup := make(map[string]int)
 	for _, h := range opts.HandlerOptsLst {
 		n := h.IngestConcurrency

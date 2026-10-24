@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/v2/internal/entity"
 )
 
 type senderStub struct {
@@ -29,11 +29,11 @@ func TestPumpRoutesMessagesToConfiguredSender(t *testing.T) {
 
 	rabbitMessage := &entity.Envelope{ID: 1, Headers: map[string]string{
 		entity.BrokerNameHeader: "events",
-		entity.PluginTypeHeader: "RabbitMQ",
+		entity.BrokerTypeHeader: "RabbitMQ",
 	}}
 	kafkaMessage := &entity.Envelope{ID: 2, Headers: map[string]string{
 		entity.BrokerNameHeader: "events",
-		entity.PluginTypeHeader: "Kafka",
+		entity.BrokerTypeHeader: "Kafka",
 	}}
 	if err := p.send(context.Background(), rabbitMessage); err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func TestPumpRejectsUnknownBrokerIdentity(t *testing.T) {
 
 	message := &entity.Envelope{Headers: map[string]string{
 		entity.BrokerNameHeader: "events",
-		entity.PluginTypeHeader: "Kafka",
+		entity.BrokerTypeHeader: "Kafka",
 	}}
 	if err := p.send(context.Background(), message); err == nil {
 		t.Fatal("expected unknown broker identity error")

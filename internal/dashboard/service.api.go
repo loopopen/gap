@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/loopopen/gap/internal/dashboard/dto"
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/v2/internal/dashboard/dto"
+	"github.com/loopopen/gap/v2/internal/entity"
+	"github.com/loopopen/gap/v2/internal/enum"
 	"github.com/loopopen/shoot"
 )
 

@@ -5,8 +5,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/loopopen/gap/internal/entity"
-	gapopts "github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/v2/internal/entity"
+	internalgap "github.com/loopopen/gap/v2/internal/gap"
 )
 
 type consumerStub struct {
@@ -27,9 +27,9 @@ func (*consumerStub) Reject(any) error { return nil }
 
 func TestSubListeningStartsConsumerOnce(t *testing.T) {
 	consumer := new(consumerStub)
-	opts := &gapopts.Options{Context: context.Background(), DrainContext: context.Background()}
-	group := &gapopts.GroupOptions{Group: "group"}
-	sub := NewSub(opts, group, consumer, nil, "RabbitMQ", "broker", "config")
+	opts := &internalgap.Options{Context: context.Background(), DrainContext: context.Background()}
+	group := &internalgap.GroupOptions{Group: "group"}
+	sub := NewSub(opts, group, consumer, nil, nil, "RabbitMQ", "broker", "config")
 
 	if err := sub.Listening(); err != nil {
 		t.Fatal(err)

@@ -5,9 +5,9 @@ package dto
 import (
 	"encoding/json"
 
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/pkgs/timex"
+	"github.com/loopopen/gap/v2/internal/entity"
+	"github.com/loopopen/gap/v2/internal/enum"
+	"github.com/loopopen/gap/v2/internal/pkgs/timex"
 )
 
 // NewPagedResult[T any] constructs a new instance of type PagedResult[T]

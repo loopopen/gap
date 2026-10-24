@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/loopopen/gap/broker"
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/errx"
-	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/v2/broker"
+	"github.com/loopopen/gap/v2/spi/entity"
+	"github.com/loopopen/gap/v2/spi/errx"
+	internalgap "github.com/loopopen/gap/v2/spi/runtime"
 )
 
 type producerClient interface {
@@ -16,13 +16,13 @@ type producerClient interface {
 }
 
 type Producer struct {
-	gapOpts  *gap.Options
+	gapOpts  *internalgap.Options
 	opts     *Options
 	producer producerClient
 	ensurer  *Ensurer
 }
 
-func NewProducer(gapOpts *gap.Options, opts *Options) (*Producer, error) {
+func NewProducer(gapOpts *internalgap.Options, opts *Options) (*Producer, error) {
 	ensurer, err := SingleEnsurer(opts)
 	if err != nil {
 		return nil, err

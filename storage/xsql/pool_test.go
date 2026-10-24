@@ -12,18 +12,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loopopen/gap/internal/gap"
+	internalgap "github.com/loopopen/gap/v2/internal/gap"
 )
 
 func TestDataPlaneMaxOpen(t *testing.T) {
 	procs := runtime.GOMAXPROCS(0)
-	opts := &gap.Options{
+	opts := &internalgap.Options{
 		MaxPublishConcurrency: 4,
 		WorkConcurrencyFactor: 2,
-		HandlerOptsLst: []gap.HandlerOptions{
-			{GroupOptions: gap.GroupOptions{Group: "a", IngestConcurrency: 3}},
-			{GroupOptions: gap.GroupOptions{Group: "a", IngestConcurrency: 1}},
-			{GroupOptions: gap.GroupOptions{Group: "b", IngestConcurrency: 0}},
+		HandlerOptsLst: []internalgap.HandlerOptions{
+			{GroupOptions: internalgap.GroupOptions{Group: "a", IngestConcurrency: 3}},
+			{GroupOptions: internalgap.GroupOptions{Group: "a", IngestConcurrency: 1}},
+			{GroupOptions: internalgap.GroupOptions{Group: "b", IngestConcurrency: 0}},
 		},
 	}
 	// group a contributes 3, group b contributes 1 (serial ingest).

@@ -3,8 +3,8 @@
 package xgorm
 
 import (
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/v2/spi/entity"
+	"github.com/loopopen/gap/v2/spi/enum"
 )
 
 // ToEntity converts receiver to type entity.Envelope

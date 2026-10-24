@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/v2/spi/entity"
+	"github.com/loopopen/gap/v2/spi/enum"
 )
 
 //go:generate go tool shoot map -path=../../internal/entity -to=Envelope,Envelope -type=Published,Received

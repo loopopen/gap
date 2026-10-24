@@ -1,4 +1,4 @@
-module github.com/loopopen/gap
+module github.com/loopopen/gap/v2
 
 go 1.24.0
 

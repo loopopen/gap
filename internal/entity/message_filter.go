@@ -3,7 +3,7 @@ package entity
 import (
 	"time"
 
-	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/v2/internal/enum"
 )
 
 type MessageFilter struct {

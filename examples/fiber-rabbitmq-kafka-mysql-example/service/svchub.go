@@ -3,7 +3,7 @@ package service
 import (
 	"database/sql"
 
-	"github.com/loopopen/gap"
+	"github.com/loopopen/gap/v2"
 )
 
 type SvcHub struct {

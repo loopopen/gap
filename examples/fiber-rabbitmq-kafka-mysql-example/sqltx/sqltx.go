@@ -3,8 +3,8 @@ package sqltx
 import (
 	"database/sql"
 
-	"github.com/loopopen/gap"
-	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/v2"
+	"github.com/loopopen/gap/v2/storage"
 )
 
 type SqlTx struct {

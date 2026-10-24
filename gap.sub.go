@@ -1,48 +1,43 @@
 package gap
 
 import (
-	"github.com/loopopen/gap/internal"
-	"github.com/loopopen/gap/internal/gap"
-	"github.com/loopopen/gap/internal/pump"
+	"github.com/loopopen/gap/v2/internal"
 	"github.com/loopopen/shoot"
 )
 
-func Subscribe(opts ...shoot.Option[Options, *Options]) OptionsGetter {
+var registered = internal.NewGroupedSubs()
+
+// Register stores generated handler and dependency definitions during package
+// initialization. Applications start them with [Gap.Subscribe].
+func Register(opts ...shoot.Option[Options, *Options]) {
 	gapOpts := new(Options).With(opts...)
+	registered.AddDependencyOtps(gapOpts.DependencyOptsLst)
+	registered.AddHandlerOtps(gapOpts.HandlerOptsLst)
+}
 
-	subs := internal.SingleGroupedSubs()
-	subs.AddDependencyOtps(gapOpts.DependencyOptsLst)
-	subs.AddHandlerOtps(gapOpts.HandlerOptsLst)
+func (g *Gap) Subscribe(publisher BrokerOptionsGetter, opts ...shoot.Option[Options, *Options]) {
+	gapOpts := g.subscriberOptions(opts...)
+	brokerOpts := publisher.BrokerOptions()
 
-	if gap.RegisterHandlerOnly(gapOpts) {
-		return &optionsGetter{gapOpts}
-	}
+	g.subs.AddDependencyOtps(gapOpts.DependencyOptsLst)
+	g.subs.AddHandlerOtps(gapOpts.HandlerOptsLst)
 
-	initSnowflake(gapOpts.WorkerID)
-
-	for _, o := range subs.DependencyOtpsLst {
+	for _, o := range g.subs.DependencyOtpsLst {
 		o.Resolve(gapOpts.Dependencies)
 	}
 
-	err := subs.SubscribeAll(gapOpts)
+	err := g.subs.SubscribeAll(gapOpts, brokerOpts, g.storage, g.pump)
 	if err != nil {
 		panic(err)
 	}
 
-	err = subs.ListeningAll()
+	err = g.subs.ListeningAll()
 	if err != nil {
 		panic(err)
 	}
 
-	pump.StartHandler()
+	if g.pump != nil {
+		g.pump.StartHandler()
+	}
 
-	return &optionsGetter{gapOpts}
-}
-
-type optionsGetter struct {
-	o *gap.Options
-}
-
-func (g *optionsGetter) Options() *gap.Options {
-	return g.o
 }

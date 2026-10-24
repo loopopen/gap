@@ -4,15 +4,15 @@ import (
 	"log/slog"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/loopopen/gap/broker"
-	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/v2/broker"
+	"github.com/loopopen/gap/v2/spi/enum"
+	internalgap "github.com/loopopen/gap/v2/spi/runtime"
 	"github.com/loopopen/shoot"
 )
 
 //go:generate go tool shoot new -opt -short -type=Options,TopicOptions
 
-var _ gap.BrokerPlugin = (*Options)(nil)
+var _ internalgap.BrokerPlugin = (*Options)(nil)
 
 type Options struct {
 	Password string `yaml:"password"`
@@ -52,15 +52,15 @@ func ConfigTopic(opts ...shoot.Option[TopicOptions, *TopicOptions]) shoot.Option
 	return func(o *Options) { o.TopicOpts = new(TopicOptions).With(opts...) }
 }
 
-func UseKafka(opts ...shoot.Option[Options, *Options]) shoot.Option[gap.Options, *gap.Options] {
-	return func(o *gap.Options) {
-		o.BrokerOptions = new(Options).With(opts...)
+func UseKafka(opts ...shoot.Option[Options, *Options]) shoot.Option[internalgap.BrokerOptions, *internalgap.BrokerOptions] {
+	return func(o *internalgap.BrokerOptions) {
+		o.Plugin = new(Options).With(opts...)
 	}
 }
 
 var clients = broker.NewClientCache()
 
-func (o *Options) OpenProducer(gapOpts *gap.Options) (broker.Producer, error) {
+func (o *Options) OpenProducer(gapOpts *internalgap.Options) (broker.Producer, error) {
 	return clients.Producer(o.producerKey(), func() (broker.Producer, error) {
 		producer, err := NewProducer(gapOpts, o)
 		if err != nil {
@@ -74,7 +74,7 @@ func (o *Options) OpenProducer(gapOpts *gap.Options) (broker.Producer, error) {
 	})
 }
 
-func (o *Options) OpenConsumer(gapOpts *gap.Options, group string) (broker.Consumer, error) {
+func (o *Options) OpenConsumer(gapOpts *internalgap.Options, group string) (broker.Consumer, error) {
 	return clients.Consumer(o.consumerKey(gapOpts.Version, group), func() (broker.Consumer, error) {
 		consumer, err := NewConsumer(gapOpts, o, group)
 		if err != nil {

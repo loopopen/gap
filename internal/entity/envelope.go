@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"github.com/bwmarrin/snowflake"
-	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/errx"
+	"github.com/loopopen/gap/v2/internal/enum"
+	"github.com/loopopen/gap/v2/internal/errx"
 )
 
 const (
 	BrokerNameHeader = "gap-broker-name"
-	PluginTypeHeader = "gap-plugin-type"
+	BrokerTypeHeader = "gap-broker-type"
 )
 
 var sfNode *snowflake.Node

@@ -4,15 +4,11 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/loopopen/gap/internal/errx"
+	"github.com/loopopen/gap/v2/internal/errx"
 	"github.com/loopopen/shoot"
 )
 
 type Handler[T any] func(ctx context.Context, msg T, headers map[string]string) error
-
-func RegisterHandlerOnly(o *Options) bool {
-	return o.registerHandlerOnly
-}
 
 func checkType[T any]() {
 	var t T

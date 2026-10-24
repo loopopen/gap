@@ -10,10 +10,10 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/loopopen/gap"
-	"github.com/loopopen/gap/broker/xrabbitmq"
-	"github.com/loopopen/gap/storage/xmysql"
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/v2"
+	"github.com/loopopen/gap/broker/xrabbitmq/v2"
+	"github.com/loopopen/gap/storage/xmysql/v2"
+	"github.com/loopopen/gap/v2/storage/xsql"
 )
 
 func main() {
@@ -23,18 +23,20 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	pub := gap.NewPublisher[time.Time](
+	g := gap.New(
 		gap.WithDrain(ctx, 5),
-		xrabbitmq.UseRabbitMQ(
-			xrabbitmq.URL(url),
-		),
 		xmysql.UseMySQL(
 			xmysql.DSN(dsn),
 		),
 	)
+	pub := gap.NewPublisher[time.Time](g,
+		xrabbitmq.UseRabbitMQ(
+			xrabbitmq.URL(url),
+		),
+	)
 
-	gap.Subscribe(
-		gap.From(pub),
+	g.Subscribe(
+		pub,
 		gap.ServiceName("rabbitmq-mysql-example.worker"),
 	)
 
@@ -76,7 +78,7 @@ func must[T any](v T, err error) T {
 	return v
 }
 
-//go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
+//go:generate go run github.com/loopopen/gap/v2/cmd/gapc -file=$GOFILE
 
 // @subscribe: topic="topic.time.now"
 func handle() gap.Handler[time.Time] {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/loopopen/gap"
-	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/v2"
+	"github.com/loopopen/gap/v2/storage"
 	"gorm.io/gorm"
 )
 

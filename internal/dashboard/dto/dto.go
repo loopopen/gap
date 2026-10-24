@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/pkgs/timex"
+	"github.com/loopopen/gap/v2/internal/entity"
+	"github.com/loopopen/gap/v2/internal/enum"
+	"github.com/loopopen/gap/v2/internal/pkgs/timex"
 )
 
 //go:generate go tool shoot new -json -file=$GOFILE

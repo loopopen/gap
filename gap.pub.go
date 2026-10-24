@@ -3,46 +3,29 @@ package gap
 import (
 	"log/slog"
 	"math/rand"
-	"sync"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
-	"github.com/loopopen/gap/internal"
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/plugin"
-	"github.com/loopopen/gap/internal/workerid"
+	"github.com/loopopen/gap/v2/internal"
+	"github.com/loopopen/gap/v2/internal/entity"
+	"github.com/loopopen/gap/v2/internal/plugin"
+	"github.com/loopopen/gap/v2/internal/workerid"
 	"github.com/loopopen/shoot"
 )
 
-var fixPubOnce sync.Once
-
-func NewPublisher[T any](opts ...shoot.Option[Options, *Options]) Publisher[T] {
-	gapOpts := new(Options).With(opts...)
-
-	producer := plugin.MustGetProducer(gapOpts)
+func NewPublisher[T any](g *Gap, opts ...shoot.Option[BrokerOptions, *BrokerOptions]) Publisher[T] {
+	brokerOpts := g.publisherOptions(opts...)
+	producer := plugin.MustGetProducer(g.opts, brokerOpts)
 	if producer == nil {
 		panic("producer broker must not be nil")
 	}
-	stor := plugin.MustGetStorage(gapOpts)
-	if stor != nil {
-		fixPubOnce.Do(func() {
-			err := stor.UpdateStatusPublished(gapOpts.Context, 0, enum.StatusProcessing, enum.StatusFailed)
-			if err != nil {
-				panic(err)
-			}
-		})
-	}
-
-	initSnowflake(gapOpts.WorkerID)
-
-	pub := internal.NewPub[T](gapOpts, producer, stor)
+	pub := internal.NewPub[T](g.opts, brokerOpts, producer, g.storage, g.pump)
 	return pub
 }
 
-func NewEventPublisher(opts ...shoot.Option[Options, *Options]) EventPublisher {
+func (g *Gap) NewEventPublisher(opts ...shoot.Option[BrokerOptions, *BrokerOptions]) EventPublisher {
 	pub := &internal.EventPub{
-		Pub: NewPublisher[Event](opts...).(*internal.Pub[Event]),
+		Pub: NewPublisher[Event](g, opts...).(*internal.Pub[Event]),
 	}
 	return pub
 }

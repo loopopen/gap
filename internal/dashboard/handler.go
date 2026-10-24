@@ -3,15 +3,15 @@ package dashboard
 import (
 	"net/http"
 
-	"github.com/loopopen/gap/dashboard"
-	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/v2/dashboard"
+	internalgap "github.com/loopopen/gap/v2/internal/gap"
 )
 
 type Handler struct {
 	*http.ServeMux
 }
 
-func NewHandler(gapOpts *gap.Options, opts *dashboard.Options) http.Handler {
+func NewHandler(gapOpts *internalgap.Options, opts *dashboard.Options) http.Handler {
 	h := &Handler{http.NewServeMux()}
 	svc := NewBoardSvc(gapOpts, opts)
 

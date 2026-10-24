@@ -1,12 +1,12 @@
 package xconfluent
 
 import (
-	"github.com/loopopen/gap/broker/xconfluent/internal"
-	"github.com/loopopen/gap/internal/dashboard"
-	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/broker/xconfluent/v2/internal"
+	"github.com/loopopen/gap/v2/spi/dashboard"
+	"github.com/loopopen/gap/v2/spi/enum"
 )
 
-const version = "v0.3.0-beta.7"
+const version = "v2.0.0-beta.0"
 
 type Options = internal.Options
 

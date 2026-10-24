@@ -13,10 +13,10 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
-	"github.com/loopopen/gap"
-	"github.com/loopopen/gap/broker/xconfluent"
-	"github.com/loopopen/gap/broker/xrabbitmq"
-	"github.com/loopopen/gap/storage/xmysql"
+	"github.com/loopopen/gap/v2"
+	"github.com/loopopen/gap/broker/xconfluent/v2"
+	"github.com/loopopen/gap/broker/xrabbitmq/v2"
+	"github.com/loopopen/gap/storage/xmysql/v2"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -28,8 +28,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	svcCtx := initSvc(ctx)
-	app.All("/dashboard/*", adaptor.HTTPHandler(gap.NewDashboardHandler(svcCtx.PubR)))
+	g, svcCtx := initSvc(ctx)
+	app.All("/dashboard/*", adaptor.HTTPHandler(g.DashboardHandler()))
 	app.Get("/api/greet", handlers.Greet(svcCtx.GreetSvc))
 
 	go func() {
@@ -52,17 +52,17 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	g, ctx := errgroup.WithContext(ctx)
+	shutdownGroup, ctx := errgroup.WithContext(ctx)
 
-	g.Go(func() error {
-		err := gap.WaitDrain(ctx)
+	shutdownGroup.Go(func() error {
+		err := g.WaitDrain(ctx)
 		if err != nil {
 			slog.Warn("gap failed to drain", slog.Any("err", err))
 		}
 		return err
 	})
 
-	g.Go(func() error {
+	shutdownGroup.Go(func() error {
 		err := app.ShutdownWithContext(ctx)
 		if err != nil {
 			slog.Warn("server shutdown with error", slog.Any("err", err))
@@ -70,47 +70,47 @@ func main() {
 		return err
 	})
 
-	if err := g.Wait(); err == nil {
+	if err := shutdownGroup.Wait(); err == nil {
 		slog.Info("server shutdown successfully")
 	}
 }
 
-func initSvc(ctx context.Context) *service.SvcHub {
+func initSvc(ctx context.Context) (*gap.Gap, *service.SvcHub) {
 	dsn := "root:root@tcp(127.0.0.1:3306)/example?charset=utf8mb4&parseTime=True&loc=Local"
 	db := must(sql.Open("mysql", dsn))
 
-	pubR := gap.NewEventPublisher(
+	g := gap.New(
 		gap.WithDrain(ctx, 5),
-		gap.BrokerName("greeting-rabbitmq"),
 		gap.UseDashboard(),
-		xrabbitmq.UseRabbitMQ(),
 		xmysql.UseMySQL(xmysql.DSN(dsn)),
 	)
 
-	pubK := gap.NewEventPublisher(
-		gap.WithDrain(ctx, 5),
+	pubR := g.NewEventPublisher(
+		gap.BrokerName("greeting-rabbitmq"),
+		xrabbitmq.UseRabbitMQ(),
+	)
+
+	pubK := g.NewEventPublisher(
 		gap.BrokerName("greeting-kafka"),
-		// gap.UseDashboard(),
 		xconfluent.UseKafka(
 			xconfluent.UserName("kafka"),
 			xconfluent.Password("kafka"),
 		),
-		xmysql.UseMySQL(xmysql.DSN(dsn)),
 	)
 
 	svcHub := service.NewSvcHub(db, pubR, pubK)
 	svcHub.Init()
 
-	gap.Subscribe(
-		gap.From(pubR),
+	g.Subscribe(
+		pubR,
 		gap.Inject(svcHub.GreetSvc),
 	)
-	// gap.Subscribe(
-	// 	gap.From(pubK),
-	// 	gap.Inject(svcHub.GreetSvc),
-	// )
+	g.Subscribe(
+		pubK,
+		gap.Inject(svcHub.GreetSvc),
+	)
 
-	return svcHub
+	return g, svcHub
 }
 
 func must[T any](v T, err error) T {

@@ -8,11 +8,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/loopopen/gap/internal/dashboard"
-	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/gap"
-	"github.com/loopopen/gap/storage"
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/v2/spi/dashboard"
+	"github.com/loopopen/gap/v2/spi/enum"
+	internalgap "github.com/loopopen/gap/v2/spi/runtime"
+	"github.com/loopopen/gap/v2/storage"
+	"github.com/loopopen/gap/v2/storage/xsql"
 	"gorm.io/gorm"
 )
 
@@ -32,7 +32,7 @@ type gormPoolKey struct {
 	db  *gorm.DB
 }
 
-func (o *Options) OpenStorage(gapOpts *gap.Options, dashboard bool) (storage.Storage, error) {
+func (o *Options) OpenStorage(gapOpts *internalgap.Options, dashboard bool) (storage.Storage, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func poolsFor(opts *Options) *gormPools {
 	return value.(*gormPools)
 }
 
-func (p *gormPools) loadData(gapOpts *gap.Options, opts *Options) (*gorm.DB, error) {
+func (p *gormPools) loadData(gapOpts *internalgap.Options, opts *Options) (*gorm.DB, error) {
 	p.dataOnce.Do(func() {
 		if opts.DB != nil {
 			p.dataDB = opts.DB
@@ -104,7 +104,7 @@ func (p *gormPools) loadData(gapOpts *gap.Options, opts *Options) (*gorm.DB, err
 	return p.dataDB, nil
 }
 
-func createStorage(gapOpts *gap.Options, opts *Options, db *gorm.DB) (storage.Storage, error) {
+func createStorage(gapOpts *internalgap.Options, opts *Options, db *gorm.DB) (storage.Storage, error) {
 	stor := NewStorage(gapOpts, opts, db)
 	if err := stor.init(); err != nil {
 		slog.Error("failed to init storage", slog.Any("err", err))

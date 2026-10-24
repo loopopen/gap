@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopopen/gap/broker"
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/v2/broker"
+	"github.com/loopopen/gap/v2/spi/entity"
+	internalgap "github.com/loopopen/gap/v2/spi/runtime"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -98,7 +98,7 @@ func (t *deliveryTag) submit(kind deliveryActionKind) error {
 }
 
 type Consumer struct {
-	gapOpts *gap.Options
+	gapOpts *internalgap.Options
 	opts    *Options
 	client  *kafka.Client
 	dialer  *kafka.Dialer
@@ -119,7 +119,7 @@ type Consumer struct {
 }
 
 // NewConsumer creates a new Kafka consumer broker instance.
-func NewConsumer(gapOpts *gap.Options, opts *Options, group string) *Consumer {
+func NewConsumer(gapOpts *internalgap.Options, opts *Options, group string) *Consumer {
 	if group == "" {
 		panic("group should not be empty")
 	}

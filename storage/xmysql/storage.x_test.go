@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/v2/spi/entity"
+	"github.com/loopopen/gap/v2/spi/enum"
 )
 
 func TestAddMessageFilters(t *testing.T) {

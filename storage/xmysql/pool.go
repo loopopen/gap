@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/v2/storage/xsql"
 )
 
 var openPoolDB = func(ctx context.Context, dsn string, role xsql.Role) (*sql.DB, error) {

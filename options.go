@@ -4,25 +4,25 @@ import (
 	"context"
 	"time"
 
-	"github.com/loopopen/gap/internal/gap"
+	internalgap "github.com/loopopen/gap/v2/internal/gap"
 	"github.com/loopopen/shoot"
 )
 
 var (
-	Version               = gap.Version
-	ServiceName           = gap.ServiceName
-	BrokerName            = gap.BrokerName
-	DefaultGroup          = gap.DefaultGroup
-	WorkerID              = gap.WorkerID
-	ClaimBatchSize        = gap.ClaimBatchSize
-	MaxRetries            = gap.MaxRetries
-	LookbackSeconds       = gap.LookbackSeconds
-	PumpIntervalSeconds   = gap.PumpIntervalSeconds
-	MaxPublishConcurrency = gap.MaxPublishConcurrency
-	PublishBufferSize     = gap.PublishBufferSize
-	WorkConcurrencyFactor = gap.WorkConcurrencyFactor
-	UseDashboard          = gap.UseDashboard
-	Inject                = gap.Inject
+	Version               = internalgap.Version
+	ServiceName           = internalgap.ServiceName
+	DefaultGroup          = internalgap.DefaultGroup
+	WorkerID              = internalgap.WorkerID
+	ClaimBatchSize        = internalgap.ClaimBatchSize
+	MaxRetries            = internalgap.MaxRetries
+	LookbackSeconds       = internalgap.LookbackSeconds
+	PumpIntervalSeconds   = internalgap.PumpIntervalSeconds
+	MaxPublishConcurrency = internalgap.MaxPublishConcurrency
+	PublishBufferSize     = internalgap.PublishBufferSize
+	WorkConcurrencyFactor = internalgap.WorkConcurrencyFactor
+	UseDashboard          = internalgap.UseDashboard
+	Inject                = internalgap.Inject
+	BrokerName            = internalgap.BrokerName
 )
 
 func WithDrain(ctx context.Context, timeoutSeconds int) shoot.Option[Options, *Options] {
@@ -38,10 +38,10 @@ func WithDrain(ctx context.Context, timeoutSeconds int) shoot.Option[Options, *O
 	}
 }
 
-func HandleTopic[T any](handler gap.Handler[T], topic string) shoot.Option[Options, *Options] {
-	return gap.HandleTopicWithinGroup(handler, topic, "")
+func HandleTopic[T any](handler internalgap.Handler[T], topic string) shoot.Option[Options, *Options] {
+	return internalgap.HandleTopicWithinGroup(handler, topic, "")
 }
 
-func HandleTopicWithinGroup[T any](group, topic string, handler gap.Handler[T]) shoot.Option[Options, *Options] {
-	return gap.HandleTopicWithinGroup(handler, topic, group)
+func HandleTopicWithinGroup[T any](group, topic string, handler internalgap.Handler[T]) shoot.Option[Options, *Options] {
+	return internalgap.HandleTopicWithinGroup(handler, topic, group)
 }

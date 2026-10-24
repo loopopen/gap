@@ -5,16 +5,16 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/loopopen/gap/broker"
-	"github.com/loopopen/gap/internal"
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/errx"
-	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/v2/broker"
+	"github.com/loopopen/gap/v2/spi"
+	"github.com/loopopen/gap/v2/spi/entity"
+	"github.com/loopopen/gap/v2/spi/errx"
+	internalgap "github.com/loopopen/gap/v2/spi/runtime"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type Producer struct {
-	gapOpts *gap.Options
+	gapOpts *internalgap.Options
 	opts    *Options
 	group   string
 	chPool  ChanPool
@@ -23,7 +23,7 @@ type Producer struct {
 	ctag    string
 }
 
-func NewProducer(gapOpts *gap.Options, opts *Options) *Producer {
+func NewProducer(gapOpts *internalgap.Options, opts *Options) *Producer {
 	producer := &Producer{
 		gapOpts: gapOpts,
 		opts:    opts,
@@ -76,7 +76,7 @@ func (p *Producer) send(ctx context.Context, routingKey string, headers map[stri
 
 	publishing := amqp.Publishing{
 		Headers:      tbl,
-		MessageId:    headers[internal.KeysMessageID],
+		MessageId:    headers[spi.KeysMessageID],
 		DeliveryMode: amqp.Persistent,
 		Body:         body,
 	}

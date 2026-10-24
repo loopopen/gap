@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/v2/spi/entity"
+	"github.com/loopopen/gap/v2/spi/enum"
 )
 
 func TestClaimIndexSQL(t *testing.T) {

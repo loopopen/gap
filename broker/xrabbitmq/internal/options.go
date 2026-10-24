@@ -6,15 +6,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/loopopen/gap/broker"
-	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/v2/broker"
+	"github.com/loopopen/gap/v2/spi/enum"
+	internalgap "github.com/loopopen/gap/v2/spi/runtime"
 	"github.com/loopopen/shoot"
 )
 
 //go:generate go tool shoot new -opt -short -type=Options,QueueOptions
 
-var _ gap.BrokerPlugin = (*Options)(nil)
+var _ internalgap.BrokerPlugin = (*Options)(nil)
 
 const ExchangeKind = "topic"
 
@@ -102,15 +102,15 @@ func ConfigQueue(opts ...shoot.Option[QueueOptions, *QueueOptions]) shoot.Option
 	}
 }
 
-func UseRabbitMQ(opts ...shoot.Option[Options, *Options]) shoot.Option[gap.Options, *gap.Options] {
-	return func(o *gap.Options) {
-		o.BrokerOptions = new(Options).With(opts...)
+func UseRabbitMQ(opts ...shoot.Option[Options, *Options]) shoot.Option[internalgap.BrokerOptions, *internalgap.BrokerOptions] {
+	return func(o *internalgap.BrokerOptions) {
+		o.Plugin = new(Options).With(opts...)
 	}
 }
 
 var clients = broker.NewClientCache()
 
-func (o *Options) OpenProducer(gapOpts *gap.Options) (broker.Producer, error) {
+func (o *Options) OpenProducer(gapOpts *internalgap.Options) (broker.Producer, error) {
 	return clients.Producer(o.producerKey(), func() (broker.Producer, error) {
 		producer := NewProducer(gapOpts, o)
 		if err := producer.init(); err != nil {
@@ -121,7 +121,7 @@ func (o *Options) OpenProducer(gapOpts *gap.Options) (broker.Producer, error) {
 	})
 }
 
-func (o *Options) OpenConsumer(gapOpts *gap.Options, group string) (broker.Consumer, error) {
+func (o *Options) OpenConsumer(gapOpts *internalgap.Options, group string) (broker.Consumer, error) {
 	return clients.Consumer(o.consumerKey(gapOpts.Version, group), func() (broker.Consumer, error) {
 		consumer := NewConsumer(gapOpts, o, group)
 		if err := consumer.init(); err != nil {

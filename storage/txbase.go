@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/v2/internal/entity"
 )
 
 type TxerBase struct {

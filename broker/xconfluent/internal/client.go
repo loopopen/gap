@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/loopopen/gap/broker"
+	"github.com/loopopen/gap/v2/broker"
 )
 
 func clientConfig(opts *Options) kafka.ConfigMap {

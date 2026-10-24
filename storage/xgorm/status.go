@@ -3,7 +3,7 @@ package xgorm
 import (
 	"database/sql/driver"
 
-	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/v2/spi/enum"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 )

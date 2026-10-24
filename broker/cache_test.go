@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/v2/internal/entity"
 )
 
 type producerStub struct{ id int }

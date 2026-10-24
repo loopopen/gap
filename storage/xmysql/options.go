@@ -1,12 +1,12 @@
 package xmysql
 
 import (
-	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/v2/spi/enum"
+	internalgap "github.com/loopopen/gap/v2/spi/runtime"
 	"github.com/loopopen/shoot"
 )
 
-const version = "v0.3.0-beta.7"
+const version = "v2.0.0-beta.0"
 
 //go:generate go tool shoot new -opt -short -type=Options
 
@@ -21,10 +21,10 @@ func (o *Options) PluginType() enum.Plugin {
 	return enum.PluginMySQL
 }
 
-var _ gap.StoragePlugin = (*Options)(nil)
+var _ internalgap.StoragePlugin = (*Options)(nil)
 
-func UseMySQL(opts ...shoot.Option[Options, *Options]) shoot.Option[gap.Options, *gap.Options] {
-	return func(o *gap.Options) {
+func UseMySQL(opts ...shoot.Option[Options, *Options]) shoot.Option[internalgap.Options, *internalgap.Options] {
+	return func(o *internalgap.Options) {
 		o.StorageOptions = new(Options).With(opts...)
 	}
 }

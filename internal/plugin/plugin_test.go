@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/loopopen/gap/broker"
-	"github.com/loopopen/gap/internal/enum"
-	gapopts "github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/v2/broker"
+	"github.com/loopopen/gap/v2/internal/enum"
+	internalgap "github.com/loopopen/gap/v2/internal/gap"
 )
 
 type brokerOptionsStub struct {
@@ -16,11 +16,11 @@ type brokerOptionsStub struct {
 
 func (*brokerOptionsStub) PluginType() enum.Plugin { return enum.PluginRabbitMQ }
 
-func (*brokerOptionsStub) OpenProducer(*gapopts.Options) (broker.Producer, error) {
+func (*brokerOptionsStub) OpenProducer(*internalgap.Options) (broker.Producer, error) {
 	return nil, nil
 }
 
-func (*brokerOptionsStub) OpenConsumer(*gapopts.Options, string) (broker.Consumer, error) {
+func (*brokerOptionsStub) OpenConsumer(*internalgap.Options, string) (broker.Consumer, error) {
 	return nil, nil
 }
 
@@ -29,8 +29,8 @@ func (o *brokerOptionsStub) ConfigIdentity() string {
 }
 
 func TestBrokerNameIsIndependentOfBrokerConfiguration(t *testing.T) {
-	first := &gapopts.Options{BrokerOptions: &brokerOptionsStub{endpoint: "rabbit-a:5672"}}
-	second := &gapopts.Options{BrokerOptions: &brokerOptionsStub{endpoint: "rabbit-b:5672"}}
+	first := &internalgap.BrokerOptions{Plugin: &brokerOptionsStub{endpoint: "rabbit-a:5672"}}
+	second := &internalgap.BrokerOptions{Plugin: &brokerOptionsStub{endpoint: "rabbit-b:5672"}}
 
 	if got, want := BrokerName(first), BrokerName(second); got != want {
 		t.Fatalf("BrokerName changed with endpoint: %q != %q", got, want)
@@ -41,9 +41,9 @@ func TestBrokerNameIsIndependentOfBrokerConfiguration(t *testing.T) {
 }
 
 func TestExplicitBrokerName(t *testing.T) {
-	opts := &gapopts.Options{
-		BrokerName:    "orders",
-		BrokerOptions: new(brokerOptionsStub),
+	opts := &internalgap.BrokerOptions{
+		BrokerName: "orders",
+		Plugin:     new(brokerOptionsStub),
 	}
 	if got := BrokerName(opts); got != "orders" {
 		t.Fatalf("BrokerName() = %q, want orders", got)

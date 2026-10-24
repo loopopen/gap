@@ -2,7 +2,7 @@
 
 package xmysql
 
-import "github.com/loopopen/gap/internal/entity"
+import "github.com/loopopen/gap/v2/spi/entity"
 
 // ToEntity converts receiver to type entity.Envelope
 func (r *Received) ToEntity() *entity.Envelope {

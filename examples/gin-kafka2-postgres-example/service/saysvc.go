@@ -10,7 +10,7 @@ import (
 
 	"examples/gin-kafka2-postgres-example/event"
 
-	"github.com/loopopen/gap"
+	"github.com/loopopen/gap/v2"
 )
 
 type SaySvc struct {
@@ -32,7 +32,7 @@ func (svc *SaySvc) Say(ctx context.Context, name string) error {
 	return err
 }
 
-//go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
+//go:generate go run github.com/loopopen/gap/v2/cmd/gapc -file=$GOFILE
 
 // @subscribe
 func (svc *SaySvc) HandleSomethingSaid() gap.Handler[event.SomethingSaid] {

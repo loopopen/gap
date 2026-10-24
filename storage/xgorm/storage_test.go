@@ -8,9 +8,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/v2/spi/entity"
+	"github.com/loopopen/gap/v2/spi/enum"
+	internalgap "github.com/loopopen/gap/v2/spi/runtime"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
@@ -136,7 +136,7 @@ func openStorage(t *testing.T) (*gorm.DB, *Storage) {
 	if err != nil {
 		t.Fatalf("open gorm: %v", err)
 	}
-	stor := NewStorage(&gap.Options{
+	stor := NewStorage(&internalgap.Options{
 		Version: "v1",
 	}, &Options{Schema: "gap"}, db)
 	return db, stor

@@ -3,7 +3,7 @@ package internal
 import (
 	"errors"
 
-	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/v2/internal/entity"
 )
 
 const (
@@ -12,7 +12,7 @@ const (
 	KeysGroup         = "gap-group"
 	KeysCorrelationID = "gap-corr-id"
 	KeysBrokerName    = entity.BrokerNameHeader
-	KeysPluginType    = entity.PluginTypeHeader
+	KeysBrokerType    = entity.BrokerTypeHeader
 )
 
 var errInvalidArgs = errors.New("args must be one string map or several string pairs")

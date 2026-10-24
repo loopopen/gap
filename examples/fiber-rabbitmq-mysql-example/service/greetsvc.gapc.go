@@ -7,14 +7,13 @@ import (
 	"encoding/json"
 	"examples/fiber-rabbitmq-mysql-example/event"
 
-	"github.com/loopopen/gap"
-	"github.com/loopopen/gap/gapc"
+	"github.com/loopopen/gap/v2"
+	"github.com/loopopen/gap/v2/gapc"
 )
 
 func init() {
 	var _svc *GreetSvc
-	gap.Subscribe(
-		gapc.GoGenerated(),
+	gap.Register(
 		gapc.Resolve(
 			gapc.FuncName("service.HandleHello"),
 			gapc.ResolveType("*GreetSvc", func(v *GreetSvc) { _svc = v }),

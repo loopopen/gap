@@ -3,14 +3,14 @@ package xmysql
 import (
 	"log/slog"
 
-	"github.com/loopopen/gap/internal/dashboard"
-	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/gap"
-	"github.com/loopopen/gap/storage"
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/v2/spi/dashboard"
+	"github.com/loopopen/gap/v2/spi/enum"
+	internalgap "github.com/loopopen/gap/v2/spi/runtime"
+	"github.com/loopopen/gap/v2/storage"
+	"github.com/loopopen/gap/v2/storage/xsql"
 )
 
-func (o *Options) OpenStorage(gapOpts *gap.Options, dashboard bool) (storage.Storage, error) {
+func (o *Options) OpenStorage(gapOpts *internalgap.Options, dashboard bool) (storage.Storage, error) {
 	role := xsql.RoleData
 	if dashboard {
 		role = xsql.RoleDashboard
@@ -18,7 +18,7 @@ func (o *Options) OpenStorage(gapOpts *gap.Options, dashboard bool) (storage.Sto
 	return o.open(gapOpts, role)
 }
 
-func (o *Options) open(gapOpts *gap.Options, role xsql.Role) (storage.Storage, error) {
+func (o *Options) open(gapOpts *internalgap.Options, role xsql.Role) (storage.Storage, error) {
 	var (
 		pool *xsql.Pool
 		err  error

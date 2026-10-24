@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/errx"
-	"github.com/loopopen/gap/internal/gap"
-	"github.com/loopopen/gap/internal/txer"
-	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/v2/spi/entity"
+	"github.com/loopopen/gap/v2/spi/enum"
+	"github.com/loopopen/gap/v2/spi/errx"
+	internalgap "github.com/loopopen/gap/v2/spi/runtime"
+	"github.com/loopopen/gap/v2/spi/txer"
+	"github.com/loopopen/gap/v2/storage"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
@@ -29,7 +29,7 @@ type TableCommentter interface {
 }
 
 type Storage struct {
-	gapOpts *gap.Options
+	gapOpts *internalgap.Options
 	opts    *Options
 	db      *gorm.DB
 }
@@ -71,7 +71,7 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 	return nil
 }
 
-func NewStorage(gapOpts *gap.Options, opts *Options, db *gorm.DB) *Storage {
+func NewStorage(gapOpts *internalgap.Options, opts *Options, db *gorm.DB) *Storage {
 	stor := &Storage{
 		gapOpts: gapOpts,
 		opts:    opts,

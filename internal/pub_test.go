@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/loopopen/gap/broker"
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
-	gapopts "github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/v2/broker"
+	"github.com/loopopen/gap/v2/internal/entity"
+	"github.com/loopopen/gap/v2/internal/enum"
+	internalgap "github.com/loopopen/gap/v2/internal/gap"
 )
 
 type producerStub struct {
@@ -23,29 +23,31 @@ type brokerPluginStub struct{}
 
 func (*brokerPluginStub) PluginType() enum.Plugin { return enum.PluginRabbitMQ }
 func (*brokerPluginStub) ConfigIdentity() string  { return "config" }
-func (*brokerPluginStub) OpenProducer(*gapopts.Options) (broker.Producer, error) {
+func (*brokerPluginStub) OpenProducer(*internalgap.Options) (broker.Producer, error) {
 	return nil, nil
 }
-func (*brokerPluginStub) OpenConsumer(*gapopts.Options, string) (broker.Consumer, error) {
+func (*brokerPluginStub) OpenConsumer(*internalgap.Options, string) (broker.Consumer, error) {
 	return nil, nil
 }
 
 func TestPublishWritesStableBrokerRouteHeaders(t *testing.T) {
 	entity.MustInitSnowflake(1)
 	producer := new(producerStub)
-	opts := &gapopts.Options{
-		Version:       "v1",
-		BrokerName:    "orders",
-		BrokerOptions: new(brokerPluginStub),
+	opts := &internalgap.Options{
+		Version: "v1",
 	}
-	pub := NewPub[string](opts, producer, nil)
+	brokerOpts := &internalgap.BrokerOptions{
+		BrokerName: "orders",
+		Plugin:     new(brokerPluginStub),
+	}
+	pub := NewPub[string](opts, brokerOpts, producer, nil, nil)
 	if err := pub.Publish(context.Background(), "created", "payload"); err != nil {
 		t.Fatal(err)
 	}
 	if got := producer.envelope.Headers[KeysBrokerName]; got != "orders" {
 		t.Fatalf("broker name header = %q, want orders", got)
 	}
-	if got := producer.envelope.Headers[KeysPluginType]; got != "RabbitMQ" {
-		t.Fatalf("plugin type header = %q, want RabbitMQ", got)
+	if got := producer.envelope.Headers[KeysBrokerType]; got != "RabbitMQ" {
+		t.Fatalf("broker type header = %q, want RabbitMQ", got)
 	}
 }

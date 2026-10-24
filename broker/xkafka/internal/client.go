@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopopen/gap/broker"
+	"github.com/loopopen/gap/v2/broker"
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl"
 	"github.com/segmentio/kafka-go/sasl/plain"

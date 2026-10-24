@@ -2,7 +2,7 @@
 
 package dto
 
-import "github.com/loopopen/gap/internal/entity"
+import "github.com/loopopen/gap/v2/internal/entity"
 
 // FromEntity reads from type entity.Envelope, then writes back to receiver and returns it
 func (m *Message) FromEntity(envelope_ *entity.Envelope) *Message {

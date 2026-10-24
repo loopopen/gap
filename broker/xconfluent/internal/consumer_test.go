@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/v2/spi/entity"
+	internalgap "github.com/loopopen/gap/v2/spi/runtime"
 )
 
 type fakeConsumer struct {
@@ -70,7 +70,7 @@ func (f *fakeConsumer) Close() error {
 func testConsumer(client consumerClient) *Consumer {
 	entity.MustInitSnowflake(1)
 	consumer := &Consumer{
-		gapOpts:        &gap.Options{Version: "test"},
+		gapOpts:        &internalgap.Options{Version: "test"},
 		group:          "test-group",
 		groupID:        "gap.test.g.test-group",
 		state:          consumerSubscribed,

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/loopopen/gap/dashboard"
-	"github.com/loopopen/gap/internal/gap"
-	"github.com/loopopen/gap/internal/plugin"
-	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/v2/dashboard"
+	internalgap "github.com/loopopen/gap/v2/internal/gap"
+	"github.com/loopopen/gap/v2/internal/plugin"
+	"github.com/loopopen/gap/v2/storage"
 )
 
 //go:embed app/dist
@@ -26,13 +26,13 @@ const (
 )
 
 type BoardSvc struct {
-	gapOpts *gap.Options
+	gapOpts *internalgap.Options
 	opts    *dashboard.Options
 	routes  []RouteRecord
 	storage storage.Storage
 }
 
-func NewBoardSvc(gapOpts *gap.Options, opts *dashboard.Options) *BoardSvc {
+func NewBoardSvc(gapOpts *internalgap.Options, opts *dashboard.Options) *BoardSvc {
 	stor := plugin.MustGetDashboardStorage(gapOpts)
 
 	return &BoardSvc{

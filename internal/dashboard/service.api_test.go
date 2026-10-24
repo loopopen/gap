@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/v2/internal/enum"
 )
 
 func TestMessageFilterFromRequest(t *testing.T) {

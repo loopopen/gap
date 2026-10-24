@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/loopopen/gap/internal/gap"
+	internalgap "github.com/loopopen/gap/v2/spi/runtime"
 	"gorm.io/gorm"
 )
 
@@ -94,7 +94,7 @@ func TestLoadDataFromDSNAndDialector(t *testing.T) {
 			return poolTestDialector{}
 		},
 	))
-	db, err := new(gormPools).loadData(&gap.Options{}, opts)
+	db, err := new(gormPools).loadData(&internalgap.Options{}, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestPoolsForUsesDSNOrDBIdentity(t *testing.T) {
 		t.Fatal("different dsns shared a pool")
 	}
 
-	gapOpts := &gap.Options{}
+	gapOpts := &internalgap.Options{}
 	if _, err := poolsFor(sameA).loadData(gapOpts, sameA); err != nil {
 		t.Fatal(err)
 	}

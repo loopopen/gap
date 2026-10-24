@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/v2/spi/entity"
 )
 
 type fakeProducer struct {

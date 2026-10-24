@@ -1,6 +1,6 @@
 package service
 
-import "github.com/loopopen/gap"
+import "github.com/loopopen/gap/v2"
 
 type SvcContext struct {
 	Pub gap.EventPublisher

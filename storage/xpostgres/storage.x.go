@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/v2/spi/entity"
+	"github.com/loopopen/gap/v2/storage"
 )
 
 var _ storage.StorageX = (*Storage)(nil)

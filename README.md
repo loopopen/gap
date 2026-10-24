@@ -24,12 +24,14 @@ Monitor message delivery at a glance with the built-in operational dashboard. Se
 GAP's broker and storage integrations are separate Go modules. Install the core module together with the integrations your application uses. For the RabbitMQ and GORM setup used below:
 
 ```bash
-go get github.com/loopopen/gap
-go get github.com/loopopen/gap/broker/xrabbitmq
-go get github.com/loopopen/gap/storage/xgorm
+go get github.com/loopopen/gap/v2
+go get github.com/loopopen/gap/broker/xrabbitmq/v2
+go get github.com/loopopen/gap/storage/xgorm/v2
 ```
 
-Other available integrations include `broker/xkafka`, `broker/xconfluent`, and `storage/xmysql`.
+Other available integrations include `broker/xkafka/v2`, `broker/xconfluent/v2`, `storage/xmysql/v2`, and `storage/xpostgres/v2`.
+
+The `github.com/loopopen/gap/v2/spi/...` packages are the stable implementation boundary for independently versioned broker and storage plugins. Application code should normally import the core and plugin modules instead of using SPI packages directly.
 
 ## Quick Start
 
@@ -70,9 +72,9 @@ import (
     "syscall"
     "time"
 
-    "github.com/loopopen/gap"
-    "github.com/loopopen/gap/broker/xrabbitmq"
-    "github.com/loopopen/gap/storage/xgorm"
+    "github.com/loopopen/gap/v2"
+    "github.com/loopopen/gap/broker/xrabbitmq/v2"
+    "github.com/loopopen/gap/storage/xgorm/v2"
     "gorm.io/driver/mysql"
     "gorm.io/gorm"
 )
@@ -86,20 +88,24 @@ func main() {
 
     db, _ := gorm.Open(mysql.Open(dsn))
 
-    // Create publisher
-    pub := gap.NewEventPublisher(
+    // Create the application-scoped Gap instance
+    g := gap.New(
         gap.WithDrain(ctx, 5),
-        xrabbitmq.UseRabbitMQ(
-            xrabbitmq.URL(url),
-        ),
         xgorm.UseGorm(
             xgorm.DB(db),
         ),
     )
 
+    // Create publisher
+    pub := g.NewEventPublisher(
+        xrabbitmq.UseRabbitMQ(
+            xrabbitmq.URL(url),
+        ),
+    )
+
     // Set up subscriber
-    gap.Subscribe(
-        gap.From(pub),
+    g.Subscribe(
+        pub,
         gap.ServiceName("my-service.worker"),
         gap.Inject(/*handler_dependencies*/),
     )
@@ -132,12 +138,12 @@ func main() {
 
     drainCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
-    if err := gap.WaitDrain(drainCtx); err != nil {
+    if err := g.WaitDrain(drainCtx); err != nil {
         slog.Warn("gap failed to drain", slog.Any("err", err))
     }
 }
 
-//go:generate go run github.com/loopopen/gap/cmd/gapc -file=$GOFILE
+//go:generate go run github.com/loopopen/gap/v2/cmd/gapc -file=$GOFILE
 
 // @subscribe
 func handle(/*dependency-list*/) gap.Handler[*event.OrderCreated] {
@@ -162,7 +168,7 @@ This will generate the necessary handler code automatically.
 
 The library supports graceful shutdown through context cancellation and the built-in drain helper.
 
-- `gap.WaitDrain(ctx context.Context) error` gives the publisher/subscriber time to finish in-flight messages before exiting
+- `g.WaitDrain(ctx context.Context) error` gives the publisher/subscriber time to finish in-flight messages before exiting
 
 ## Usage Examples
 
@@ -183,26 +189,29 @@ go run .
 
 ### Publishers
 
-- `gap.NewPublisher[T](opts...) Publisher[T]`: Create a typed publisher
-- `gap.NewEventPublisher(opts...) EventPublisher`: Create an event publisher
+- `gap.New(opts...) *Gap`: Create an application-scoped Gap instance
+- `gap.NewPublisher[T](g, opts...) Publisher[T]`: Create a typed publisher
+- `g.NewEventPublisher(opts...) EventPublisher`: Create an event publisher
 - `publisher.Bind(tx Txer) (Publisher[T], error)`: Bind a publisher to a transaction for the outbox pattern
 
 ### Subscribers
 
-- `gap.Subscribe(opts...)`: Set up subscribers with handlers
+- `g.Subscribe(publisher, opts...)`: Set up subscribers with handlers
+- `g.DashboardHandler()`: Create the dashboard HTTP handler
+- `g.WaitDrain(ctx)`: Wait for in-flight work during shutdown
 
 ### Options
 
-- `gap.WithDrain(ctx context.Context, timeoutSeconds int)`: Enable drain mode for graceful shutdown
-- `gap.ServiceName(name string)`: Set service name
-- `gap.Inject(deps...)`: Inject dependencies into handlers
+- Runtime `Options` are passed to `gap.New`: `gap.WithDrain`, `gap.UseDashboard`, and storage options such as `xmysql.UseMySQL`
+- `BrokerOptions` are passed to publisher constructors: `gap.BrokerName` and broker options such as `xrabbitmq.UseRabbitMQ`
+- Subscriber options are passed to `g.Subscribe`: `gap.ServiceName` and `gap.Inject`
 
 ## Code Generation
 
 Use the `gapc` tool to generate handler boilerplate:
 
 ```bash
-go run github.com/loopopen/gap/cmd/gapc -file=main.go
+go run github.com/loopopen/gap/v2/cmd/gapc -file=main.go
 ```
 
 Add annotations to your handler functions: (topic;group)

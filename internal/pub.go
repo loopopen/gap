@@ -6,48 +6,52 @@ import (
 	"log/slog"
 	"reflect"
 
-	"github.com/loopopen/gap/broker"
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/errx"
-	"github.com/loopopen/gap/internal/gap"
-	"github.com/loopopen/gap/internal/plugin"
-	"github.com/loopopen/gap/internal/pump"
-	"github.com/loopopen/gap/internal/txer"
-	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/v2/broker"
+	"github.com/loopopen/gap/v2/internal/entity"
+	"github.com/loopopen/gap/v2/internal/enum"
+	"github.com/loopopen/gap/v2/internal/errx"
+	internalgap "github.com/loopopen/gap/v2/internal/gap"
+	"github.com/loopopen/gap/v2/internal/plugin"
+	"github.com/loopopen/gap/v2/internal/pump"
+	"github.com/loopopen/gap/v2/internal/txer"
+	"github.com/loopopen/gap/v2/storage"
 )
 
 type Pub[T any] struct {
-	opts           *gap.Options
+	opts           *internalgap.Options
+	brokerOpts     *internalgap.BrokerOptions
 	storage        storage.Storage
 	producer       broker.Producer
 	pump           *pump.Pump
 	txer           txer.Txer
 	brokerName     string
-	pluginType     string
+	brokerType     string
 	configIdentity string
 }
 
-func NewPub[T any](opts *gap.Options, producer broker.Producer, storage storage.Storage) *Pub[T] {
+func NewPub[T any](opts *internalgap.Options, brokerOpts *internalgap.BrokerOptions, producer broker.Producer, storage storage.Storage, messagePump *pump.Pump) *Pub[T] {
 	if producer == nil {
 		panic(errx.ErrNoBroker)
 	}
 
 	pub := &Pub[T]{
 		opts:           opts,
+		brokerOpts:     brokerOpts,
 		storage:        storage,
 		producer:       producer,
-		brokerName:     plugin.BrokerName(opts),
-		pluginType:     plugin.PluginType(opts),
-		configIdentity: plugin.BrokerConfigIdentity(opts),
+		brokerName:     plugin.BrokerName(brokerOpts),
+		brokerType:     plugin.BrokerType(brokerOpts),
+		configIdentity: plugin.BrokerConfigIdentity(brokerOpts),
 	}
 
 	if storage != nil {
-		pump := pump.Singleton(opts)
-		if err := pump.SetSender(pub.pluginType, pub.brokerName, pub.configIdentity, pub); err != nil {
+		if messagePump == nil {
+			panic("message pump must not be nil when storage is configured")
+		}
+		if err := messagePump.SetSender(pub.brokerType, pub.brokerName, pub.configIdentity, pub); err != nil {
 			panic(err)
 		}
-		pub.pump = pump
+		pub.pump = messagePump
 	} else {
 		slog.Debug("pub works on no-persistence mode")
 	}
@@ -75,12 +79,13 @@ func (p *Pub[T]) bind(txer txer.Txer) (*Pub[T], error) {
 	}
 	pub := &Pub[T]{
 		opts:           p.opts,
+		brokerOpts:     p.brokerOpts,
 		storage:        stor,
 		producer:       p.producer,
 		pump:           p.pump,
 		txer:           txer,
 		brokerName:     p.brokerName,
-		pluginType:     p.pluginType,
+		brokerType:     p.brokerType,
 		configIdentity: p.configIdentity,
 	}
 	txer.SetFlushHandler(func(e *entity.Envelope) {
@@ -108,7 +113,7 @@ func (p *Pub[T]) Publish(ctx context.Context, topic string, msg T, args ...any) 
 		en.AddHeader(k, v)
 	}
 	en.AddHeader(KeysBrokerName, p.brokerName)
-	en.AddHeader(KeysPluginType, p.pluginType)
+	en.AddHeader(KeysBrokerType, p.brokerType)
 	if err := en.Verify(); err != nil {
 		return err
 	}
@@ -161,8 +166,12 @@ func (p *Pub[T]) SendAndUpdate(ctx context.Context, envelope *entity.Envelope) e
 	return nil
 }
 
-func (p *Pub[T]) Options() *gap.Options {
+func (p *Pub[T]) Options() *internalgap.Options {
 	return p.opts
+}
+
+func (p *Pub[T]) BrokerOptions() *internalgap.BrokerOptions {
+	return p.brokerOpts
 }
 
 type EventPub struct {

@@ -7,17 +7,17 @@ import (
 	"os"
 	"time"
 
-	"github.com/loopopen/gap/broker"
-	"github.com/loopopen/gap/internal"
-	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/v2/broker"
+	"github.com/loopopen/gap/v2/spi"
+	"github.com/loopopen/gap/v2/spi/entity"
+	internalgap "github.com/loopopen/gap/v2/spi/runtime"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-const corrid = internal.KeysCorrelationID
+const corrid = spi.KeysCorrelationID
 
 type Consumer struct {
-	gapOpts *gap.Options
+	gapOpts *internalgap.Options
 	opts    *Options
 	group   string
 	chPool  ChanPool
@@ -26,7 +26,7 @@ type Consumer struct {
 	ctag    string
 }
 
-func NewConsumer(gapOpts *gap.Options, opts *Options, group string) *Consumer {
+func NewConsumer(gapOpts *internalgap.Options, opts *Options, group string) *Consumer {
 	if group == "" {
 		panic("group should not be empty")
 	}

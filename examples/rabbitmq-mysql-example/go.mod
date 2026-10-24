@@ -4,9 +4,9 @@ go 1.24.0
 
 require (
 	github.com/go-sql-driver/mysql v1.9.3
-	github.com/loopopen/gap v99.0.0+incompatible
-	github.com/loopopen/gap/broker/xrabbitmq v0.0.0-00010101000000-000000000000
-	github.com/loopopen/gap/storage/xmysql v0.0.0-00010101000000-000000000000
+	github.com/loopopen/gap/broker/xrabbitmq/v2 v2.0.0
+	github.com/loopopen/gap/storage/xmysql/v2 v2.0.0
+	github.com/loopopen/gap/v2 v2.0.0
 )
 
 require (
@@ -16,8 +16,8 @@ require (
 	github.com/rabbitmq/amqp091-go v1.15.0 // indirect
 )
 
-replace github.com/loopopen/gap => ../../../gap
+replace github.com/loopopen/gap/v2 => ../../../gap
 
-replace github.com/loopopen/gap/storage/xmysql => ../../../gap/storage/xmysql
+replace github.com/loopopen/gap/broker/xrabbitmq/v2 => ../../broker/xrabbitmq
 
-replace github.com/loopopen/gap/broker/xrabbitmq => ../../../gap/broker/xrabbitmq
+replace github.com/loopopen/gap/storage/xmysql/v2 => ../../storage/xmysql

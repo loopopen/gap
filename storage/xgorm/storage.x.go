@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/v2/spi/entity"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
