@@ -33,8 +33,13 @@ func main() {
 		Logger: logger.Default.LogMode(logger.Info),
 	}))
 
-	pub := gap.NewPublisher[time.Time](
+	g := gap.New(
 		gap.WithDrain(ctx, 5),
+		xgorm.UseGorm(
+			xgorm.DSN(dsn, postgres.Open),
+		),
+	)
+	pub := gap.NewPublisher[time.Time](g,
 		xkafka.UseKafka(
 			xkafka.Brokers(brokers),
 			xkafka.ConfigTopic(
@@ -42,13 +47,10 @@ func main() {
 				xkafka.ReplicationFactor(3),
 			),
 		),
-		xgorm.UseGorm(
-			xgorm.DSN(dsn, postgres.Open),
-		),
 	)
 
-	gap.Subscribe(
-		gap.From(pub),
+	g.Subscribe(
+		pub,
 		gap.ServiceName("kafka-gorm-postgres-example.worker"),
 	)
 

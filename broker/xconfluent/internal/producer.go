@@ -8,7 +8,7 @@ import (
 	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/errx"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 )
 
 type producerClient interface {
@@ -16,13 +16,13 @@ type producerClient interface {
 }
 
 type Producer struct {
-	gapOpts  *gap.Options
+	gapOpts  *ingap.Options
 	opts     *Options
 	producer producerClient
 	ensurer  *Ensurer
 }
 
-func NewProducer(gapOpts *gap.Options, opts *Options) (*Producer, error) {
+func NewProducer(gapOpts *ingap.Options, opts *Options) (*Producer, error) {
 	ensurer, err := SingleEnsurer(opts)
 	if err != nil {
 		return nil, err

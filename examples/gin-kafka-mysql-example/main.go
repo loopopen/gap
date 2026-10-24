@@ -28,9 +28,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	svcCtx := initSvc(ctx)
+	g, svcCtx := initSvc(ctx)
+	dashboardHandler := g.DashboardHandler()
 	r.Any("/gap/*any", func(c *gin.Context) {
-		gap.NewDashboardHandler(svcCtx.Pub).ServeHTTP(c.Writer, c.Request)
+		dashboardHandler.ServeHTTP(c.Writer, c.Request)
 	})
 	r.GET("/api/say", handlers.Say(svcCtx.SaySvc))
 
@@ -59,17 +60,17 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	g, ctx := errgroup.WithContext(ctx)
+	shutdownGroup, ctx := errgroup.WithContext(ctx)
 
-	g.Go(func() error {
-		err := gap.WaitDrain(ctx)
+	shutdownGroup.Go(func() error {
+		err := g.WaitDrain(ctx)
 		if err != nil {
 			slog.Warn("gap failed to drain", slog.Any("err", err))
 		}
 		return err
 	})
 
-	g.Go(func() error {
+	shutdownGroup.Go(func() error {
 		err := srv.Shutdown(ctx)
 		if err != nil {
 			slog.Warn("server shutdown with error", slog.Any("err", err))
@@ -77,20 +78,25 @@ func main() {
 		return err
 	})
 
-	if err := g.Wait(); err == nil {
+	if err := shutdownGroup.Wait(); err == nil {
 		slog.Info("server shutdown successfully")
 	}
 }
 
-func initSvc(ctx context.Context) *service.SvcContext {
+func initSvc(ctx context.Context) (*gap.Gap, *service.SvcContext) {
 	dsn := "root:root@tcp(127.0.0.1:3306)/example?charset=utf8mb4&parseTime=True&loc=Local"
 	brokers := []string{"127.0.0.1:9092"}
 
-	pub := gap.NewEventPublisher(
+	g := gap.New(
 		gap.WithDrain(ctx, 5),
 		gap.UseDashboard(
 			dashboard.PathPrefix("/gap"),
 		),
+		xmysql.UseMySQL(
+			xmysql.DSN(dsn),
+		),
+	)
+	pub := g.NewEventPublisher(
 		xkafka.UseKafka(
 			xkafka.UserName("kafka"),
 			xkafka.Password("kafka"),
@@ -100,18 +106,15 @@ func initSvc(ctx context.Context) *service.SvcContext {
 			// ),
 			xkafka.StartOffset(kafka.FirstOffset),
 		),
-		xmysql.UseMySQL(
-			xmysql.DSN(dsn),
-		),
 	)
 
 	svcCtx := service.NewSvcContext(pub)
 	svcCtx.Init()
 
-	gap.Subscribe(
-		gap.From(pub),
+	g.Subscribe(
+		pub,
 		gap.Inject(svcCtx.SaySvc),
 	)
 
-	return svcCtx
+	return g, svcCtx
 }

@@ -12,8 +12,7 @@ import (
 )
 
 func init() {
-	gap.Subscribe(
-		gapc.GoGenerated(),
+	gap.Register(
 		gapc.HandleTopicWithinGroupRaw(
 			func(ctx context.Context, data_ []byte, headers_ map[string]string) error {
 				var msg_ time.Time

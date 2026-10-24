@@ -4,24 +4,25 @@ import (
 	"context"
 	"time"
 
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/shoot"
 )
 
 var (
-	Version               = gap.Version
-	ServiceName           = gap.ServiceName
-	DefaultGroup          = gap.DefaultGroup
-	WorkerID              = gap.WorkerID
-	ClaimBatchSize        = gap.ClaimBatchSize
-	MaxRetries            = gap.MaxRetries
-	LookbackSeconds       = gap.LookbackSeconds
-	PumpIntervalSeconds   = gap.PumpIntervalSeconds
-	MaxPublishConcurrency = gap.MaxPublishConcurrency
-	PublishBufferSize     = gap.PublishBufferSize
-	WorkConcurrencyFactor = gap.WorkConcurrencyFactor
-	UseDashboard          = gap.UseDashboard
-	Inject                = gap.Inject
+	Version               = ingap.Version
+	ServiceName           = ingap.ServiceName
+	DefaultGroup          = ingap.DefaultGroup
+	WorkerID              = ingap.WorkerID
+	ClaimBatchSize        = ingap.ClaimBatchSize
+	MaxRetries            = ingap.MaxRetries
+	LookbackSeconds       = ingap.LookbackSeconds
+	PumpIntervalSeconds   = ingap.PumpIntervalSeconds
+	MaxPublishConcurrency = ingap.MaxPublishConcurrency
+	PublishBufferSize     = ingap.PublishBufferSize
+	WorkConcurrencyFactor = ingap.WorkConcurrencyFactor
+	UseDashboard          = ingap.UseDashboard
+	Inject                = ingap.Inject
+	BrokerName            = ingap.BrokerName
 )
 
 func WithDrain(ctx context.Context, timeoutSeconds int) shoot.Option[Options, *Options] {
@@ -37,10 +38,10 @@ func WithDrain(ctx context.Context, timeoutSeconds int) shoot.Option[Options, *O
 	}
 }
 
-func HandleTopic[T any](handler gap.Handler[T], topic string) shoot.Option[Options, *Options] {
-	return gap.HandleTopicWithinGroup(handler, topic, "")
+func HandleTopic[T any](handler ingap.Handler[T], topic string) shoot.Option[Options, *Options] {
+	return ingap.HandleTopicWithinGroup(handler, topic, "")
 }
 
-func HandleTopicWithinGroup[T any](group, topic string, handler gap.Handler[T]) shoot.Option[Options, *Options] {
-	return gap.HandleTopicWithinGroup(handler, topic, group)
+func HandleTopicWithinGroup[T any](group, topic string, handler ingap.Handler[T]) shoot.Option[Options, *Options] {
+	return ingap.HandleTopicWithinGroup(handler, topic, group)
 }

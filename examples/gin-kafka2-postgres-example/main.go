@@ -28,8 +28,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	svcCtx := initSvc(ctx)
-	dashboard := gap.NewDashboardHandler(svcCtx.Pub)
+	g, svcCtx := initSvc(ctx)
+	dashboard := g.DashboardHandler()
 	r.Any("/dashboard/*any", func(c *gin.Context) {
 		dashboard.ServeHTTP(c.Writer, c.Request)
 	})
@@ -60,17 +60,17 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	g, ctx := errgroup.WithContext(ctx)
+	shutdownGroup, ctx := errgroup.WithContext(ctx)
 
-	g.Go(func() error {
-		err := gap.WaitDrain(ctx)
+	shutdownGroup.Go(func() error {
+		err := g.WaitDrain(ctx)
 		if err != nil {
 			slog.Warn("gap failed to drain", slog.Any("err", err))
 		}
 		return err
 	})
 
-	g.Go(func() error {
+	shutdownGroup.Go(func() error {
 		err := srv.Shutdown(ctx)
 		if err != nil {
 			slog.Warn("server shutdown with error", slog.Any("err", err))
@@ -78,18 +78,23 @@ func main() {
 		return err
 	})
 
-	if err := g.Wait(); err == nil {
+	if err := shutdownGroup.Wait(); err == nil {
 		slog.Info("server shutdown successfully")
 	}
 }
 
-func initSvc(ctx context.Context) *service.SvcContext {
+func initSvc(ctx context.Context) (*gap.Gap, *service.SvcContext) {
 	dsn := "postgres://postgres:postgres@127.0.0.1:5432/example?sslmode=disable"
 	brokers := []string{"127.0.0.1:9092"}
 
-	pub := gap.NewEventPublisher(
+	g := gap.New(
 		gap.WithDrain(ctx, 5),
 		gap.UseDashboard(),
+		xpostgres.UsePostgres(
+			xpostgres.DSN(dsn),
+		),
+	)
+	pub := g.NewEventPublisher(
 		xconfluent.UseKafka(
 			xconfluent.UserName("kafka"),
 			xconfluent.Password("kafka"),
@@ -99,18 +104,15 @@ func initSvc(ctx context.Context) *service.SvcContext {
 			),
 			xconfluent.StartOffset(kafka.OffsetEnd),
 		),
-		xpostgres.UsePostgres(
-			xpostgres.DSN(dsn),
-		),
 	)
 
 	svcCtx := service.NewSvcContext(pub)
 	svcCtx.Init()
 
-	gap.Subscribe(
-		gap.From(pub),
+	g.Subscribe(
+		pub,
 		gap.Inject(svcCtx.SaySvc),
 	)
 
-	return svcCtx
+	return g, svcCtx
 }

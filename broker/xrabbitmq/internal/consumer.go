@@ -10,14 +10,14 @@ import (
 	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal"
 	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 const corrid = internal.KeysCorrelationID
 
 type Consumer struct {
-	gapOpts *gap.Options
+	gapOpts *ingap.Options
 	opts    *Options
 	group   string
 	chPool  ChanPool
@@ -26,7 +26,7 @@ type Consumer struct {
 	ctag    string
 }
 
-func NewConsumer(gapOpts *gap.Options, opts *Options, group string) *Consumer {
+func NewConsumer(gapOpts *ingap.Options, opts *Options, group string) *Consumer {
 	if group == "" {
 		panic("group should not be empty")
 	}

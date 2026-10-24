@@ -6,7 +6,7 @@ import (
 	"github.com/loopopen/gap/internal/enum"
 )
 
-const version = "v0.3.0-beta.7"
+const version = "v1.0.0-beta.0"
 
 type Options = internal.Options
 

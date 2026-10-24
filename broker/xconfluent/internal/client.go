@@ -2,10 +2,13 @@ package internal
 
 import (
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/loopopen/gap/broker"
 )
 
 func clientConfig(opts *Options) kafka.ConfigMap {
@@ -44,16 +47,70 @@ func consumerConfig(opts *Options, groupID string) (kafka.ConfigMap, error) {
 	return config, nil
 }
 
+func (o *Options) connectionKey() string {
+	brokers := slices.Clone(o.Brokers)
+	slices.Sort(brokers)
+	parts := []string{
+		strings.Join(brokers, ","),
+		o.UserName,
+		o.Password,
+	}
+	if len(o.Config) > 0 {
+		keys := make([]string, 0, len(o.Config))
+		for key := range o.Config {
+			keys = append(keys, key)
+		}
+		slices.Sort(keys)
+		for _, key := range keys {
+			parts = append(parts, key+"="+fmt.Sprint(o.Config[key]))
+		}
+	}
+	return strings.Join(parts, "\x00")
+}
+
+func (o *Options) producerKey() string {
+	return o.connectionKey()
+}
+
+func (o *Options) ConfigIdentity() string {
+	return broker.ConfigIdentity("xconfluent", o.producerKey())
+}
+
+func (o *Options) consumerKey(version, group string) string {
+	return strings.Join([]string{
+		o.connectionKey(),
+		version,
+		group,
+		strconv.FormatInt(int64(o.StartOffset), 10),
+	}, "\x00")
+}
+
 var (
-	adminOnce sync.Once
-	admin     *kafka.AdminClient
-	adminErr  error
+	adminMu  sync.Mutex
+	adminMap = map[string]*kafka.AdminClient{}
 )
 
 func SingleAdmin(opts *Options) (*kafka.AdminClient, error) {
-	adminOnce.Do(func() {
-		config := clientConfig(opts)
-		admin, adminErr = kafka.NewAdminClient(&config)
-	})
-	return admin, adminErr
+	key := opts.connectionKey()
+	adminMu.Lock()
+	if existing, ok := adminMap[key]; ok {
+		adminMu.Unlock()
+		return existing, nil
+	}
+	adminMu.Unlock()
+
+	config := clientConfig(opts)
+	created, err := kafka.NewAdminClient(&config)
+	if err != nil {
+		return nil, err
+	}
+
+	adminMu.Lock()
+	defer adminMu.Unlock()
+	if existing, ok := adminMap[key]; ok {
+		created.Close()
+		return existing, nil
+	}
+	adminMap[key] = created
+	return created, nil
 }

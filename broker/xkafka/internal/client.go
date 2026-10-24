@@ -2,9 +2,14 @@ package internal
 
 import (
 	"crypto/tls"
+	"fmt"
+	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/loopopen/gap/broker"
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl"
 	"github.com/segmentio/kafka-go/sasl/plain"
@@ -16,8 +21,42 @@ type kafkaConnections struct {
 	transport *kafka.Transport
 }
 
-var connections *kafkaConnections
-var connectionsOnce sync.Once
+var (
+	connMu  sync.Mutex
+	connMap = map[string]*kafkaConnections{}
+)
+
+func (o *Options) connectionKey() string {
+	brokers := slices.Clone(o.Brokers)
+	slices.Sort(brokers)
+	tlsID := ""
+	if o.TLSConfig != nil {
+		tlsID = fmt.Sprintf("%p", o.TLSConfig)
+	}
+	return strings.Join([]string{
+		strings.Join(brokers, ","),
+		o.UserName,
+		o.Password,
+		tlsID,
+	}, "\x00")
+}
+
+func (o *Options) producerKey() string {
+	return o.connectionKey()
+}
+
+func (o *Options) ConfigIdentity() string {
+	return broker.ConfigIdentity("xkafka", o.producerKey())
+}
+
+func (o *Options) consumerKey(version, group string) string {
+	return strings.Join([]string{
+		o.connectionKey(),
+		version,
+		group,
+		strconv.FormatInt(o.StartOffset, 10),
+	}, "\x00")
+}
 
 func newKafkaConnections(opts *Options) *kafkaConnections {
 	var mechanism sasl.Mechanism
@@ -57,10 +96,15 @@ func newKafkaConnections(opts *Options) *kafkaConnections {
 }
 
 func singleKafkaConnections(opts *Options) *kafkaConnections {
-	connectionsOnce.Do(func() {
-		connections = newKafkaConnections(opts)
-	})
-	return connections
+	key := opts.connectionKey()
+	connMu.Lock()
+	defer connMu.Unlock()
+	if existing, ok := connMap[key]; ok {
+		return existing
+	}
+	created := newKafkaConnections(opts)
+	connMap[key] = created
+	return created
 }
 
 func SingleClient(opts *Options) *kafka.Client {

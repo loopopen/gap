@@ -12,7 +12,7 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal/entity"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 )
 
 var (
@@ -97,7 +97,7 @@ func (t *deliveryTag) submit(kind deliveryActionKind) error {
 }
 
 type Consumer struct {
-	gapOpts *gap.Options
+	gapOpts *ingap.Options
 	opts    *Options
 	group   string
 	groupID string
@@ -115,7 +115,7 @@ type Consumer struct {
 	commitRetryMax time.Duration
 }
 
-func NewConsumer(gapOpts *gap.Options, opts *Options, group string) (*Consumer, error) {
+func NewConsumer(gapOpts *ingap.Options, opts *Options, group string) (*Consumer, error) {
 	if group == "" {
 		panic("group should not be empty")
 	}

@@ -6,12 +6,12 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/loopopen/gap/internal/dashboard"
 	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/storage"
 	"github.com/loopopen/gap/storage/xsql"
 )
 
-func (o *Options) OpenStorage(gapOpts *gap.Options, role storage.Role) (storage.Storage, error) {
+func (o *Options) OpenStorage(gapOpts *ingap.Options, role storage.Role) (storage.Storage, error) {
 	pool, err := registry.Open(gapOpts.Context, o.DSN, role, xsql.DataPlaneMaxOpen(gapOpts))
 	if err != nil {
 		slog.Error("failed to connect postgres database", slog.Any("err", err))

@@ -29,7 +29,9 @@ go get github.com/loopopen/gap/broker/xrabbitmq
 go get github.com/loopopen/gap/storage/xgorm
 ```
 
-其他可用适配器包括 `broker/xkafka`、`broker/xconfluent` 和 `storage/xmysql`。
+其他可用适配器包括 `broker/xkafka`、`broker/xconfluent`、`storage/xmysql` 和 `storage/xpostgres`。
+
+内置 broker 和 storage 模块通过核心模块的内部契约协作。应用代码只需导入核心模块及实际使用的适配器。
 
 ## 快速开始
 
@@ -86,20 +88,24 @@ func main() {
 
     db, _ := gorm.Open(mysql.Open(dsn))
 
-    // Create publisher
-    pub := gap.NewEventPublisher(
+    // 创建应用级 Gap 实例
+    g := gap.New(
         gap.WithDrain(ctx, 5),
-        xrabbitmq.UseRabbitMQ(
-            xrabbitmq.URL(url),
-        ),
         xgorm.UseGorm(
             xgorm.DB(db),
         ),
     )
 
-    // Set up subscriber
-    gap.Subscribe(
-        gap.From(pub),
+    // 创建 publisher
+    pub := g.NewEventPublisher(
+        xrabbitmq.UseRabbitMQ(
+            xrabbitmq.URL(url),
+        ),
+    )
+
+    // 设置 subscriber
+    g.Subscribe(
+        pub,
         gap.ServiceName("my-service.worker"),
         gap.Inject(/*handler_dependencies*/),
     )
@@ -132,7 +138,7 @@ func main() {
 
     drainCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
-    if err := gap.WaitDrain(drainCtx); err != nil {
+    if err := g.WaitDrain(drainCtx); err != nil {
         slog.Warn("gap failed to drain", slog.Any("err", err))
     }
 }
@@ -162,7 +168,7 @@ go generate ./...
 
 该库通过上下文取消和内置的 drain 辅助函数支持优雅关机。
 
-- `gap.WaitDrain(ctx context.Context) error` 在退出前等待发布者/订阅者处理完进行中的消息
+- `g.WaitDrain(ctx context.Context) error` 在退出前等待发布者/订阅者处理完进行中的消息
 
 ## 使用示例
 
@@ -183,19 +189,22 @@ go run .
 
 ### 发布者
 
-- `gap.NewPublisher[T](opts...) Publisher[T]`：创建一个类型化发布者
-- `gap.NewEventPublisher(opts...) EventPublisher`：创建事件发布者
+- `gap.New(opts...) *Gap`：创建应用级 Gap 实例
+- `gap.NewPublisher[T](g, opts...) Publisher[T]`：创建类型化发布者
+- `g.NewEventPublisher(opts...) EventPublisher`：创建事件发布者
 - `publisher.Bind(tx Txer) (Publisher[T], error)`：将发布者绑定到事务以实现 Outbox 模式
 
 ### 订阅者
 
-- `gap.Subscribe(opts...)`: 设置带处理器的订阅者
+- `g.Subscribe(publisher, opts...)`：设置带处理器的订阅者
+- `g.DashboardHandler()`：创建 Dashboard HTTP handler
+- `g.WaitDrain(ctx)`：关机时等待正在处理的任务完成
 
 ### 选项
 
-- `gap.WithDrain(ctx context.Context, timeoutSeconds int)`: 启用优雅关机的 drain 模式
-- `gap.ServiceName(name string)`: 设置服务名称
-- `gap.Inject(deps...)`: 向处理器注入依赖项
+- 传给 `gap.New` 的运行时 `Options`：`gap.WithDrain`、`gap.UseDashboard`，以及 `xmysql.UseMySQL` 等 storage 配置
+- 传给 publisher 构造函数的 `BrokerOptions`：`gap.BrokerName`，以及 `xrabbitmq.UseRabbitMQ` 等 broker 配置
+- 传给 `g.Subscribe` 的订阅配置：`gap.ServiceName` 和 `gap.Inject`
 
 ## 代码生成
 

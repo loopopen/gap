@@ -4,9 +4,10 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"sync/atomic"
 	"testing"
 
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"gorm.io/gorm"
 )
 
@@ -93,7 +94,7 @@ func TestLoadDataFromDSNAndDialector(t *testing.T) {
 			return poolTestDialector{}
 		},
 	))
-	db, err := new(gormPools).loadData(&gap.Options{}, opts)
+	db, err := new(gormPools).loadData(&ingap.Options{}, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,6 +109,66 @@ func TestLoadDataFromDSNAndDialector(t *testing.T) {
 	if got := sqlDB.Stats().MaxOpenConnections; got < 1 {
 		t.Fatalf("data max open = %d", got)
 	}
+}
+
+func TestPoolsForUsesDSNOrDBIdentity(t *testing.T) {
+	resetGormPools(t)
+
+	var calls atomic.Int32
+	dial := func(string) gorm.Dialector {
+		calls.Add(1)
+		return poolTestDialector{}
+	}
+	sameA := new(Options).With(DSN("same-dsn", dial))
+	sameB := new(Options).With(DSN("same-dsn", dial))
+	other := new(Options).With(DSN("other-dsn", dial))
+	if poolsFor(sameA) != poolsFor(sameB) {
+		t.Fatal("same dsn used different pools")
+	}
+	if poolsFor(sameA) == poolsFor(other) {
+		t.Fatal("different dsns shared a pool")
+	}
+
+	gapOpts := &ingap.Options{}
+	if _, err := poolsFor(sameA).loadData(gapOpts, sameA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := poolsFor(sameB).loadData(gapOpts, sameB); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := poolsFor(other).loadData(gapOpts, other); err != nil {
+		t.Fatal(err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("dialector calls = %d, want 2", got)
+	}
+
+	db := openPoolTestDB(t, poolTestDialector{})
+	sqlDB, _ := db.DB()
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	another := openPoolTestDB(t, poolTestDialector{})
+	anotherSQL, _ := another.DB()
+	t.Cleanup(func() { _ = anotherSQL.Close() })
+	if poolsFor(&Options{DB: db}) != poolsFor(&Options{DB: db}) {
+		t.Fatal("same gorm db used different pools")
+	}
+	if poolsFor(&Options{DB: db}) == poolsFor(&Options{DB: another}) {
+		t.Fatal("different gorm dbs shared a pool")
+	}
+}
+
+func resetGormPools(t *testing.T) {
+	t.Helper()
+	gormPoolCache.Range(func(key, _ any) bool {
+		gormPoolCache.Delete(key)
+		return true
+	})
+	t.Cleanup(func() {
+		gormPoolCache.Range(func(key, _ any) bool {
+			gormPoolCache.Delete(key)
+			return true
+		})
+	})
 }
 
 func TestGormOptionsRequiresOneConnectionMode(t *testing.T) {

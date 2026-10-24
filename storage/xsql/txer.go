@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	gaptx "github.com/loopopen/gap/internal/txer"
+	"github.com/loopopen/gap"
 	"github.com/loopopen/gap/storage"
 )
 
@@ -25,7 +25,7 @@ func (tx *SqlTx) Tx() any {
 	return tx.tx
 }
 
-func DoInTx(ctx context.Context, action func(context.Context, gaptx.Txer) error, db *sql.DB, opts ...*sql.TxOptions) (err error) {
+func DoInTx(ctx context.Context, action func(context.Context, gap.Txer) error, db *sql.DB, opts ...*sql.TxOptions) (err error) {
 	var sqlOpts *sql.TxOptions
 	if len(opts) > 0 {
 		sqlOpts = opts[0]
@@ -37,7 +37,7 @@ func DoInTx(ctx context.Context, action func(context.Context, gaptx.Txer) error,
 		return
 	}
 
-	var txer gaptx.Txer = newTxer(tx)
+	var txer gap.Txer = newTxer(tx)
 
 	panicked := true
 	defer func() {

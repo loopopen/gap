@@ -11,13 +11,13 @@ import (
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/errx"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/internal/txer"
 	"github.com/loopopen/gap/storage"
 )
 
 type Storage struct {
-	gapOpts *gap.Options
+	gapOpts *ingap.Options
 	opts    *Options
 	db      *sql.DB
 	tx      *sql.Tx
@@ -313,7 +313,7 @@ func (s *Storage) updateStatus(ctx context.Context, base string, id uint, src en
 	return nil
 }
 
-func NewStorage(gapOpts *gap.Options, opts *Options, db *sql.DB) *Storage {
+func NewStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *Storage {
 	s := &Storage{
 		gapOpts: gapOpts,
 		opts:    opts,

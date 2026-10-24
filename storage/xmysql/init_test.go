@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/storage/xsql"
 )
 
@@ -35,7 +35,7 @@ func TestOpenMySQLPingFails(t *testing.T) {
 
 func TestCreateStorageEmptyDSN(t *testing.T) {
 	storOpts := &Options{Schema: "gap"}
-	_, err := storOpts.OpenStorage(&gap.Options{
+	_, err := storOpts.OpenStorage(&ingap.Options{
 		Context:        context.Background(),
 		StorageOptions: storOpts,
 	}, xsql.RoleData)
@@ -68,7 +68,7 @@ func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
 		Schema: "gap",
 		DSN:    "dsn-init-fail",
 	}
-	opts := &gap.Options{
+	opts := &ingap.Options{
 		Context:        context.Background(),
 		StorageOptions: storOpts,
 	}

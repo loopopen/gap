@@ -48,20 +48,32 @@ func newEnsurer(opts *Options, admin adminClient) *Ensurer {
 }
 
 var (
-	ensurerOnce sync.Once
-	ensurer     *Ensurer
-	ensurerErr  error
+	ensurerMu  sync.Mutex
+	ensurerMap = map[string]*Ensurer{}
 )
 
 func SingleEnsurer(opts *Options) (*Ensurer, error) {
-	ensurerOnce.Do(func() {
-		var admin *kafka.AdminClient
-		admin, ensurerErr = SingleAdmin(opts)
-		if ensurerErr == nil {
-			ensurer = newEnsurer(opts, admin)
-		}
-	})
-	return ensurer, ensurerErr
+	key := opts.connectionKey()
+	ensurerMu.Lock()
+	if existing, ok := ensurerMap[key]; ok {
+		ensurerMu.Unlock()
+		return existing, nil
+	}
+	ensurerMu.Unlock()
+
+	admin, err := SingleAdmin(opts)
+	if err != nil {
+		return nil, err
+	}
+	created := newEnsurer(opts, admin)
+
+	ensurerMu.Lock()
+	defer ensurerMu.Unlock()
+	if existing, ok := ensurerMap[key]; ok {
+		return existing, nil
+	}
+	ensurerMap[key] = created
+	return created, nil
 }
 
 func (e *Ensurer) ensure(ctx context.Context) error {

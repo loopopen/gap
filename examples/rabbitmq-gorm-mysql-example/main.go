@@ -27,20 +27,22 @@ func main() {
 		Logger: logger.Default.LogMode(logger.Info),
 	}))
 
-	pub := gap.NewEventPublisher(
+	g := gap.New(
 		gap.WithDrain(ctx, 5),
-		xrabbitmq.UseRabbitMQ(
-			xrabbitmq.URL(url),
-		),
 		xgorm.UseGorm(
 			xgorm.DB(db),
+		),
+	)
+	pub := g.NewEventPublisher(
+		xrabbitmq.UseRabbitMQ(
+			xrabbitmq.URL(url),
 		),
 	)
 
 	mySvc := service.NewMySvc(db, pub)
 
-	gap.Subscribe(
-		gap.From(pub),
+	g.Subscribe(
+		pub,
 		gap.Inject(mySvc),
 	)
 

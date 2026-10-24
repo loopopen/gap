@@ -1,12 +1,18 @@
 package internal
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/loopopen/gap/internal/entity"
+)
 
 const (
 	KeysMessageID     = "gap-msg-id"
 	KeysMessageType   = "gap-msg-type"
 	KeysGroup         = "gap-group"
 	KeysCorrelationID = "gap-corr-id"
+	KeysBrokerName    = entity.BrokerNameHeader
+	KeysBrokerType    = entity.BrokerTypeHeader
 )
 
 var errInvalidArgs = errors.New("args must be one string map or several string pairs")

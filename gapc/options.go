@@ -1,18 +1,17 @@
 package gapc
 
 import (
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/shoot"
 )
 
 var (
-	GoGenerated               = gap.GoGenerated
-	HandleTopicWithinGroupRaw = gap.HandleTopicWithinGroupRaw
-	FileName                  = gap.FileName
-	FuncName                  = gap.FuncName
-	Resolve                   = gap.Resolve
+	HandleTopicWithinGroupRaw = ingap.HandleTopicWithinGroupRaw
+	FileName                  = ingap.FileName
+	FuncName                  = ingap.FuncName
+	Resolve                   = ingap.Resolve
 )
 
-func ResolveType[T any](typeName string, resolve func(v T)) shoot.Option[gap.DependencyOptions, *gap.DependencyOptions] {
-	return gap.ResolveType(typeName, resolve)
+func ResolveType[T any](typeName string, resolve func(v T)) shoot.Option[ingap.DependencyOptions, *ingap.DependencyOptions] {
+	return ingap.ResolveType(typeName, resolve)
 }

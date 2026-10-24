@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loopopen/gap/internal/entity"
-	gapopts "github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -67,7 +67,7 @@ func (f *fakeKafkaReader) snapshot() (commits []kafka.Message, closeCount int) {
 func testConsumer(fake *fakeKafkaReader) *Consumer {
 	entity.MustInitSnowflake(1)
 	return &Consumer{
-		gapOpts:          &gapopts.Options{Version: "v-test"},
+		gapOpts:          &ingap.Options{Version: "v-test"},
 		group:            "workers",
 		groupID:          "gap.v-test.g.workers",
 		state:            consumerSubscribed,

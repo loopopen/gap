@@ -4,19 +4,19 @@ import (
 	"github.com/loopopen/gap/internal"
 	"github.com/loopopen/gap/internal/dashboard"
 	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/gap"
-	"github.com/loopopen/gap/internal/pump"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/internal/txer"
-	"github.com/loopopen/shoot"
 )
 
-const version = "v0.3.0-beta.7"
+const version = "v1.0.0-beta.0"
 
 const (
 	KeysMessageID     = internal.KeysMessageID
 	KeysMessageType   = internal.KeysMessageType
 	KeysGroup         = internal.KeysGroup
 	KeysCorrelationID = internal.KeysCorrelationID
+	KeysBrokerName    = internal.KeysBrokerName
+	KeysBrokerType    = internal.KeysBrokerType
 )
 
 var Pair = internal.Pair
@@ -31,17 +31,13 @@ type EventPublisher = internal.EventPublisher
 
 type OptionsGetter internal.OptionsGetter
 
-type Handler[T any] = gap.Handler[T]
+type BrokerOptionsGetter internal.BrokerOptionsGetter
 
-type Options = gap.Options
+type Handler[T any] = ingap.Handler[T]
 
-var WaitDrain = pump.WaitDrain
+type Options = ingap.Options
 
-func From(opts OptionsGetter) shoot.Option[Options, *Options] {
-	return func(o *Options) {
-		*o = *opts.Options()
-	}
-}
+type BrokerOptions = ingap.BrokerOptions
 
 func init() {
 	dashboard.AddMeta(enum.PluginKindSelf, 0, version)

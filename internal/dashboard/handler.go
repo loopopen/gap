@@ -4,14 +4,14 @@ import (
 	"net/http"
 
 	"github.com/loopopen/gap/dashboard"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 )
 
 type Handler struct {
 	*http.ServeMux
 }
 
-func NewHandler(gapOpts *gap.Options, opts *dashboard.Options) http.Handler {
+func NewHandler(gapOpts *ingap.Options, opts *dashboard.Options) http.Handler {
 	h := &Handler{http.NewServeMux()}
 	svc := NewBoardSvc(gapOpts, opts)
 

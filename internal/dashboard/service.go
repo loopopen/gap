@@ -9,7 +9,7 @@ import (
 	"text/template"
 
 	"github.com/loopopen/gap/dashboard"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/internal/plugin"
 	"github.com/loopopen/gap/storage"
 )
@@ -26,13 +26,13 @@ const (
 )
 
 type BoardSvc struct {
-	gapOpts *gap.Options
+	gapOpts *ingap.Options
 	opts    *dashboard.Options
 	routes  []RouteRecord
 	storage storage.Storage
 }
 
-func NewBoardSvc(gapOpts *gap.Options, opts *dashboard.Options) *BoardSvc {
+func NewBoardSvc(gapOpts *ingap.Options, opts *dashboard.Options) *BoardSvc {
 	stor := plugin.MustGetDashboardStorage(gapOpts)
 
 	return &BoardSvc{

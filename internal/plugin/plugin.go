@@ -1,13 +1,52 @@
 package plugin
 
 import (
+	"fmt"
+
 	"github.com/loopopen/gap/broker"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/storage"
 )
 
-func MustGetProducer(gapOpts *gap.Options) broker.Producer {
-	opts := gapOpts.BrokerOptions
+func BrokerConfigIdentity(brokerOpts *ingap.BrokerOptions) string {
+	if brokerOpts == nil {
+		return ""
+	}
+	opts := brokerOpts.Plugin
+	if opts == nil {
+		return ""
+	}
+	if identified, ok := opts.(broker.ConfigIdentifier); ok {
+		return identified.ConfigIdentity()
+	}
+	return fmt.Sprintf("%T:%s", opts, opts.PluginType().String())
+}
+
+// BrokerName returns the stable logical broker name persisted with messages.
+// A caller-provided name is preferred; the plugin type is a stable default for
+// applications that configure only one broker of each type.
+func BrokerName(brokerOpts *ingap.BrokerOptions) string {
+	if brokerOpts == nil || brokerOpts.Plugin == nil {
+		return ""
+	}
+	if brokerOpts.BrokerName != "" {
+		return brokerOpts.BrokerName
+	}
+	return brokerOpts.Plugin.PluginType().String()
+}
+
+func BrokerType(brokerOpts *ingap.BrokerOptions) string {
+	if brokerOpts == nil || brokerOpts.Plugin == nil {
+		return ""
+	}
+	return brokerOpts.Plugin.PluginType().String()
+}
+
+func MustGetProducer(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions) broker.Producer {
+	if brokerOpts == nil {
+		return nil
+	}
+	opts := brokerOpts.Plugin
 	if opts == nil {
 		return nil
 	}
@@ -18,8 +57,11 @@ func MustGetProducer(gapOpts *gap.Options) broker.Producer {
 	return producer
 }
 
-func MustGetConsumer(gapOpts *gap.Options, group string) broker.Consumer {
-	opts := gapOpts.BrokerOptions
+func MustGetConsumer(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions, group string) broker.Consumer {
+	if brokerOpts == nil {
+		return nil
+	}
+	opts := brokerOpts.Plugin
 	if opts == nil {
 		return nil
 	}
@@ -30,16 +72,16 @@ func MustGetConsumer(gapOpts *gap.Options, group string) broker.Consumer {
 	return consumer
 }
 
-func MustGetStorage(gapOpts *gap.Options) storage.Storage {
+func MustGetStorage(gapOpts *ingap.Options) storage.Storage {
 	return mustStorage(gapOpts, storage.RoleData)
 }
 
 // MustGetDashboardStorage opens the storage plugin's dashboard read pool.
-func MustGetDashboardStorage(gapOpts *gap.Options) storage.Storage {
+func MustGetDashboardStorage(gapOpts *ingap.Options) storage.Storage {
 	return mustStorage(gapOpts, storage.RoleDashboard)
 }
 
-func mustStorage(gapOpts *gap.Options, role storage.Role) storage.Storage {
+func mustStorage(gapOpts *ingap.Options, role storage.Role) storage.Storage {
 	sp := gapOpts.StorageOptions
 	if sp == nil {
 		return nil

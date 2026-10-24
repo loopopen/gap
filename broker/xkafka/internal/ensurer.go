@@ -17,8 +17,10 @@ const (
 	topicValidateDelay = 500 * time.Millisecond
 )
 
-var ensurerOnce sync.Once
-var ensurer *Ensurer
+var (
+	ensurerMu  sync.Mutex
+	ensurerMap = map[string]*Ensurer{}
+)
 
 type Ensurer struct {
 	opts        *Options
@@ -45,10 +47,15 @@ func newEnsurer(opts *Options, client *kafka.Client) *Ensurer {
 }
 
 func SingleEnsurer(opts *Options) *Ensurer {
-	ensurerOnce.Do(func() {
-		ensurer = newEnsurer(opts, SingleClient(opts))
-	})
-	return ensurer
+	key := opts.connectionKey()
+	ensurerMu.Lock()
+	defer ensurerMu.Unlock()
+	if existing, ok := ensurerMap[key]; ok {
+		return existing
+	}
+	created := newEnsurer(opts, SingleClient(opts))
+	ensurerMap[key] = created
+	return created
 }
 
 func (e *Ensurer) ensure(ctx context.Context) error {

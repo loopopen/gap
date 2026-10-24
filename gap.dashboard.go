@@ -6,8 +6,8 @@ import (
 	"github.com/loopopen/gap/internal/dashboard"
 )
 
-func NewDashboardHandler(opts OptionsGetter) http.Handler {
-	gapOpts := opts.Options()
+func (g *Gap) DashboardHandler() http.Handler {
+	gapOpts := g.opts
 	dashOpts := gapOpts.DashboardOptions
 	if dashOpts == nil {
 		panic("dashboard options is nil, may forget to call gap.UseDashboard")

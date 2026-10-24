@@ -30,8 +30,8 @@ jobs:
       - name: Install C compiler
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential
 
-      - name: Test modules
-        run: make test-modules
+      - name: Test modules independently
+        run: make test-isolated
 
   dashboard:
     name: Dashboard

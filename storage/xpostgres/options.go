@@ -2,11 +2,11 @@ package xpostgres
 
 import (
 	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/shoot"
 )
 
-const version = "v0.0.1-beta.2"
+const version = "v1.0.0-beta.0"
 
 //go:generate go tool shoot new -opt -short -type=Options
 
@@ -21,10 +21,10 @@ func (o *Options) PluginType() enum.Plugin {
 	return enum.PluginPostgres
 }
 
-var _ gap.StoragePlugin = (*Options)(nil)
+var _ ingap.StoragePlugin = (*Options)(nil)
 
-func UsePostgres(opts ...shoot.Option[Options, *Options]) shoot.Option[gap.Options, *gap.Options] {
-	return func(o *gap.Options) {
+func UsePostgres(opts ...shoot.Option[Options, *Options]) shoot.Option[ingap.Options, *ingap.Options] {
+	return func(o *ingap.Options) {
 		o.StorageOptions = new(Options).With(opts...)
 	}
 }

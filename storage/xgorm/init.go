@@ -10,7 +10,7 @@ import (
 
 	"github.com/loopopen/gap/internal/dashboard"
 	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/storage"
 	"github.com/loopopen/gap/storage/xsql"
 	"gorm.io/gorm"
@@ -27,7 +27,12 @@ type gormPools struct {
 
 var gormPoolCache sync.Map
 
-func (o *Options) OpenStorage(gapOpts *gap.Options, role storage.Role) (storage.Storage, error) {
+type gormPoolKey struct {
+	dsn string
+	db  *gorm.DB
+}
+
+func (o *Options) OpenStorage(gapOpts *ingap.Options, role storage.Role) (storage.Storage, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
 	}
@@ -52,11 +57,15 @@ func (o *Options) OpenStorage(gapOpts *gap.Options, role storage.Role) (storage.
 }
 
 func poolsFor(opts *Options) *gormPools {
-	value, _ := gormPoolCache.LoadOrStore(opts, new(gormPools))
+	key := gormPoolKey{dsn: strings.TrimSpace(opts.dsn)}
+	if opts.DB != nil {
+		key = gormPoolKey{db: opts.DB}
+	}
+	value, _ := gormPoolCache.LoadOrStore(key, new(gormPools))
 	return value.(*gormPools)
 }
 
-func (p *gormPools) loadData(gapOpts *gap.Options, opts *Options) (*gorm.DB, error) {
+func (p *gormPools) loadData(gapOpts *ingap.Options, opts *Options) (*gorm.DB, error) {
 	p.dataOnce.Do(func() {
 		if opts.DB != nil {
 			p.dataDB = opts.DB
@@ -79,10 +88,23 @@ func (p *gormPools) loadData(gapOpts *gap.Options, opts *Options) (*gorm.DB, err
 		}
 		xsql.ConfigureDataPool(sqlDB, xsql.DataPlaneMaxOpen(gapOpts))
 	})
-	return p.dataDB, p.dataErr
+	if p.dataErr != nil || p.dataDB == nil {
+		return p.dataDB, p.dataErr
+	}
+	if opts.DB != nil {
+		return p.dataDB, nil
+	}
+	sqlDB, err := p.dataDB.DB()
+	if err != nil {
+		return nil, fmt.Errorf("get data-plane sql db: %w", err)
+	}
+	if maxOpen := xsql.DataPlaneMaxOpen(gapOpts); sqlDB.Stats().MaxOpenConnections < maxOpen {
+		xsql.ConfigureDataPool(sqlDB, maxOpen)
+	}
+	return p.dataDB, nil
 }
 
-func createStorage(gapOpts *gap.Options, opts *Options, db *gorm.DB) (storage.Storage, error) {
+func createStorage(gapOpts *ingap.Options, opts *Options, db *gorm.DB) (storage.Storage, error) {
 	stor := NewStorage(gapOpts, opts, db)
 	if err := stor.init(); err != nil {
 		slog.Error("failed to init storage", slog.Any("err", err))

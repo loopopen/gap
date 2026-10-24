@@ -3,7 +3,7 @@ package internal
 import (
 	"context"
 
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/internal/txer"
 )
 
@@ -13,6 +13,7 @@ type Publisher[T any] interface {
 	Publish(ctx context.Context, topic string, msg T, args ...any) error
 
 	OptionsGetter
+	BrokerOptionsGetter
 }
 
 type EventPublisher interface {
@@ -21,8 +22,13 @@ type EventPublisher interface {
 	Publish(ctx context.Context, event Event, args ...any) error
 
 	OptionsGetter
+	BrokerOptionsGetter
 }
 
 type OptionsGetter interface {
-	Options() *gap.Options
+	Options() *ingap.Options
+}
+
+type BrokerOptionsGetter interface {
+	BrokerOptions() *ingap.BrokerOptions
 }

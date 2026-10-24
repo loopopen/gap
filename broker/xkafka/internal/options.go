@@ -6,13 +6,13 @@ import (
 
 	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/shoot"
 )
 
 //go:generate go tool shoot new -opt -short -type=Options,TopicOptions
 
-var _ gap.BrokerPlugin = (*Options)(nil)
+var _ ingap.BrokerPlugin = (*Options)(nil)
 
 type Options struct {
 	//@def=""
@@ -53,16 +53,16 @@ func ConfigTopic(opts ...shoot.Option[TopicOptions, *TopicOptions]) shoot.Option
 	}
 }
 
-func UseKafka(opts ...shoot.Option[Options, *Options]) shoot.Option[gap.Options, *gap.Options] {
-	return func(o *gap.Options) {
-		o.BrokerOptions = new(Options).With(opts...)
+func UseKafka(opts ...shoot.Option[Options, *Options]) shoot.Option[ingap.BrokerOptions, *ingap.BrokerOptions] {
+	return func(o *ingap.BrokerOptions) {
+		o.Plugin = new(Options).With(opts...)
 	}
 }
 
 var clients = broker.NewClientCache()
 
-func (o *Options) OpenProducer(gapOpts *gap.Options) (broker.Producer, error) {
-	return clients.Producer(func() (broker.Producer, error) {
+func (o *Options) OpenProducer(gapOpts *ingap.Options) (broker.Producer, error) {
+	return clients.Producer(o.producerKey(), func() (broker.Producer, error) {
 		producer := NewProducer(gapOpts, o)
 		if err := producer.init(); err != nil {
 			slog.Error("failed to init producer", slog.Any("err", err))
@@ -72,8 +72,8 @@ func (o *Options) OpenProducer(gapOpts *gap.Options) (broker.Producer, error) {
 	})
 }
 
-func (o *Options) OpenConsumer(gapOpts *gap.Options, group string) (broker.Consumer, error) {
-	return clients.Consumer(group, func() (broker.Consumer, error) {
+func (o *Options) OpenConsumer(gapOpts *ingap.Options, group string) (broker.Consumer, error) {
+	return clients.Consumer(o.consumerKey(gapOpts.Version, group), func() (broker.Consumer, error) {
 		consumer := NewConsumer(gapOpts, o, group)
 		if err := consumer.init(); err != nil {
 			slog.Error("failed to init consumer", slog.Any("err", err))

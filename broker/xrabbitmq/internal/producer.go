@@ -9,12 +9,12 @@ import (
 	"github.com/loopopen/gap/internal"
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/errx"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type Producer struct {
-	gapOpts *gap.Options
+	gapOpts *ingap.Options
 	opts    *Options
 	group   string
 	chPool  ChanPool
@@ -23,7 +23,7 @@ type Producer struct {
 	ctag    string
 }
 
-func NewProducer(gapOpts *gap.Options, opts *Options) *Producer {
+func NewProducer(gapOpts *ingap.Options, opts *Options) *Producer {
 	producer := &Producer{
 		gapOpts: gapOpts,
 		opts:    opts,

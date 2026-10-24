@@ -4,9 +4,9 @@ go 1.24.0
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.12
-	github.com/loopopen/gap v99.0.0+incompatible
-	github.com/loopopen/gap/broker/xrabbitmq v0.0.0-00010101000000-000000000000
-	github.com/loopopen/gap/storage/xmysql v0.0.0-00010101000000-000000000000
+	github.com/loopopen/gap v1.0.0
+	github.com/loopopen/gap/broker/xrabbitmq v1.0.0
+	github.com/loopopen/gap/storage/xmysql v1.0.0
 	golang.org/x/sync v0.19.0
 )
 
@@ -26,11 +26,11 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.51.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
 )
 
-replace github.com/loopopen/gap => ../../../gap
+replace github.com/loopopen/gap => ../..
 
-replace github.com/loopopen/gap/storage/xmysql => ../../../gap/storage/xmysql
+replace github.com/loopopen/gap/broker/xrabbitmq => ../../broker/xrabbitmq
 
-replace github.com/loopopen/gap/broker/xrabbitmq => ../../../gap/broker/xrabbitmq
+replace github.com/loopopen/gap/storage/xmysql => ../../storage/xmysql

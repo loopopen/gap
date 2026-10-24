@@ -11,7 +11,7 @@ import (
 	"github.com/loopopen/shoot"
 )
 
-//go:generate go tool shoot new -opt -short -type=Options
+//go:generate go tool shoot new -opt -short -type=Options,BrokerOptions
 
 type Options struct {
 	//@def=context.Background()
@@ -51,13 +51,19 @@ type Options struct {
 	//@def=1
 	WorkConcurrencyFactor int
 
-	DashboardOptions    *dashboard.Options  `new:"-"`
-	StorageOptions      StoragePlugin       `new:"-"`
-	BrokerOptions       BrokerPlugin        `new:"-"`
-	HandlerOptsLst      []HandlerOptions    `new:"-"`
-	DependencyOptsLst   []DependencyOptions `new:"-"`
-	Dependencies        []any               `new:"-"`
-	registerHandlerOnly bool                `new:"-"`
+	DashboardOptions  *dashboard.Options  `new:"-"`
+	StorageOptions    StoragePlugin       `new:"-"`
+	HandlerOptsLst    []HandlerOptions    `new:"-"`
+	DependencyOptsLst []DependencyOptions `new:"-"`
+	Dependencies      []any               `new:"-"`
+}
+
+type BrokerOptions struct {
+	// BrokerName is the stable logical name used to route persisted messages.
+	// It must not contain connection details such as hosts or credentials.
+	BrokerName string
+
+	Plugin BrokerPlugin `new:"-"`
 }
 
 // StoragePlugin is the selected storage driver. The concrete options open the
@@ -103,11 +109,5 @@ func UseDashboard(opts ...shoot.Option[dashboard.Options, *dashboard.Options]) s
 func Inject(values ...any) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		o.Dependencies = append(o.Dependencies, values...)
-	}
-}
-
-func GoGenerated() shoot.Option[Options, *Options] {
-	return func(o *Options) {
-		o.registerHandlerOnly = true
 	}
 }

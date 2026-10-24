@@ -8,12 +8,12 @@ import (
 	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/errx"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/segmentio/kafka-go"
 )
 
 type Producer struct {
-	gapOpts   *gap.Options
+	gapOpts   *ingap.Options
 	opts      *Options
 	client    *kafka.Client
 	transport *kafka.Transport
@@ -26,7 +26,7 @@ type Producer struct {
 }
 
 // NewProducer creates a new Kafka producer broker instance.
-func NewProducer(gapOpts *gap.Options, opts *Options) *Producer {
+func NewProducer(gapOpts *ingap.Options, opts *Options) *Producer {
 	producer := &Producer{
 		gapOpts:   gapOpts,
 		opts:      opts,

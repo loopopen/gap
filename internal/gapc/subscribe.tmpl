@@ -13,8 +13,7 @@ func init() { {{"\n"}}
 	{{- range $d := .Dependencies -}}
 	var {{$d.Name}} {{$d.Type}} {{"\n"}}
 	{{- end -}}
-	gap.Subscribe(
-		gapc.GoGenerated(), {{"\n"}}
+	gap.Register( {{"\n"}}
 		{{- if .Dependencies -}}
 		gapc.Resolve(
 			gapc.FuncName("{{.PackageName}}.{{.FuncName}}"), {{"\n"}}

@@ -10,40 +10,32 @@ import (
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/errx"
-	"github.com/loopopen/gap/internal/gap"
+	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/internal/plugin"
 	"github.com/loopopen/gap/internal/pump"
 	"github.com/loopopen/gap/storage"
 )
 
-var groupedSubs *GroupedSubs
-var newOnce sync.Once
-var fixOnce sync.Once
-
 type GroupedSubs struct {
 	subs              map[string]*Sub
-	HandlerOtpsLst    []gap.HandlerOptions
-	DependencyOtpsLst []gap.DependencyOptions
+	HandlerOtpsLst    []ingap.HandlerOptions
+	DependencyOtpsLst []ingap.DependencyOptions
+	fixOnce           sync.Once
 }
 
-func SingleGroupedSubs() *GroupedSubs {
-	newOnce.Do(func() {
-		groupedSubs = &GroupedSubs{
-			subs: make(map[string]*Sub),
-		}
-	})
-	return groupedSubs
+func NewGroupedSubs() *GroupedSubs {
+	return &GroupedSubs{subs: make(map[string]*Sub)}
 }
 
-func (g *GroupedSubs) AddDependencyOtps(lst []gap.DependencyOptions) {
+func (g *GroupedSubs) AddDependencyOtps(lst []ingap.DependencyOptions) {
 	g.DependencyOtpsLst = append(g.DependencyOtpsLst, lst...)
 }
 
-func (g *GroupedSubs) AddHandlerOtps(lst []gap.HandlerOptions) {
+func (g *GroupedSubs) AddHandlerOtps(lst []ingap.HandlerOptions) {
 	g.HandlerOtpsLst = append(g.HandlerOtpsLst, lst...)
 }
 
-func (g *GroupedSubs) SubscribeAll(gapOpts *gap.Options) error {
+func (g *GroupedSubs) SubscribeAll(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions, stor storage.Storage, messagePump *pump.Pump) error {
 	//todo: IngestConcurrency
 	for _, o := range g.HandlerOtpsLst {
 		if o.Handler == nil {
@@ -52,7 +44,7 @@ func (g *GroupedSubs) SubscribeAll(gapOpts *gap.Options) error {
 		if o.Topic == "" {
 			return errx.ErrEmptyTopic
 		}
-		err := g.subscribeOne(gapOpts, &o)
+		err := g.subscribeOne(gapOpts, brokerOpts, stor, messagePump, &o)
 		if err != nil {
 			return err
 		}
@@ -60,18 +52,21 @@ func (g *GroupedSubs) SubscribeAll(gapOpts *gap.Options) error {
 	return nil
 }
 
-func (g *GroupedSubs) subscribeOne(gapOpts *gap.Options, opts *gap.HandlerOptions) error {
+func (g *GroupedSubs) subscribeOne(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions, stor storage.Storage, messagePump *pump.Pump, opts *ingap.HandlerOptions) error {
 	group := opts.Group
+	brokerName := plugin.BrokerName(brokerOpts)
+	brokerType := plugin.BrokerType(brokerOpts)
+	configIdentity := plugin.BrokerConfigIdentity(brokerOpts)
+	key := brokerType + "\x00" + brokerName + "\x00" + group
 
-	sub, ok := g.subs[group]
+	sub, ok := g.subs[key]
 	if !ok {
-		consumer := plugin.MustGetConsumer(gapOpts, group)
+		consumer := plugin.MustGetConsumer(gapOpts, brokerOpts, group)
 		if consumer == nil {
 			panic("consumer broker must not be nil")
 		}
-		stor := plugin.MustGetStorage(gapOpts)
 		if stor != nil {
-			fixOnce.Do(func() {
+			g.fixOnce.Do(func() {
 				err := stor.UpdateStatusReceived(gapOpts.Context, 0, enum.StatusProcessing, enum.StatusFailed)
 				if err != nil {
 					panic(err)
@@ -79,8 +74,8 @@ func (g *GroupedSubs) subscribeOne(gapOpts *gap.Options, opts *gap.HandlerOption
 			})
 		}
 
-		sub = NewSub(gapOpts, &opts.GroupOptions, consumer, stor)
-		g.subs[group] = sub
+		sub = NewSub(gapOpts, &opts.GroupOptions, consumer, stor, messagePump, brokerType, brokerName, configIdentity)
+		g.subs[key] = sub
 	}
 	err := sub.Subscribe(opts.Topic, opts.Handler)
 	if err != nil {
@@ -100,16 +95,20 @@ func (g *GroupedSubs) ListeningAll() error {
 }
 
 type Sub struct {
-	opts      *gap.Options
-	groupOpts *gap.GroupOptions
-	storage   storage.Storage
-	consumer  broker.Consumer
-	handlers  map[string]gap.Handler[[]byte]
-	pump      *pump.Pump
+	opts       *ingap.Options
+	groupOpts  *ingap.GroupOptions
+	storage    storage.Storage
+	consumer   broker.Consumer
+	brokerName string
+	brokerType string
+	handlers   map[string]ingap.Handler[[]byte]
+	pump       *pump.Pump
+	listenOnce sync.Once
+	listenErr  error
 }
 
 // Subscribe implements [Subscriber].
-func (s *Sub) Subscribe(topic string, handler gap.Handler[[]byte]) error {
+func (s *Sub) Subscribe(topic string, handler ingap.Handler[[]byte]) error {
 	_, ok := s.handlers[topic]
 	if ok {
 		return errx.ErrMultiHandlers(topic, s.groupOpts.Group)
@@ -127,23 +126,29 @@ func (s *Sub) Subscribe(topic string, handler gap.Handler[[]byte]) error {
 	return nil
 }
 
-func NewSub(opts *gap.Options, groupOpts *gap.GroupOptions, consumer broker.Consumer, storage storage.Storage) *Sub {
+func NewSub(opts *ingap.Options, groupOpts *ingap.GroupOptions, consumer broker.Consumer, storage storage.Storage, messagePump *pump.Pump, brokerType, brokerName, configIdentity string) *Sub {
 	if consumer == nil {
 		panic(errx.ErrNoBroker)
 	}
 
 	sub := &Sub{
-		opts:      opts,
-		groupOpts: groupOpts,
-		storage:   storage,
-		consumer:  consumer,
-		handlers:  make(map[string]gap.Handler[[]byte]),
+		opts:       opts,
+		groupOpts:  groupOpts,
+		storage:    storage,
+		consumer:   consumer,
+		brokerName: brokerName,
+		brokerType: brokerType,
+		handlers:   make(map[string]ingap.Handler[[]byte]),
 	}
 
 	if storage != nil {
-		pump := pump.Singleton(opts)
-		pump.SetHandler(groupOpts.Group, sub)
-		sub.pump = pump
+		if messagePump == nil {
+			panic("message pump must not be nil when storage is configured")
+		}
+		if err := messagePump.SetHandler(brokerType, brokerName, configIdentity, groupOpts.Group, sub); err != nil {
+			panic(err)
+		}
+		sub.pump = messagePump
 	} else {
 		slog.Debug("sub works on no-persistence mode")
 	}
@@ -151,6 +156,13 @@ func NewSub(opts *gap.Options, groupOpts *gap.GroupOptions, consumer broker.Cons
 }
 
 func (s *Sub) Listening() error {
+	s.listenOnce.Do(func() {
+		s.listenErr = s.startListening()
+	})
+	return s.listenErr
+}
+
+func (s *Sub) startListening() error {
 	ctx := s.opts.DrainContext
 	enCh, err := s.consumer.Consume(ctx)
 	if err != nil {
@@ -235,6 +247,8 @@ func (s *Sub) ingestSerial(ctx context.Context, envelope *entity.Envelope) {
 	s.pump.AddOne()
 	defer s.pump.Done()
 
+	envelope.AddHeader(KeysBrokerName, s.brokerName)
+	envelope.AddHeader(KeysBrokerType, s.brokerType)
 	err := s.storage.CreateReceived(ctx, envelope)
 	if err != nil {
 		envelope.Log().Error("failed to create received record", slog.Any("err", err))

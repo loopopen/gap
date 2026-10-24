@@ -13,8 +13,7 @@ import (
 
 func init() {
 	var _svc *MySvc
-	gap.Subscribe(
-		gapc.GoGenerated(),
+	gap.Register(
 		gapc.Resolve(
 			gapc.FuncName("service.HandleOrderCreatedEvent"),
 			gapc.ResolveType("*MySvc", func(v *MySvc) { _svc = v }),

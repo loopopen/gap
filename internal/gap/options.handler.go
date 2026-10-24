@@ -10,10 +10,6 @@ import (
 
 type Handler[T any] func(ctx context.Context, msg T, headers map[string]string) error
 
-func RegisterHandlerOnly(o *Options) bool {
-	return o.registerHandlerOnly
-}
-
 func checkType[T any]() {
 	var t T
 	err := json.Unmarshal([]byte("null"), &t)
