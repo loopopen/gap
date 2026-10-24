@@ -96,6 +96,14 @@ func (p *Pub[T]) bind(txer txer.Txer) (*Pub[T], error) {
 
 // Publish implements [Pub].
 func (p *Pub[T]) Publish(ctx context.Context, topic string, msg T, args ...any) error {
+	done, err := p.opts.BeginOperation()
+	if err != nil {
+		return err
+	}
+	defer done()
+	ctx, cancel := p.opts.OperationContext(ctx)
+	defer cancel()
+
 	var hds Headers
 	hds.Add(args...)
 
@@ -114,12 +122,12 @@ func (p *Pub[T]) Publish(ctx context.Context, topic string, msg T, args ...any) 
 	}
 	en.AddHeader(KeysBrokerName, p.brokerName)
 	en.AddHeader(KeysBrokerType, p.brokerType)
-	if err := en.Verify(); err != nil {
+	if err = en.Verify(); err != nil {
 		return err
 	}
 
 	if p.storage != nil {
-		err := p.storage.CreatePublished(ctx, en)
+		err = p.storage.CreatePublished(ctx, en)
 		if err != nil {
 			en.Log().Error("failed to create published", slog.Any("err", err))
 			return err
@@ -134,7 +142,7 @@ func (p *Pub[T]) Publish(ctx context.Context, topic string, msg T, args ...any) 
 	}
 
 	slog.Warn("send message without persistence")
-	err := p.producer.Produce(ctx, en)
+	err = p.producer.Produce(ctx, en)
 	if err != nil {
 		return err
 	}

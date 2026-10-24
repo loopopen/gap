@@ -183,6 +183,31 @@ func TestReaderCommitRetriesWithoutFetchingNextMessage(t *testing.T) {
 	waitClosed(t, envelopes)
 }
 
+func TestReaderCommitsDeliveredMessageAfterIntakeStops(t *testing.T) {
+	fake := newFakeKafkaReader()
+	fake.fetches <- fetchResult{message: kafka.Message{Topic: "orders", Partition: 0, Offset: 5}}
+	r := testConsumer(fake)
+	workCtx, cancelWork := context.WithCancel(context.Background())
+	defer cancelWork()
+	r.gapOpts.DrainContext = workCtx
+	intakeCtx, stopIntake := context.WithCancel(context.Background())
+	envelopes, err := r.Consume(intakeCtx)
+	if err != nil {
+		t.Fatalf("Consume: %v", err)
+	}
+
+	envelope := receiveEnvelope(t, envelopes)
+	stopIntake()
+	if err = r.Commit(envelope.Tag); err != nil {
+		t.Fatalf("Commit after intake stopped: %v", err)
+	}
+	commits, _ := fake.snapshot()
+	if len(commits) != 1 || commits[0].Offset != 5 {
+		t.Fatalf("commits = %+v, want one commit for offset 5", commits)
+	}
+	waitClosed(t, envelopes)
+}
+
 func TestReaderRejectsInvalidAndDuplicateOperations(t *testing.T) {
 	r := testConsumer(newFakeKafkaReader())
 	if err := r.Commit(kafka.Message{}); !errors.Is(err, errInvalidDeliveryTag) {

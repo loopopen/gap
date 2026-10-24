@@ -1,9 +1,7 @@
 package plugin
 
 import (
-	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/loopopen/gap/broker"
 	ingap "github.com/loopopen/gap/internal/gap"
@@ -56,7 +54,7 @@ func MustGetProducer(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions) br
 	if err != nil {
 		panic(err)
 	}
-	closeOnDrain(gapOpts.DrainContext, producer)
+	gapOpts.RegisterCloser(producer)
 	return producer
 }
 
@@ -72,20 +70,8 @@ func MustGetConsumer(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions, gr
 	if err != nil {
 		panic(err)
 	}
-	closeOnDrain(gapOpts.DrainContext, consumer)
+	gapOpts.RegisterCloser(consumer)
 	return consumer
-}
-
-func closeOnDrain(ctx context.Context, client any) {
-	closer, ok := client.(broker.Closer)
-	if !ok || ctx == nil {
-		return
-	}
-	context.AfterFunc(ctx, func() {
-		if err := closer.Close(); err != nil {
-			slog.Error("failed to close broker client", slog.Any("err", err))
-		}
-	})
 }
 
 func MustGetStorage(gapOpts *ingap.Options) storage.Storage {
@@ -106,5 +92,6 @@ func mustStorage(gapOpts *ingap.Options, role storage.Role) storage.Storage {
 	if err != nil {
 		panic(err)
 	}
+	gapOpts.RegisterCloser(stor)
 	return stor
 }

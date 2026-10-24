@@ -13,7 +13,7 @@ type Producer interface {
 }
 
 // Closer is implemented by broker clients that own runtime-scoped resources.
-// GAP closes these clients when the owning runtime's drain context ends.
+// GAP closes these clients after the owning runtime has drained accepted work.
 type Closer interface {
 	Close() error
 }

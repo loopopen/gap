@@ -2,6 +2,7 @@ package gap
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -17,6 +18,60 @@ import (
 type runtimeProducerStub struct{}
 
 func (*runtimeProducerStub) Produce(context.Context, *entity.Envelope) error { return nil }
+
+type blockingRuntimeProducer struct {
+	started    chan struct{}
+	release    chan struct{}
+	closed     chan struct{}
+	closeCount atomic.Int32
+	startOnce  sync.Once
+	closeOnce  sync.Once
+}
+
+func newBlockingRuntimeProducer() *blockingRuntimeProducer {
+	return &blockingRuntimeProducer{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+		closed:  make(chan struct{}),
+	}
+}
+
+func (p *blockingRuntimeProducer) Produce(ctx context.Context, _ *entity.Envelope) error {
+	p.startOnce.Do(func() { close(p.started) })
+	select {
+	case <-p.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (p *blockingRuntimeProducer) Close() error {
+	p.closeOnce.Do(func() {
+		p.closeCount.Add(1)
+		close(p.closed)
+	})
+	return nil
+}
+
+type blockingRuntimeBroker struct {
+	producer *blockingRuntimeProducer
+}
+
+func (*blockingRuntimeBroker) PluginType() enum.Plugin { return enum.PluginRabbitMQ }
+func (*blockingRuntimeBroker) ConfigIdentity() string  { return "blocking-runtime" }
+func (b *blockingRuntimeBroker) OpenProducer(*ingap.Options) (broker.Producer, error) {
+	return b.producer, nil
+}
+func (*blockingRuntimeBroker) OpenConsumer(*ingap.Options, string) (broker.Consumer, error) {
+	return new(runtimeConsumerStub), nil
+}
+
+func useBlockingRuntimeBroker(producer *blockingRuntimeProducer) shoot.Option[BrokerOptions, *BrokerOptions] {
+	return func(o *BrokerOptions) {
+		o.Plugin = &blockingRuntimeBroker{producer: producer}
+	}
+}
 
 type runtimeConsumerStub struct{}
 
@@ -155,5 +210,93 @@ func TestGapOwnsSharedOptionsAndSupportsMultiplePublishers(t *testing.T) {
 	}
 	if got := opened.Load(); got != 2 {
 		t.Fatalf("subscriber count = %d, want 2", got)
+	}
+}
+
+func TestShutdownRejectsNewPublishAndWaitsForAcceptedPublish(t *testing.T) {
+	producer := newBlockingRuntimeProducer()
+	g := New()
+	pub := NewPublisher[string](g, useBlockingRuntimeBroker(producer))
+
+	published := make(chan error, 1)
+	go func() {
+		published <- pub.Publish(context.Background(), "events", "first")
+	}()
+	<-producer.started
+
+	shutdown := make(chan error, 1)
+	go func() { shutdown <- g.Shutdown(context.Background()) }()
+	select {
+	case <-g.opts.Context.Done():
+	case <-time.After(time.Second):
+		t.Fatal("shutdown did not stop runtime intake")
+	}
+	if err := pub.Publish(context.Background(), "events", "second"); !errors.Is(err, ErrRuntimeStopping) {
+		t.Fatalf("Publish() error = %v, want %v", err, ErrRuntimeStopping)
+	}
+	select {
+	case err := <-shutdown:
+		t.Fatalf("Shutdown returned before accepted publish completed: %v", err)
+	default:
+	}
+
+	close(producer.release)
+	if err := <-published; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-shutdown; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-producer.closed:
+	default:
+		t.Fatal("producer was not closed after drain")
+	}
+}
+
+func TestShutdownTimeoutCancelsAcceptedWork(t *testing.T) {
+	producer := newBlockingRuntimeProducer()
+	g := New()
+	pub := NewPublisher[string](g, useBlockingRuntimeBroker(producer))
+
+	published := make(chan error, 1)
+	go func() {
+		published <- pub.Publish(context.Background(), "events", "message")
+	}()
+	<-producer.started
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := g.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Shutdown() error = %v, want deadline exceeded", err)
+	}
+	select {
+	case err := <-published:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Publish() error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed-out shutdown did not cancel accepted publish")
+	}
+	select {
+	case <-producer.closed:
+	default:
+		t.Fatal("producer was not closed after shutdown timeout")
+	}
+}
+
+func TestShutdownIsIdempotent(t *testing.T) {
+	producer := newBlockingRuntimeProducer()
+	g := New()
+	NewPublisher[string](g, useBlockingRuntimeBroker(producer))
+
+	if err := g.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := producer.closeCount.Load(); got != 1 {
+		t.Fatalf("producer close count = %d, want 1", got)
 	}
 }

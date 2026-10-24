@@ -106,10 +106,12 @@ type Consumer struct {
 	groupID string
 	ensurer *Ensurer
 
-	mu     sync.Mutex
-	state  consumerState
-	topics []string
-	reader kafkaReader
+	mu        sync.Mutex
+	state     consumerState
+	topics    []string
+	reader    kafkaReader
+	closeOnce sync.Once
+	closeErr  error
 
 	newReader        func([]string) kafkaReader
 	readRetryDelay   time.Duration
@@ -236,7 +238,7 @@ func (c *Consumer) Consume(ctx context.Context) (<-chan *entity.Envelope, error)
 func (c *Consumer) readLoop(ctx context.Context, reader kafkaReader, enCh chan<- *entity.Envelope) {
 	defer close(enCh)
 	defer func() {
-		if err := reader.Close(); err != nil {
+		if err := c.closeReader(reader); err != nil {
 			slog.Error("kafka: close reader failed", slog.Any("err", err))
 		}
 		c.mu.Lock()
@@ -267,7 +269,8 @@ func (c *Consumer) readLoop(ctx context.Context, reader kafkaReader, enCh chan<-
 
 		envelope := c.envelope(msg)
 		for {
-			tag := newDeliveryTag(ctx, c)
+			deliveryCtx := c.deliveryContext(ctx)
+			tag := newDeliveryTag(deliveryCtx, c)
 			attempt := *envelope
 			attempt.Tag = tag
 			select {
@@ -276,13 +279,13 @@ func (c *Consumer) readLoop(ctx context.Context, reader kafkaReader, enCh chan<-
 			case enCh <- &attempt:
 			}
 
-			action, ok := waitDeliveryAction(ctx, tag)
+			action, ok := waitDeliveryAction(deliveryCtx, tag)
 			if !ok {
 				return
 			}
 			switch action.kind {
 			case deliveryCommit:
-				err = c.commitWithRetry(ctx, reader, msg)
+				err = c.commitWithRetry(deliveryCtx, reader, msg)
 				action.done <- err
 				if err != nil {
 					return
@@ -296,7 +299,7 @@ func (c *Consumer) readLoop(ctx context.Context, reader kafkaReader, enCh chan<-
 					slog.String("group_id", c.groupID),
 				)
 				action.done <- nil
-				if !waitContext(ctx, c.rejectRetryDelay) {
+				if !waitContext(deliveryCtx, c.rejectRetryDelay) {
 					return
 				}
 			}
@@ -304,6 +307,30 @@ func (c *Consumer) readLoop(ctx context.Context, reader kafkaReader, enCh chan<-
 
 	next:
 	}
+}
+
+func (c *Consumer) deliveryContext(intakeCtx context.Context) context.Context {
+	if c.gapOpts != nil && c.gapOpts.DrainContext != nil {
+		return c.gapOpts.DrainContext
+	}
+	return intakeCtx
+}
+
+func (c *Consumer) closeReader(reader kafkaReader) error {
+	c.closeOnce.Do(func() {
+		if reader != nil {
+			c.closeErr = reader.Close()
+		}
+	})
+	return c.closeErr
+}
+
+func (c *Consumer) Close() error {
+	c.mu.Lock()
+	reader := c.reader
+	c.state = consumerClosed
+	c.mu.Unlock()
+	return c.closeReader(reader)
 }
 
 func (c *Consumer) envelope(msg kafka.Message) *entity.Envelope {
@@ -404,3 +431,5 @@ func (c *Consumer) deliveryTag(tag any) (*deliveryTag, error) {
 	}
 	return delivery, nil
 }
+
+var _ broker.Closer = (*Consumer)(nil)

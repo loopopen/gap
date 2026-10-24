@@ -163,6 +163,40 @@ func TestCommitCommitsDeliveredMessage(t *testing.T) {
 	<-fake.closed
 }
 
+func TestCommitDeliveredMessageAfterIntakeStops(t *testing.T) {
+	fake := newFakeConsumer()
+	topic := "test-topic"
+	fake.messages <- &kafka.Message{
+		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: 0, Offset: 13},
+	}
+	consumer := testConsumer(fake)
+	workCtx, cancelWork := context.WithCancel(context.Background())
+	defer cancelWork()
+	consumer.gapOpts.DrainContext = workCtx
+	intakeCtx, stopIntake := context.WithCancel(context.Background())
+	envelopes, err := consumer.Consume(intakeCtx)
+	if err != nil {
+		t.Fatalf("Consume: %v", err)
+	}
+
+	envelope := <-envelopes
+	stopIntake()
+	if err = consumer.Commit(envelope.Tag); err != nil {
+		t.Fatalf("Commit after intake stopped: %v", err)
+	}
+	fake.mu.Lock()
+	commits := fake.commitCount
+	fake.mu.Unlock()
+	if commits != 1 {
+		t.Fatalf("commit count = %d, want 1", commits)
+	}
+	select {
+	case <-fake.closed:
+	case <-time.After(time.Second):
+		t.Fatal("consumer did not close after intake stopped")
+	}
+}
+
 func TestDeliveryTagValidation(t *testing.T) {
 	consumer := &Consumer{}
 	if err := consumer.Commit("invalid"); !errors.Is(err, errInvalidDeliveryTag) {

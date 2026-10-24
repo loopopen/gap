@@ -2,6 +2,8 @@ package gap
 
 import (
 	"context"
+	"errors"
+	"sync"
 
 	"github.com/loopopen/gap/internal"
 	"github.com/loopopen/gap/internal/enum"
@@ -19,12 +21,18 @@ type Gap struct {
 	storage storage.Storage
 	pump    *pump.Pump
 	subs    *internal.GroupedSubs
+
+	shutdownMu      sync.Mutex
+	shutdownStarted bool
+	shutdownDone    chan struct{}
+	shutdownErr     error
 }
 
 // New creates an application-scoped Gap instance.
 func New(opts ...shoot.Option[Options, *Options]) *Gap {
 	gapOpts := new(Options).With(opts...)
 	gapOpts.RuntimeIdentity()
+	gapOpts.InitializeRuntime()
 	stor := plugin.MustGetStorage(gapOpts)
 	if stor != nil {
 		if err := stor.UpdateStatusPublished(gapOpts.Context, 0, enum.StatusProcessing, enum.StatusFailed); err != nil {
@@ -35,9 +43,10 @@ func New(opts ...shoot.Option[Options, *Options]) *Gap {
 	initSnowflake(gapOpts.WorkerID)
 
 	g := &Gap{
-		opts:    gapOpts,
-		storage: stor,
-		subs:    internal.NewGroupedSubs(),
+		opts:         gapOpts,
+		storage:      stor,
+		subs:         internal.NewGroupedSubs(),
+		shutdownDone: make(chan struct{}),
 	}
 	g.subs.AddDependencyOtps(registered.DependencyOtpsLst)
 	g.subs.AddHandlerOtps(registered.HandlerOtpsLst)
@@ -67,10 +76,64 @@ func cloneOptions(source *Options) *Options {
 	return &result
 }
 
-// WaitDrain waits for in-flight persistent message work to finish.
-func (g *Gap) WaitDrain(ctx context.Context) error {
+// Shutdown stops intake, drains accepted work, cancels work that exceeds ctx,
+// and closes runtime-owned resources. It is safe to call more than once.
+func (g *Gap) Shutdown(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	g.shutdownMu.Lock()
+	if g.shutdownStarted {
+		done := g.shutdownDone
+		g.shutdownMu.Unlock()
+		select {
+		case <-done:
+			g.shutdownMu.Lock()
+			err := g.shutdownErr
+			g.shutdownMu.Unlock()
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	g.shutdownStarted = true
+	g.shutdownMu.Unlock()
+
+	err := g.shutdown(ctx)
+	g.shutdownMu.Lock()
+	g.shutdownErr = err
+	close(g.shutdownDone)
+	g.shutdownMu.Unlock()
+	return err
+}
+
+func (g *Gap) shutdown(ctx context.Context) (err error) {
+	g.opts.StopAccepting()
+	defer func() {
+		if g.pump != nil {
+			g.pump.Seal()
+		}
+		g.opts.CancelWork()
+		err = errors.Join(err, g.opts.CloseResources())
+	}()
+
+	// All public operations admitted before shutdown must finish before their
+	// dispatch channels can be sealed.
+	if err = g.opts.WaitOperations(ctx); err != nil {
+		return err
+	}
+	if g.subs != nil {
+		if err = g.subs.Stop(ctx); err != nil {
+			return err
+		}
+	}
 	if g.pump == nil {
 		return nil
 	}
-	return g.pump.WaitDrain(ctx)
+	if err = g.pump.StopSources(ctx); err != nil {
+		return err
+	}
+	g.pump.Seal()
+	return g.pump.Drain(ctx)
 }

@@ -24,7 +24,7 @@ func main() {
 	defer stop()
 
 	g := gap.New(
-		gap.WithDrain(ctx, 5),
+		gap.Context(ctx),
 		xmysql.UseMySQL(
 			xmysql.DSN(dsn),
 		),
@@ -44,7 +44,11 @@ func main() {
 	go runjob(ctx, db, pub)
 
 	<-ctx.Done()
-	stop()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := g.Shutdown(shutdownCtx); err != nil {
+		slog.Warn("gap shutdown failed", slog.Any("err", err))
+	}
 }
 
 func runjob(ctx context.Context, db *sql.DB, pub gap.Publisher[time.Time]) {

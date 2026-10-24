@@ -103,10 +103,12 @@ type Consumer struct {
 	groupID string
 	ensurer *Ensurer
 
-	mu       sync.Mutex
-	state    consumerState
-	topics   []string
-	consumer consumerClient
+	mu        sync.Mutex
+	state     consumerState
+	topics    []string
+	consumer  consumerClient
+	closeOnce sync.Once
+	closeErr  error
 
 	newConsumer    func() (consumerClient, error)
 	pollTimeout    time.Duration
@@ -223,7 +225,7 @@ func (c *Consumer) Consume(ctx context.Context) (<-chan *entity.Envelope, error)
 func (c *Consumer) consumeLoop(ctx context.Context, client consumerClient, envelopes chan<- *entity.Envelope) {
 	defer close(envelopes)
 	defer func() {
-		if err := client.Close(); err != nil {
+		if err := c.closeClient(client); err != nil {
 			slog.Error("confluent: close consumer failed", slog.Any("err", err))
 		}
 		c.mu.Lock()
@@ -253,7 +255,8 @@ func (c *Consumer) consumeLoop(ctx context.Context, client consumerClient, envel
 		}
 
 		envelope := c.envelope(message)
-		tag := newDeliveryTag(ctx, c)
+		deliveryCtx := c.deliveryContext(ctx)
+		tag := newDeliveryTag(deliveryCtx, c)
 		envelope.Tag = tag
 		select {
 		case <-ctx.Done():
@@ -261,13 +264,13 @@ func (c *Consumer) consumeLoop(ctx context.Context, client consumerClient, envel
 		case envelopes <- envelope:
 		}
 
-		action, ok := waitDeliveryAction(ctx, tag)
+		action, ok := waitDeliveryAction(deliveryCtx, tag)
 		if !ok {
 			return
 		}
 		switch action.kind {
 		case deliveryCommit:
-			err = c.commitWithRetry(ctx, client, message)
+			err = c.commitWithRetry(deliveryCtx, client, message)
 		case deliveryReject:
 			err = c.reassign(client, message)
 		}
@@ -276,6 +279,30 @@ func (c *Consumer) consumeLoop(ctx context.Context, client consumerClient, envel
 			return
 		}
 	}
+}
+
+func (c *Consumer) deliveryContext(intakeCtx context.Context) context.Context {
+	if c.gapOpts != nil && c.gapOpts.DrainContext != nil {
+		return c.gapOpts.DrainContext
+	}
+	return intakeCtx
+}
+
+func (c *Consumer) closeClient(client consumerClient) error {
+	c.closeOnce.Do(func() {
+		if client != nil {
+			c.closeErr = client.Close()
+		}
+	})
+	return c.closeErr
+}
+
+func (c *Consumer) Close() error {
+	c.mu.Lock()
+	client := c.consumer
+	c.state = consumerClosed
+	c.mu.Unlock()
+	return c.closeClient(client)
 }
 
 func (c *Consumer) envelope(message *kafka.Message) *entity.Envelope {
@@ -396,3 +423,4 @@ func isTimeout(err error) bool {
 }
 
 var _ broker.Consumer = (*Consumer)(nil)
+var _ broker.Closer = (*Consumer)(nil)

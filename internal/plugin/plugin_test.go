@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal/entity"
@@ -58,12 +57,12 @@ func (o *lifecycleBrokerOptionsStub) OpenConsumer(*ingap.Options, string) (broke
 	return o.consumer, nil
 }
 
-func TestBrokerClientsCloseWhenRuntimeDrainEnds(t *testing.T) {
-	drainCtx, cancelDrain := context.WithCancel(context.Background())
+func TestBrokerClientsCloseWithRuntimeResources(t *testing.T) {
 	producer := &closableProducerStub{closed: make(chan struct{})}
 	consumer := &closableConsumerStub{closed: make(chan struct{})}
 	plugin := &lifecycleBrokerOptionsStub{producer: producer, consumer: consumer}
-	gapOpts := &ingap.Options{DrainContext: drainCtx}
+	gapOpts := &ingap.Options{Context: context.Background()}
+	gapOpts.InitializeRuntime()
 	brokerOpts := &ingap.BrokerOptions{Plugin: plugin}
 
 	if got := MustGetProducer(gapOpts, brokerOpts); got != producer {
@@ -72,7 +71,9 @@ func TestBrokerClientsCloseWhenRuntimeDrainEnds(t *testing.T) {
 	if got := MustGetConsumer(gapOpts, brokerOpts, "group"); got != consumer {
 		t.Fatal("unexpected consumer")
 	}
-	cancelDrain()
+	if err := gapOpts.CloseResources(); err != nil {
+		t.Fatal(err)
+	}
 
 	for name, closed := range map[string]<-chan struct{}{
 		"producer": producer.closed,
@@ -80,8 +81,8 @@ func TestBrokerClientsCloseWhenRuntimeDrainEnds(t *testing.T) {
 	} {
 		select {
 		case <-closed:
-		case <-time.After(time.Second):
-			t.Fatalf("%s was not closed after drain cancellation", name)
+		default:
+			t.Fatalf("%s was not closed", name)
 		}
 	}
 }

@@ -2,9 +2,13 @@ package pump
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/loopopen/gap/internal/entity"
+	ingap "github.com/loopopen/gap/internal/gap"
 )
 
 type senderStub struct {
@@ -75,5 +79,162 @@ func TestPumpRejectsTwoLiveConfigsForSameBrokerRoute(t *testing.T) {
 	err := p.SetSender("RabbitMQ", "events", "new-config", new(senderStub))
 	if err == nil {
 		t.Fatal("expected duplicate broker route configuration error")
+	}
+}
+
+type blockingSender struct {
+	started chan uint
+	release chan struct{}
+}
+
+func newBlockingSender() *blockingSender {
+	return &blockingSender{
+		started: make(chan uint, 10),
+		release: make(chan struct{}, 10),
+	}
+}
+
+func (s *blockingSender) SendAndUpdate(_ context.Context, envelope *entity.Envelope) error {
+	s.started <- envelope.ID
+	<-s.release
+	return nil
+}
+
+func newDispatchTestPump(sender Sender, concurrency, queueSize int) *Pump {
+	p := &Pump{
+		sendCh:         make(chan *entity.Envelope, queueSize),
+		senders:        map[string]Sender{routeKey("RabbitMQ", "events"): sender},
+		senderConfigs:  make(map[string]string),
+		handlers:       new(sync.Map),
+		handlerConfigs: new(sync.Map),
+	}
+	p.dispatcherWG.Add(1)
+	go func() {
+		defer p.dispatcherWG.Done()
+		p.dispatchingSend(context.Background(), concurrency)
+	}()
+	return p
+}
+
+func dispatchTestEnvelope(id uint) *entity.Envelope {
+	return &entity.Envelope{ID: id, Headers: map[string]string{
+		entity.BrokerNameHeader: "events",
+		entity.BrokerTypeHeader: "RabbitMQ",
+	}}
+}
+
+func TestDrainWaitsForQueuedAndLateStartedTasks(t *testing.T) {
+	sender := newBlockingSender()
+	p := newDispatchTestPump(sender, 1, 2)
+	if err := p.DispatchToSend(context.Background(), dispatchTestEnvelope(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.DispatchToSend(context.Background(), dispatchTestEnvelope(2)); err != nil {
+		t.Fatal(err)
+	}
+	p.Seal()
+
+	drained := make(chan error, 1)
+	go func() { drained <- p.Drain(context.Background()) }()
+
+	if id := <-sender.started; id != 1 {
+		t.Fatalf("first started message = %d, want 1", id)
+	}
+	select {
+	case err := <-drained:
+		t.Fatalf("Drain returned while work was running: %v", err)
+	default:
+	}
+	sender.release <- struct{}{}
+
+	if id := <-sender.started; id != 2 {
+		t.Fatalf("second started message = %d, want 2", id)
+	}
+	select {
+	case err := <-drained:
+		t.Fatalf("Drain returned with a queued task remaining: %v", err)
+	default:
+	}
+	sender.release <- struct{}{}
+
+	select {
+	case err := <-drained:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Drain did not finish after queued work completed")
+	}
+}
+
+func TestDrainWaitsWhenTaskCountChangesFromZero(t *testing.T) {
+	sender := newBlockingSender()
+	startDispatcher := make(chan struct{})
+	p := &Pump{
+		sendCh:         make(chan *entity.Envelope, 1),
+		senders:        map[string]Sender{routeKey("RabbitMQ", "events"): sender},
+		senderConfigs:  make(map[string]string),
+		handlers:       new(sync.Map),
+		handlerConfigs: new(sync.Map),
+	}
+	p.dispatcherWG.Add(1)
+	go func() {
+		defer p.dispatcherWG.Done()
+		<-startDispatcher
+		p.dispatchingSend(context.Background(), 1)
+	}()
+	if err := p.DispatchToSend(context.Background(), dispatchTestEnvelope(1)); err != nil {
+		t.Fatal(err)
+	}
+	p.Seal()
+
+	drained := make(chan error, 1)
+	go func() { drained <- p.Drain(context.Background()) }()
+	select {
+	case err := <-drained:
+		t.Fatalf("Drain returned while task count could still increase: %v", err)
+	default:
+	}
+
+	close(startDispatcher)
+	if id := <-sender.started; id != 1 {
+		t.Fatalf("started message = %d, want 1", id)
+	}
+	select {
+	case err := <-drained:
+		t.Fatalf("Drain returned while the late task was running: %v", err)
+	default:
+	}
+	sender.release <- struct{}{}
+	if err := <-drained; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDrainTimeout(t *testing.T) {
+	sender := newBlockingSender()
+	p := newDispatchTestPump(sender, 1, 1)
+	if err := p.DispatchToSend(context.Background(), dispatchTestEnvelope(1)); err != nil {
+		t.Fatal(err)
+	}
+	p.Seal()
+	<-sender.started
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := p.Drain(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Drain() error = %v, want deadline exceeded", err)
+	}
+	sender.release <- struct{}{}
+}
+
+func TestDispatchRejectedAfterSeal(t *testing.T) {
+	p := newDispatchTestPump(new(senderStub), 1, 1)
+	p.Seal()
+	if err := p.DispatchToSend(context.Background(), dispatchTestEnvelope(1)); !errors.Is(err, ingap.ErrRuntimeStopping) {
+		t.Fatalf("DispatchToSend() error = %v, want %v", err, ingap.ErrRuntimeStopping)
+	}
+	if err := p.Drain(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }

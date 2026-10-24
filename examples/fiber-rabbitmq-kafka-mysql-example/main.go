@@ -55,7 +55,7 @@ func main() {
 	shutdownGroup, ctx := errgroup.WithContext(ctx)
 
 	shutdownGroup.Go(func() error {
-		err := g.WaitDrain(ctx)
+		err := g.Shutdown(ctx)
 		if err != nil {
 			slog.Warn("gap failed to drain", slog.Any("err", err))
 		}
@@ -80,7 +80,7 @@ func initSvc(ctx context.Context) (*gap.Gap, *service.SvcHub) {
 	db := must(sql.Open("mysql", dsn))
 
 	g := gap.New(
-		gap.WithDrain(ctx, 5),
+		gap.Context(ctx),
 		gap.UseDashboard(),
 		xmysql.UseMySQL(xmysql.DSN(dsn)),
 	)

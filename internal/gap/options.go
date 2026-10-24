@@ -2,6 +2,8 @@ package gap
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 
 type Options struct {
 	runtimeID uint64
+	runtime   *runtimeLifecycle
 
 	//@def=context.Background()
 	Context context.Context
@@ -63,6 +66,28 @@ type Options struct {
 
 var nextRuntimeID atomic.Uint64
 
+var ErrRuntimeStopping = errors.New("gap: runtime is shutting down")
+
+type closer interface {
+	Close() error
+}
+
+type runtimeLifecycle struct {
+	intakeCtx    context.Context
+	intakeCancel context.CancelFunc
+	workCancel   context.CancelFunc
+
+	mu        sync.Mutex
+	accepting bool
+	active    int
+	idle      chan struct{}
+	idleOnce  sync.Once
+	resources []closer
+
+	closeOnce sync.Once
+	closeErr  error
+}
+
 // RuntimeIdentity identifies all option snapshots owned by the same Gap.
 // Cloning Options preserves the identity, while independently created runtimes
 // receive different identities.
@@ -75,6 +100,142 @@ func (o *Options) RuntimeIdentity() uint64 {
 		return id
 	}
 	return atomic.LoadUint64(&o.runtimeID)
+}
+
+// InitializeRuntime gives one Gap instance separate intake and work contexts.
+// Cancelling the configured parent stops intake immediately, while work remains
+// alive until Shutdown either drains or times out.
+func (o *Options) InitializeRuntime() {
+	parent := o.Context
+	if parent == nil {
+		parent = context.Background()
+	}
+	intakeCtx, intakeCancel := context.WithCancel(parent)
+	workCtx, workCancel := context.WithCancel(context.WithoutCancel(parent))
+	o.runtime = &runtimeLifecycle{
+		intakeCtx:    intakeCtx,
+		intakeCancel: intakeCancel,
+		workCancel:   workCancel,
+		accepting:    true,
+		idle:         make(chan struct{}),
+	}
+	o.Context = intakeCtx
+	o.DrainContext = workCtx
+}
+
+// BeginOperation admits one externally initiated runtime operation. Shutdown
+// closes admission before waiting, so no operation can appear after the wait.
+func (o *Options) BeginOperation() (func(), error) {
+	r := o.runtime
+	if r == nil {
+		if o.Context != nil {
+			if err := o.Context.Err(); err != nil {
+				return nil, ErrRuntimeStopping
+			}
+		}
+		return func() {}, nil
+	}
+
+	r.mu.Lock()
+	if !r.accepting || r.intakeCtx.Err() != nil {
+		r.mu.Unlock()
+		return nil, ErrRuntimeStopping
+	}
+	r.active++
+	r.mu.Unlock()
+
+	var done atomic.Bool
+	return func() {
+		if !done.CompareAndSwap(false, true) {
+			return
+		}
+		r.mu.Lock()
+		r.active--
+		if !r.accepting && r.active == 0 {
+			r.idleOnce.Do(func() { close(r.idle) })
+		}
+		r.mu.Unlock()
+	}, nil
+}
+
+// OperationContext preserves the caller's cancellation while also allowing a
+// timed-out Shutdown to cancel already admitted work.
+func (o *Options) OperationContext(ctx context.Context) (context.Context, func()) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if o.runtime == nil || o.DrainContext == nil {
+		return context.WithCancel(ctx)
+	}
+	opCtx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(o.DrainContext, cancel)
+	return opCtx, func() {
+		stop()
+		cancel()
+	}
+}
+
+// StopAccepting closes the external operation gate and stops broker intake and
+// database polling. Already admitted work continues on DrainContext.
+func (o *Options) StopAccepting() {
+	if o.runtime == nil {
+		return
+	}
+	r := o.runtime
+	r.mu.Lock()
+	if r.accepting {
+		r.accepting = false
+		r.intakeCancel()
+		if r.active == 0 {
+			r.idleOnce.Do(func() { close(r.idle) })
+		}
+	}
+	r.mu.Unlock()
+}
+
+func (o *Options) WaitOperations(ctx context.Context) error {
+	if o.runtime == nil {
+		return nil
+	}
+	select {
+	case <-o.runtime.idle:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (o *Options) CancelWork() {
+	if o.runtime != nil {
+		o.runtime.workCancel()
+	}
+}
+
+func (o *Options) RegisterCloser(resource any) {
+	resourceCloser, ok := resource.(closer)
+	if !ok || o.runtime == nil {
+		return
+	}
+	o.runtime.mu.Lock()
+	o.runtime.resources = append(o.runtime.resources, resourceCloser)
+	o.runtime.mu.Unlock()
+}
+
+func (o *Options) CloseResources() error {
+	if o.runtime == nil {
+		return nil
+	}
+	r := o.runtime
+	r.closeOnce.Do(func() {
+		r.mu.Lock()
+		resources := append([]closer(nil), r.resources...)
+		r.resources = nil
+		r.mu.Unlock()
+		for i := len(resources) - 1; i >= 0; i-- {
+			r.closeErr = errors.Join(r.closeErr, resources[i].Close())
+		}
+	})
+	return r.closeErr
 }
 
 type BrokerOptions struct {

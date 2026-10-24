@@ -90,7 +90,7 @@ func main() {
 
     // Create the application-scoped Gap instance
     g := gap.New(
-        gap.WithDrain(ctx, 5),
+        gap.Context(ctx),
         xgorm.UseGorm(
             xgorm.DB(db),
         ),
@@ -138,8 +138,8 @@ func main() {
 
     drainCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
-    if err := g.WaitDrain(drainCtx); err != nil {
-        slog.Warn("gap failed to drain", slog.Any("err", err))
+    if err := g.Shutdown(drainCtx); err != nil {
+        slog.Warn("gap shutdown failed", slog.Any("err", err))
     }
 }
 
@@ -166,9 +166,9 @@ This will generate the necessary handler code automatically.
 
 ### 4. Graceful Shutdown
 
-The library supports graceful shutdown through context cancellation and the built-in drain helper.
+The library supports graceful shutdown through context cancellation and a runtime-owned shutdown sequence.
 
-- `g.WaitDrain(ctx context.Context) error` gives the publisher/subscriber time to finish in-flight messages before exiting
+- `g.Shutdown(ctx context.Context) error` stops intake, drains accepted work, and closes runtime-owned resources
 
 ## Usage Examples
 
@@ -198,11 +198,11 @@ go run .
 
 - `g.Subscribe(publisher, opts...)`: Set up subscribers with handlers
 - `g.DashboardHandler()`: Create the dashboard HTTP handler
-- `g.WaitDrain(ctx)`: Wait for in-flight work during shutdown
+- `g.Shutdown(ctx)`: Stop intake, drain accepted work, and close runtime-owned resources
 
 ### Options
 
-- Runtime `Options` are passed to `gap.New`: `gap.WithDrain`, `gap.UseDashboard`, and storage options such as `xmysql.UseMySQL`
+- Runtime `Options` are passed to `gap.New`: `gap.Context`, `gap.UseDashboard`, and storage options such as `xmysql.UseMySQL`
 - `BrokerOptions` are passed to publisher constructors: `gap.BrokerName` and broker options such as `xrabbitmq.UseRabbitMQ`
 - Subscriber options are passed to `g.Subscribe`: `gap.ServiceName` and `gap.Inject`
 

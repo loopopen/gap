@@ -35,7 +35,12 @@ type Pump struct {
 	handlers       *sync.Map
 	handlerConfigs *sync.Map
 	handlerOnce    sync.Once
-	wg             *sync.WaitGroup
+	dispatchMu     sync.RWMutex
+	sealOnce       sync.Once
+	sealed         bool
+	sourceWG       sync.WaitGroup
+	dispatcherWG   sync.WaitGroup
+	taskWG         sync.WaitGroup
 }
 
 func New(gapOpts *ingap.Options, stor storage.Storage) *Pump {
@@ -50,7 +55,6 @@ func New(gapOpts *ingap.Options, stor storage.Storage) *Pump {
 		senderConfigs:  make(map[string]string),
 		handlers:       &sync.Map{},
 		handlerConfigs: &sync.Map{},
-		wg:             &sync.WaitGroup{},
 	}
 	p.startSender()
 	return p
@@ -107,11 +111,20 @@ func (p *Pump) startSender() {
 	}
 	p.sendCh = make(chan *entity.Envelope, size)
 
-	//for simplicity, the compensation logic uses the shutdown context
-	go p.pollingSend(o.Context)
+	// Polling stops with the intake context; a batch claimed before shutdown is
+	// completed on the work context inside pollingSend.
+	p.sourceWG.Add(1)
+	go func() {
+		defer p.sourceWG.Done()
+		p.pollingSend(o.Context)
+	}()
 
-	//the main logic uses the drain context
-	go p.dispatchingSend(o.DrainContext, o.MaxPublishConcurrency)
+	// Queued work uses the drain context.
+	p.dispatcherWG.Add(1)
+	go func() {
+		defer p.dispatcherWG.Done()
+		p.dispatchingSend(o.DrainContext, o.MaxPublishConcurrency)
+	}()
 }
 
 func (p *Pump) startHandler() {
@@ -126,9 +139,17 @@ func (p *Pump) startHandlerOnce() {
 	}
 	p.handleCh = make(chan *entity.Envelope, size)
 
-	go p.pollingHandle(o.Context)
+	p.sourceWG.Add(1)
+	go func() {
+		defer p.sourceWG.Done()
+		p.pollingHandle(o.Context)
+	}()
 
-	go p.dispatchingHandle(o.DrainContext, size)
+	p.dispatcherWG.Add(1)
+	go func() {
+		defer p.dispatcherWG.Done()
+		p.dispatchingHandle(o.DrainContext, size)
+	}()
 }
 
 func (p *Pump) DispatchToSend(ctx context.Context, envelope *entity.Envelope) error {
@@ -136,6 +157,11 @@ func (p *Pump) DispatchToSend(ctx context.Context, envelope *entity.Envelope) er
 		return err
 	}
 
+	p.dispatchMu.RLock()
+	defer p.dispatchMu.RUnlock()
+	if p.sealed {
+		return ingap.ErrRuntimeStopping
+	}
 	select {
 	case p.sendCh <- envelope:
 		return nil
@@ -151,6 +177,11 @@ func (p *Pump) DispatchToHandle(ctx context.Context, envelope *entity.Envelope) 
 		return err
 	}
 
+	p.dispatchMu.RLock()
+	defer p.dispatchMu.RUnlock()
+	if p.sealed || p.handleCh == nil {
+		return ingap.ErrRuntimeStopping
+	}
 	select {
 	case p.handleCh <- envelope:
 		return nil
@@ -162,6 +193,7 @@ func (p *Pump) DispatchToHandle(ctx context.Context, envelope *entity.Envelope) 
 }
 
 func (p *Pump) pollingSend(ctx context.Context) {
+	workCtx := p.gapOpts.DrainContext
 	ticker := time.NewTicker(p.gapOpts.PumpInterval())
 	defer ticker.Stop()
 
@@ -193,8 +225,8 @@ func (p *Pump) pollingSend(ctx context.Context) {
 			}
 
 			for _, en := range ps {
-				err := p.send(ctx, en)
-				if err != nil {
+				err := p.send(workCtx, en)
+				if err != nil && ctx.Err() == nil {
 					wait(ctx, 10*time.Second)
 				}
 			}
@@ -239,13 +271,13 @@ func (p *Pump) sendParallel(ctx context.Context, envelope *entity.Envelope, sem 
 	case <-ctx.Done():
 		return
 	case sem <- struct{}{}:
-		p.wg.Add(1)
+		p.taskWG.Add(1)
 	}
 
 	go func() {
 		defer func() {
 			<-sem
-			p.wg.Done()
+			p.taskWG.Done()
 		}()
 		err := p.send(ctx, envelope)
 		if err != nil {
@@ -255,8 +287,8 @@ func (p *Pump) sendParallel(ctx context.Context, envelope *entity.Envelope, sem 
 }
 
 func (p *Pump) sendSerial(ctx context.Context, envelope *entity.Envelope) {
-	p.wg.Add(1)
-	defer p.wg.Done()
+	p.taskWG.Add(1)
+	defer p.taskWG.Done()
 
 	err := p.send(ctx, envelope)
 	if err != nil {
@@ -289,13 +321,13 @@ func (p *Pump) handleParallel(ctx context.Context, envelope *entity.Envelope, se
 	case <-ctx.Done():
 		return
 	case sem <- struct{}{}:
-		p.wg.Add(1)
+		p.taskWG.Add(1)
 	}
 
 	go func() {
 		defer func() {
 			<-sem
-			p.wg.Done()
+			p.taskWG.Done()
 		}()
 
 		h, ok := p.handler(envelope)
@@ -312,6 +344,7 @@ func (p *Pump) handleParallel(ctx context.Context, envelope *entity.Envelope, se
 }
 
 func (p *Pump) pollingHandle(ctx context.Context) {
+	workCtx := p.gapOpts.DrainContext
 	ticker := time.NewTicker(p.gapOpts.PumpInterval())
 	defer ticker.Stop()
 
@@ -343,8 +376,8 @@ func (p *Pump) pollingHandle(ctx context.Context) {
 					continue
 				}
 				handler := h.(Handler)
-				err := handler.HandleAndUpdate(ctx, en)
-				if err != nil {
+				err := handler.HandleAndUpdate(workCtx, en)
+				if err != nil && ctx.Err() == nil {
 					wait(ctx, 10*time.Second)
 				}
 			}
@@ -393,23 +426,46 @@ func wait(ctx context.Context, duration time.Duration) {
 	}
 }
 
-func (p *Pump) AddOne() {
-	p.wg.Add(1)
+func (p *Pump) StopSources(ctx context.Context) error {
+	return waitGroup(ctx, &p.sourceWG)
 }
 
-func (p *Pump) Done() {
-	p.wg.Done()
+// Seal rejects future dispatches and closes dispatcher inputs. Callers must
+// first stop all known producers of work; concurrent late dispatches are still
+// safe because dispatchMu prevents sends racing with channel closure.
+func (p *Pump) Seal() {
+	p.sealOnce.Do(func() {
+		p.dispatchMu.Lock()
+		p.sealed = true
+		close(p.sendCh)
+		if p.handleCh != nil {
+			close(p.handleCh)
+		}
+		p.dispatchMu.Unlock()
+	})
 }
 
-func (p *Pump) WaitDrain(ctx context.Context) error {
+// Drain waits first for dispatchers to consume every queued item. Only after
+// dispatchers stop can taskWG be known to receive no future Add calls.
+func (p *Pump) Drain(ctx context.Context) error {
+	if err := waitGroup(ctx, &p.dispatcherWG); err != nil {
+		return err
+	}
+	if err := waitGroup(ctx, &p.taskWG); err != nil {
+		return err
+	}
+	slog.Info("gap drained successfully")
+	return nil
+}
+
+func waitGroup(ctx context.Context, wg *sync.WaitGroup) error {
 	done := make(chan struct{})
 	go func() {
-		p.wg.Wait()
+		wg.Wait()
 		close(done)
 	}()
 	select {
 	case <-done:
-		slog.Info("gap drained successfully")
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()

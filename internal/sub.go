@@ -94,6 +94,15 @@ func (g *GroupedSubs) ListeningAll() error {
 	return nil
 }
 
+func (g *GroupedSubs) Stop(ctx context.Context) error {
+	for _, sub := range g.subs {
+		if err := sub.Stop(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type Sub struct {
 	opts       *ingap.Options
 	groupOpts  *ingap.GroupOptions
@@ -105,6 +114,8 @@ type Sub struct {
 	pump       *pump.Pump
 	listenOnce sync.Once
 	listenErr  error
+	listenWG   sync.WaitGroup
+	ingestWG   sync.WaitGroup
 }
 
 // Subscribe implements [Subscriber].
@@ -163,30 +174,41 @@ func (s *Sub) Listening() error {
 }
 
 func (s *Sub) startListening() error {
-	ctx := s.opts.DrainContext
-	enCh, err := s.consumer.Consume(ctx)
+	intakeCtx := s.opts.Context
+	workCtx := s.opts.DrainContext
+	enCh, err := s.consumer.Consume(intakeCtx)
 	if err != nil {
 		return err
 	}
 
 	if s.storage != nil {
 		concurrency := s.groupOpts.IngestConcurrency
-		go s.listening(ctx, enCh, concurrency)
+		s.listenWG.Add(1)
+		go func() {
+			defer s.listenWG.Done()
+			s.listening(intakeCtx, workCtx, enCh, concurrency)
+		}()
 		return nil
 	}
 
+	s.listenWG.Add(1)
 	go func() {
+		defer s.listenWG.Done()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-intakeCtx.Done():
 				return
 			case en, ok := <-enCh:
 				if !ok {
 					return
 				}
+				if intakeCtx.Err() != nil {
+					_ = s.consumer.Reject(en.Tag)
+					return
+				}
 
-				slog.Warn("hande message without persistence")
-				err := s.handle(ctx, en)
+				slog.Warn("handle message without persistence")
+				err := s.handle(workCtx, en)
 				if err != nil {
 					s.consumer.Reject(en.Tag)
 				} else {
@@ -198,18 +220,22 @@ func (s *Sub) startListening() error {
 	return nil
 }
 
-func (s *Sub) listening(ctx context.Context, enCh <-chan *entity.Envelope, concurrency int) {
+func (s *Sub) listening(intakeCtx, workCtx context.Context, enCh <-chan *entity.Envelope, concurrency int) {
 	if concurrency < 1 {
 		for {
 			select {
-			case <-ctx.Done():
+			case <-intakeCtx.Done():
 				return
 
 			case en, ok := <-enCh:
 				if !ok {
 					return
 				}
-				s.ingestSerial(ctx, en)
+				if intakeCtx.Err() != nil {
+					_ = s.consumer.Reject(en.Tag)
+					return
+				}
+				s.ingestSerial(workCtx, en)
 			}
 		}
 		//return
@@ -218,14 +244,18 @@ func (s *Sub) listening(ctx context.Context, enCh <-chan *entity.Envelope, concu
 	sem := make(chan struct{}, concurrency)
 	for {
 		select {
-		case <-ctx.Done():
+		case <-intakeCtx.Done():
 			return
 
 		case en, ok := <-enCh:
 			if !ok {
 				return
 			}
-			s.ingestParallel(ctx, en, sem)
+			if intakeCtx.Err() != nil {
+				_ = s.consumer.Reject(en.Tag)
+				return
+			}
+			s.ingestParallel(workCtx, en, sem)
 		}
 	}
 }
@@ -237,16 +267,17 @@ func (s *Sub) ingestParallel(ctx context.Context, envelope *entity.Envelope, sem
 	case sem <- struct{}{}:
 	}
 
+	s.ingestWG.Add(1)
 	go func() {
-		defer func() { <-sem }()
+		defer func() {
+			<-sem
+			s.ingestWG.Done()
+		}()
 		s.ingestSerial(ctx, envelope)
 	}()
 }
 
 func (s *Sub) ingestSerial(ctx context.Context, envelope *entity.Envelope) {
-	s.pump.AddOne()
-	defer s.pump.Done()
-
 	envelope.AddHeader(KeysBrokerName, s.brokerName)
 	envelope.AddHeader(KeysBrokerType, s.brokerType)
 	err := s.storage.CreateReceived(ctx, envelope)
@@ -263,6 +294,27 @@ func (s *Sub) ingestSerial(ctx context.Context, envelope *entity.Envelope) {
 	}
 
 	s.dispatch(ctx, envelope)
+}
+
+func (s *Sub) Stop(ctx context.Context) error {
+	if err := waitGroupContext(ctx, &s.listenWG); err != nil {
+		return err
+	}
+	return waitGroupContext(ctx, &s.ingestWG)
+}
+
+func waitGroupContext(ctx context.Context, wg *sync.WaitGroup) error {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *Sub) handle(ctx context.Context, envelope *entity.Envelope) (err error) {

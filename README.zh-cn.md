@@ -90,7 +90,7 @@ func main() {
 
     // 创建应用级 Gap 实例
     g := gap.New(
-        gap.WithDrain(ctx, 5),
+        gap.Context(ctx),
         xgorm.UseGorm(
             xgorm.DB(db),
         ),
@@ -138,8 +138,8 @@ func main() {
 
     drainCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
-    if err := g.WaitDrain(drainCtx); err != nil {
-        slog.Warn("gap failed to drain", slog.Any("err", err))
+    if err := g.Shutdown(drainCtx); err != nil {
+        slog.Warn("gap shutdown failed", slog.Any("err", err))
     }
 }
 
@@ -166,9 +166,9 @@ go generate ./...
 
 ### 4. 优雅关机
 
-该库通过上下文取消和内置的 drain 辅助函数支持优雅关机。
+该库通过上下文取消和 Runtime 统一管理的关闭流程支持优雅关机。
 
-- `g.WaitDrain(ctx context.Context) error` 在退出前等待发布者/订阅者处理完进行中的消息
+- `g.Shutdown(ctx context.Context) error` 停止接收新任务、排空已接收任务，并关闭 Runtime 持有的资源
 
 ## 使用示例
 
@@ -198,11 +198,11 @@ go run .
 
 - `g.Subscribe(publisher, opts...)`：设置带处理器的订阅者
 - `g.DashboardHandler()`：创建 Dashboard HTTP handler
-- `g.WaitDrain(ctx)`：关机时等待正在处理的任务完成
+- `g.Shutdown(ctx)`：停止接收新任务、排空已接收任务，并关闭 Runtime 持有的资源
 
 ### 选项
 
-- 传给 `gap.New` 的运行时 `Options`：`gap.WithDrain`、`gap.UseDashboard`，以及 `xmysql.UseMySQL` 等 storage 配置
+- 传给 `gap.New` 的运行时 `Options`：`gap.Context`、`gap.UseDashboard`，以及 `xmysql.UseMySQL` 等 storage 配置
 - 传给 publisher 构造函数的 `BrokerOptions`：`gap.BrokerName`，以及 `xrabbitmq.UseRabbitMQ` 等 broker 配置
 - 传给 `g.Subscribe` 的订阅配置：`gap.ServiceName` 和 `gap.Inject`
 

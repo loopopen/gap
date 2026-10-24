@@ -16,6 +16,12 @@ func Register(opts ...shoot.Option[Options, *Options]) {
 }
 
 func (g *Gap) Subscribe(publisher BrokerOptionsGetter, opts ...shoot.Option[Options, *Options]) {
+	done, beginErr := g.opts.BeginOperation()
+	if beginErr != nil {
+		panic(beginErr)
+	}
+	defer done()
+
 	gapOpts := g.subscriberOptions(opts...)
 	brokerOpts := publisher.BrokerOptions()
 

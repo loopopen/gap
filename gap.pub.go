@@ -14,6 +14,12 @@ import (
 )
 
 func NewPublisher[T any](g *Gap, opts ...shoot.Option[BrokerOptions, *BrokerOptions]) Publisher[T] {
+	done, err := g.opts.BeginOperation()
+	if err != nil {
+		panic(err)
+	}
+	defer done()
+
 	brokerOpts := g.publisherOptions(opts...)
 	producer := plugin.MustGetProducer(g.opts, brokerOpts)
 	if producer == nil {
