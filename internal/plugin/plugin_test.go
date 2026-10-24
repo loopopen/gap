@@ -1,17 +1,89 @@
 package plugin
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/loopopen/gap/broker"
+	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
 	ingap "github.com/loopopen/gap/internal/gap"
 )
 
 type brokerOptionsStub struct {
 	endpoint string
+}
+
+type closableProducerStub struct {
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (*closableProducerStub) Produce(context.Context, *entity.Envelope) error { return nil }
+func (p *closableProducerStub) Close() error {
+	p.once.Do(func() { close(p.closed) })
+	return nil
+}
+
+type closableConsumerStub struct {
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (*closableConsumerStub) Subscribe(context.Context, string) error { return nil }
+func (*closableConsumerStub) Consume(context.Context) (<-chan *entity.Envelope, error) {
+	return nil, nil
+}
+func (*closableConsumerStub) Commit(any) error { return nil }
+func (*closableConsumerStub) Reject(any) error { return nil }
+func (c *closableConsumerStub) Close() error {
+	c.once.Do(func() { close(c.closed) })
+	return nil
+}
+
+type lifecycleBrokerOptionsStub struct {
+	producer *closableProducerStub
+	consumer *closableConsumerStub
+}
+
+func (*lifecycleBrokerOptionsStub) PluginType() enum.Plugin { return enum.PluginRabbitMQ }
+func (o *lifecycleBrokerOptionsStub) OpenProducer(*ingap.Options) (broker.Producer, error) {
+	return o.producer, nil
+}
+func (o *lifecycleBrokerOptionsStub) OpenConsumer(*ingap.Options, string) (broker.Consumer, error) {
+	return o.consumer, nil
+}
+
+func TestBrokerClientsCloseWhenRuntimeDrainEnds(t *testing.T) {
+	drainCtx, cancelDrain := context.WithCancel(context.Background())
+	producer := &closableProducerStub{closed: make(chan struct{})}
+	consumer := &closableConsumerStub{closed: make(chan struct{})}
+	plugin := &lifecycleBrokerOptionsStub{producer: producer, consumer: consumer}
+	gapOpts := &ingap.Options{DrainContext: drainCtx}
+	brokerOpts := &ingap.BrokerOptions{Plugin: plugin}
+
+	if got := MustGetProducer(gapOpts, brokerOpts); got != producer {
+		t.Fatal("unexpected producer")
+	}
+	if got := MustGetConsumer(gapOpts, brokerOpts, "group"); got != consumer {
+		t.Fatal("unexpected consumer")
+	}
+	cancelDrain()
+
+	for name, closed := range map[string]<-chan struct{}{
+		"producer": producer.closed,
+		"consumer": consumer.closed,
+	} {
+		select {
+		case <-closed:
+		case <-time.After(time.Second):
+			t.Fatalf("%s was not closed after drain cancellation", name)
+		}
+	}
 }
 
 func (*brokerOptionsStub) PluginType() enum.Plugin { return enum.PluginRabbitMQ }

@@ -1,8 +1,9 @@
 package internal
 
 import (
-	"context"
+	"errors"
 	"log/slog"
+	"sync"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -14,25 +15,25 @@ type ChanPool interface {
 }
 
 type DefaultPool struct {
-	opts *Options
-	conn *amqp.Connection
+	opts   *Options
+	mu     sync.Mutex
+	conn   *amqp.Connection
+	closed bool
 }
 
-func NewDefaultPool(drainCtx context.Context, opts *Options) *DefaultPool {
-	p := &DefaultPool{
-		opts: opts,
-	}
-	go func() {
-		<-drainCtx.Done()
-		if p.conn != nil {
-			_ = p.conn.Close()
-			slog.Debug("rabbitmq connection closed")
-		}
-	}()
-	return p
+var errPoolClosed = errors.New("rabbitmq: channel pool is closed")
+
+func NewDefaultPool(opts *Options) *DefaultPool {
+	return &DefaultPool{opts: opts}
 }
 
 func (p *DefaultPool) connection() (*amqp.Connection, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.closed {
+		return nil, errPoolClosed
+	}
 	if p.conn != nil && !p.conn.IsClosed() {
 		return p.conn, nil
 	}
@@ -80,4 +81,25 @@ func (p *DefaultPool) Return(ch *amqp.Channel) {
 	if ch != nil && !ch.IsClosed() {
 		_ = ch.Close()
 	}
+}
+
+func (p *DefaultPool) Close() error {
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return nil
+	}
+	p.closed = true
+	conn := p.conn
+	p.conn = nil
+	p.mu.Unlock()
+
+	if conn == nil || conn.IsClosed() {
+		return nil
+	}
+	if err := conn.Close(); err != nil {
+		return err
+	}
+	slog.Debug("rabbitmq connection closed")
+	return nil
 }

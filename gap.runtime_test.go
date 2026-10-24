@@ -2,8 +2,10 @@ package gap
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal/entity"
@@ -25,6 +27,92 @@ func (*runtimeConsumerStub) Consume(context.Context) (<-chan *entity.Envelope, e
 	ch := make(chan *entity.Envelope)
 	close(ch)
 	return ch, nil
+}
+
+type isolatedRuntimeConsumer struct {
+	stopped chan struct{}
+	once    sync.Once
+}
+
+func (*isolatedRuntimeConsumer) Subscribe(context.Context, string) error { return nil }
+func (*isolatedRuntimeConsumer) Commit(any) error                        { return nil }
+func (*isolatedRuntimeConsumer) Reject(any) error                        { return nil }
+func (c *isolatedRuntimeConsumer) Consume(ctx context.Context) (<-chan *entity.Envelope, error) {
+	envelopes := make(chan *entity.Envelope)
+	go func() {
+		<-ctx.Done()
+		c.once.Do(func() { close(c.stopped) })
+		close(envelopes)
+	}()
+	return envelopes, nil
+}
+
+type isolatedRuntimeBroker struct {
+	consumers chan *isolatedRuntimeConsumer
+}
+
+func (*isolatedRuntimeBroker) PluginType() enum.Plugin { return enum.PluginKafka }
+func (*isolatedRuntimeBroker) ConfigIdentity() string  { return "shared-config" }
+func (*isolatedRuntimeBroker) OpenProducer(*ingap.Options) (broker.Producer, error) {
+	return new(runtimeProducerStub), nil
+}
+func (b *isolatedRuntimeBroker) OpenConsumer(*ingap.Options, string) (broker.Consumer, error) {
+	consumer := &isolatedRuntimeConsumer{stopped: make(chan struct{})}
+	b.consumers <- consumer
+	return consumer, nil
+}
+
+func runtimeContexts(ctx context.Context) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.Context = ctx
+		o.DrainContext = ctx
+	}
+}
+
+func useIsolatedRuntimeBroker(consumers chan *isolatedRuntimeConsumer) shoot.Option[BrokerOptions, *BrokerOptions] {
+	return func(o *BrokerOptions) {
+		o.Plugin = &isolatedRuntimeBroker{consumers: consumers}
+	}
+}
+
+func TestConsumersAreIsolatedByGapRuntime(t *testing.T) {
+	consumers := make(chan *isolatedRuntimeConsumer, 2)
+	firstCtx, cancelFirst := context.WithCancel(context.Background())
+	secondCtx, cancelSecond := context.WithCancel(context.Background())
+	defer cancelSecond()
+
+	first := New(runtimeContexts(firstCtx))
+	firstPublisher := first.NewEventPublisher(useIsolatedRuntimeBroker(consumers))
+	second := New(runtimeContexts(secondCtx))
+	secondPublisher := second.NewEventPublisher(useIsolatedRuntimeBroker(consumers))
+	handler := func(context.Context, string, map[string]string) error { return nil }
+
+	first.Subscribe(firstPublisher, HandleTopicWithinGroup("group", "events", handler))
+	second.Subscribe(secondPublisher, HandleTopicWithinGroup("group", "events", handler))
+	firstConsumer := <-consumers
+	secondConsumer := <-consumers
+	if firstConsumer == secondConsumer {
+		t.Fatal("two runtimes shared the same consumer")
+	}
+
+	cancelFirst()
+	select {
+	case <-firstConsumer.stopped:
+	case <-time.After(time.Second):
+		t.Fatal("first runtime consumer did not stop")
+	}
+	select {
+	case <-secondConsumer.stopped:
+		t.Fatal("stopping the first runtime stopped the second consumer")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	cancelSecond()
+	select {
+	case <-secondConsumer.stopped:
+	case <-time.After(time.Second):
+		t.Fatal("second runtime consumer did not stop")
+	}
 }
 
 type runtimeBrokerStub struct {

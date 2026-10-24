@@ -27,7 +27,7 @@ func NewProducer(gapOpts *ingap.Options, opts *Options) *Producer {
 	producer := &Producer{
 		gapOpts: gapOpts,
 		opts:    opts,
-		chPool:  NewDefaultPool(gapOpts.DrainContext, opts),
+		chPool:  NewDefaultPool(opts),
 	}
 
 	var _ broker.Producer = producer
@@ -135,3 +135,12 @@ func (p *Producer) exchange() string {
 	}
 	return p.x
 }
+
+func (p *Producer) Close() error {
+	if closer, ok := p.chPool.(broker.Closer); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
+var _ broker.Closer = (*Producer)(nil)

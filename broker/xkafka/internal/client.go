@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -47,15 +46,6 @@ func (o *Options) producerKey() string {
 
 func (o *Options) ConfigIdentity() string {
 	return broker.ConfigIdentity("xkafka", o.producerKey())
-}
-
-func (o *Options) consumerKey(version, group string) string {
-	return strings.Join([]string{
-		o.connectionKey(),
-		version,
-		group,
-		strconv.FormatInt(o.StartOffset, 10),
-	}, "\x00")
 }
 
 func newKafkaConnections(opts *Options) *kafkaConnections {

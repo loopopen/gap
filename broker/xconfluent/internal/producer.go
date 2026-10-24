@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/loopopen/gap/broker"
@@ -13,13 +14,15 @@ import (
 
 type producerClient interface {
 	Produce(message *kafka.Message, deliveryChan chan kafka.Event) error
+	Close()
 }
 
 type Producer struct {
-	gapOpts  *ingap.Options
-	opts     *Options
-	producer producerClient
-	ensurer  *Ensurer
+	gapOpts   *ingap.Options
+	opts      *Options
+	producer  producerClient
+	ensurer   *Ensurer
+	closeOnce sync.Once
 }
 
 func NewProducer(gapOpts *ingap.Options, opts *Options) (*Producer, error) {
@@ -92,4 +95,15 @@ func (p *Producer) Produce(ctx context.Context, envelope *entity.Envelope) error
 	}
 }
 
+// Close releases the librdkafka producer owned by this runtime.
+func (p *Producer) Close() error {
+	p.closeOnce.Do(func() {
+		if p.producer != nil {
+			p.producer.Close()
+		}
+	})
+	return nil
+}
+
 var _ broker.Producer = (*Producer)(nil)
+var _ broker.Closer = (*Producer)(nil)

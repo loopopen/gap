@@ -34,7 +34,7 @@ func NewConsumer(gapOpts *ingap.Options, opts *Options, group string) *Consumer 
 	consumer := &Consumer{
 		gapOpts: gapOpts,
 		opts:    opts,
-		chPool:  NewDefaultPool(gapOpts.DrainContext, opts),
+		chPool:  NewDefaultPool(opts),
 		q:       fmt.Sprintf("gap.%s.q.%s", gapOpts.Version, group),
 		group:   group,
 	}
@@ -165,3 +165,12 @@ func (c *Consumer) consumerTag() string {
 	}
 	return c.ctag
 }
+
+func (c *Consumer) Close() error {
+	if closer, ok := c.chPool.(broker.Closer); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
+var _ broker.Closer = (*Consumer)(nil)

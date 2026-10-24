@@ -86,15 +86,6 @@ func (o *Options) ConfigIdentity() string {
 	return broker.ConfigIdentity("xrabbitmq", o.producerKey())
 }
 
-func (o *Options) consumerKey(version, group string) string {
-	return strings.Join([]string{
-		o.producerKey(),
-		version,
-		group,
-		strconv.Itoa(o.PrefetchCount),
-	}, "\x00")
-}
-
 func ConfigQueue(opts ...shoot.Option[QueueOptions, *QueueOptions]) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		options := new(QueueOptions).With(opts...)
@@ -108,26 +99,22 @@ func UseRabbitMQ(opts ...shoot.Option[Options, *Options]) shoot.Option[ingap.Bro
 	}
 }
 
-var clients = broker.NewClientCache()
-
 func (o *Options) OpenProducer(gapOpts *ingap.Options) (broker.Producer, error) {
-	return clients.Producer(o.producerKey(), func() (broker.Producer, error) {
-		producer := NewProducer(gapOpts, o)
-		if err := producer.init(); err != nil {
-			slog.Error("failed to init producer", slog.Any("err", err))
-			return nil, err
-		}
-		return producer, nil
-	})
+	producer := NewProducer(gapOpts, o)
+	if err := producer.init(); err != nil {
+		_ = producer.Close()
+		slog.Error("failed to init producer", slog.Any("err", err))
+		return nil, err
+	}
+	return producer, nil
 }
 
 func (o *Options) OpenConsumer(gapOpts *ingap.Options, group string) (broker.Consumer, error) {
-	return clients.Consumer(o.consumerKey(gapOpts.Version, group), func() (broker.Consumer, error) {
-		consumer := NewConsumer(gapOpts, o, group)
-		if err := consumer.init(); err != nil {
-			slog.Error("failed to init consumer", slog.Any("err", err))
-			return nil, err
-		}
-		return consumer, nil
-	})
+	consumer := NewConsumer(gapOpts, o, group)
+	if err := consumer.init(); err != nil {
+		_ = consumer.Close()
+		slog.Error("failed to init consumer", slog.Any("err", err))
+		return nil, err
+	}
+	return consumer, nil
 }

@@ -3,7 +3,6 @@ package internal
 import (
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -74,15 +73,6 @@ func (o *Options) producerKey() string {
 
 func (o *Options) ConfigIdentity() string {
 	return broker.ConfigIdentity("xconfluent", o.producerKey())
-}
-
-func (o *Options) consumerKey(version, group string) string {
-	return strings.Join([]string{
-		o.connectionKey(),
-		version,
-		group,
-		strconv.FormatInt(int64(o.StartOffset), 10),
-	}, "\x00")
 }
 
 var (

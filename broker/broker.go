@@ -12,6 +12,12 @@ type Producer interface {
 	Produce(ctx context.Context, envelope *entity.Envelope) error
 }
 
+// Closer is implemented by broker clients that own runtime-scoped resources.
+// GAP closes these clients when the owning runtime's drain context ends.
+type Closer interface {
+	Close() error
+}
+
 // ConfigIdentifier can be implemented by broker options to distinguish live
 // connection configurations. It must not be used as a persisted route name.
 type ConfigIdentifier interface {

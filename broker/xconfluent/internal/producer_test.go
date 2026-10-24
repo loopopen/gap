@@ -10,6 +10,7 @@ import (
 
 type fakeProducer struct {
 	message *kafka.Message
+	closes  int
 }
 
 func (f *fakeProducer) Produce(message *kafka.Message, delivery chan kafka.Event) error {
@@ -17,6 +18,8 @@ func (f *fakeProducer) Produce(message *kafka.Message, delivery chan kafka.Event
 	delivery <- message
 	return nil
 }
+
+func (f *fakeProducer) Close() { f.closes++ }
 
 func TestProduceWaitsForDeliveryAndPreservesHeaders(t *testing.T) {
 	entity.MustInitSnowflake(1)
@@ -46,5 +49,19 @@ func TestProduceWaitsForDeliveryAndPreservesHeaders(t *testing.T) {
 	}
 	if len(client.message.Headers) != 1 || client.message.Headers[0].Key != "trace" || string(client.message.Headers[0].Value) != "value" {
 		t.Fatalf("headers = %#v", client.message.Headers)
+	}
+}
+
+func TestProducerCloseIsIdempotent(t *testing.T) {
+	client := new(fakeProducer)
+	producer := &Producer{producer: client}
+	if err := producer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := producer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if client.closes != 1 {
+		t.Fatalf("producer client closed %d times, want 1", client.closes)
 	}
 }

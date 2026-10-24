@@ -23,6 +23,8 @@ type Producer struct {
 	topics    []string
 	topicMu   sync.Mutex
 	ensurer   *Ensurer
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // NewProducer creates a new Kafka producer broker instance.
@@ -98,3 +100,16 @@ func (p *Producer) send(ctx context.Context, topic string, headers map[string]st
 
 	return p.writer.WriteMessages(ctx, msg)
 }
+
+// Close releases the writer owned by this runtime. Shared transports remain
+// available to other runtimes using the same broker configuration.
+func (p *Producer) Close() error {
+	p.closeOnce.Do(func() {
+		if p.writer != nil {
+			p.closeErr = p.writer.Close()
+		}
+	})
+	return p.closeErr
+}
+
+var _ broker.Closer = (*Producer)(nil)

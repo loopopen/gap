@@ -12,10 +12,4 @@ func TestConnectionKeyFollowsBrokerIdentity(t *testing.T) {
 	if sameA.connectionKey() == other.connectionKey() {
 		t.Fatal("different brokers produced the same connection key")
 	}
-	if sameA.consumerKey("v1", "g") == sameB.consumerKey("v1", "other") {
-		t.Fatal("different groups produced the same consumer key")
-	}
-	if sameA.consumerKey("v1", "g") == sameA.consumerKey("v2", "g") {
-		t.Fatal("different versions produced the same consumer key")
-	}
 }
