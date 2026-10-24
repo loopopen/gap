@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -65,6 +66,38 @@ func (f *fakeConsumer) Assign(partitions []kafka.TopicPartition) error {
 func (f *fakeConsumer) Close() error {
 	close(f.closed)
 	return nil
+}
+
+type blockingReadConsumer struct {
+	*fakeConsumer
+	readStarted     chan struct{}
+	releaseRead     chan struct{}
+	readOnce        sync.Once
+	reading         atomic.Bool
+	closeDuringRead atomic.Bool
+}
+
+func newBlockingReadConsumer() *blockingReadConsumer {
+	return &blockingReadConsumer{
+		fakeConsumer: newFakeConsumer(),
+		readStarted:  make(chan struct{}),
+		releaseRead:  make(chan struct{}),
+	}
+}
+
+func (f *blockingReadConsumer) ReadMessage(time.Duration) (*kafka.Message, error) {
+	f.reading.Store(true)
+	f.readOnce.Do(func() { close(f.readStarted) })
+	<-f.releaseRead
+	f.reading.Store(false)
+	return nil, kafka.NewError(kafka.ErrTimedOut, "timed out", false)
+}
+
+func (f *blockingReadConsumer) Close() error {
+	if f.reading.Load() {
+		f.closeDuringRead.Store(true)
+	}
+	return f.fakeConsumer.Close()
 }
 
 func testConsumer(client consumerClient) *Consumer {
@@ -194,6 +227,50 @@ func TestCommitDeliveredMessageAfterIntakeStops(t *testing.T) {
 	case <-fake.closed:
 	case <-time.After(time.Second):
 		t.Fatal("consumer did not close after intake stopped")
+	}
+}
+
+func TestCloseWaitsForReadMessageToReturn(t *testing.T) {
+	fake := newBlockingReadConsumer()
+	consumer := testConsumer(fake)
+	if _, err := consumer.Consume(context.Background()); err != nil {
+		t.Fatalf("Consume: %v", err)
+	}
+	<-fake.readStarted
+
+	closed := make(chan error, 1)
+	go func() { closed <- consumer.Close() }()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		consumer.mu.Lock()
+		state := consumer.state
+		consumer.mu.Unlock()
+		if state == consumerClosed {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Close did not start")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case <-fake.closed:
+		t.Fatal("underlying consumer closed while ReadMessage was running")
+	default:
+	}
+
+	close(fake.releaseRead)
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close did not finish after ReadMessage returned")
+	}
+	if fake.closeDuringRead.Load() {
+		t.Fatal("underlying consumer Close raced with ReadMessage")
 	}
 }
 

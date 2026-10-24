@@ -103,12 +103,12 @@ type Consumer struct {
 	groupID string
 	ensurer *Ensurer
 
-	mu        sync.Mutex
-	state     consumerState
-	topics    []string
-	consumer  consumerClient
-	closeOnce sync.Once
-	closeErr  error
+	mu            sync.Mutex
+	state         consumerState
+	topics        []string
+	consumeCancel context.CancelFunc
+	consumeDone   chan struct{}
+	closeErr      error
 
 	newConsumer    func() (consumerClient, error)
 	pollTimeout    time.Duration
@@ -213,25 +213,31 @@ func (c *Consumer) Consume(ctx context.Context) (<-chan *entity.Envelope, error)
 		_ = client.Close()
 		return nil, err
 	}
-	c.consumer = client
+	consumeCtx, consumeCancel := context.WithCancel(ctx)
+	consumeDone := make(chan struct{})
+	c.consumeCancel = consumeCancel
+	c.consumeDone = consumeDone
 	c.state = consumerRunning
 	c.mu.Unlock()
 
 	envelopes := make(chan *entity.Envelope)
-	go c.consumeLoop(ctx, client, envelopes)
+	go c.consumeLoop(consumeCtx, client, envelopes, consumeDone)
 	return envelopes, nil
 }
 
-func (c *Consumer) consumeLoop(ctx context.Context, client consumerClient, envelopes chan<- *entity.Envelope) {
-	defer close(envelopes)
+func (c *Consumer) consumeLoop(ctx context.Context, client consumerClient, envelopes chan<- *entity.Envelope, done chan<- struct{}) {
 	defer func() {
-		if err := c.closeClient(client); err != nil {
-			slog.Error("confluent: close consumer failed", slog.Any("err", err))
-		}
+		closeErr := client.Close()
 		c.mu.Lock()
-		c.consumer = nil
 		c.state = consumerClosed
+		c.consumeCancel = nil
+		c.closeErr = closeErr
 		c.mu.Unlock()
+		if closeErr != nil {
+			slog.Error("confluent: close consumer failed", slog.Any("err", closeErr))
+		}
+		close(envelopes)
+		close(done)
 	}()
 
 	for {
@@ -288,21 +294,24 @@ func (c *Consumer) deliveryContext(intakeCtx context.Context) context.Context {
 	return intakeCtx
 }
 
-func (c *Consumer) closeClient(client consumerClient) error {
-	c.closeOnce.Do(func() {
-		if client != nil {
-			c.closeErr = client.Close()
-		}
-	})
-	return c.closeErr
-}
-
 func (c *Consumer) Close() error {
 	c.mu.Lock()
-	client := c.consumer
+	cancel := c.consumeCancel
+	done := c.consumeDone
 	c.state = consumerClosed
 	c.mu.Unlock()
-	return c.closeClient(client)
+
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		<-done
+	}
+
+	c.mu.Lock()
+	err := c.closeErr
+	c.mu.Unlock()
+	return err
 }
 
 func (c *Consumer) envelope(message *kafka.Message) *entity.Envelope {
