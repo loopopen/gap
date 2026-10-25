@@ -7,7 +7,6 @@ require (
 	github.com/loopopen/gap v1.0.0
 	github.com/loopopen/gap/broker/xrabbitmq v1.0.0
 	github.com/loopopen/gap/storage/xmysql v1.0.0
-	golang.org/x/sync v0.19.0
 )
 
 require (

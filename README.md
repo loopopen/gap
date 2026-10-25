@@ -190,7 +190,8 @@ go run .
 ### Publishers
 
 - `gap.New(opts...) *Gap`: Create an application-scoped Gap instance
-- `gap.NewPublisher[T](g, opts...) Publisher[T]`: Create a typed publisher
+- `gap.NewPublisher[T](g, opts...) Publisher[T]` (Go 1.24+): Create a typed publisher
+- `g.NewPublisher[T](opts...) Publisher[T]` (Go 1.27+): Create a typed publisher from a Gap instance
 - `g.NewEventPublisher(opts...) EventPublisher`: Create an event publisher
 - `publisher.Bind(tx Txer) (Publisher[T], error)`: Bind a publisher to a transaction for the outbox pattern
 

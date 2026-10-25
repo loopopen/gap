@@ -29,11 +29,15 @@ func NewPublisher[T any](g *Gap, opts ...shoot.Option[BrokerOptions, *BrokerOpti
 	return pub
 }
 
-func (g *Gap) NewEventPublisher(opts ...shoot.Option[BrokerOptions, *BrokerOptions]) EventPublisher {
+func NewEventPublisher(g *Gap, opts ...shoot.Option[BrokerOptions, *BrokerOptions]) EventPublisher {
 	pub := &internal.EventPub{
 		Pub: NewPublisher[Event](g, opts...).(*internal.Pub[Event]),
 	}
 	return pub
+}
+
+func (g *Gap) NewEventPublisher(opts ...shoot.Option[BrokerOptions, *BrokerOptions]) EventPublisher {
+	return NewEventPublisher(g, opts...)
 }
 
 func initSnowflake(node int64) {

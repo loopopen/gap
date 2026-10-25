@@ -190,7 +190,8 @@ go run .
 ### 发布者
 
 - `gap.New(opts...) *Gap`：创建应用级 Gap 实例
-- `gap.NewPublisher[T](g, opts...) Publisher[T]`：创建类型化发布者
+- `gap.NewPublisher[T](g, opts...) Publisher[T]`（Go 1.24+）：创建类型化发布者
+- `g.NewPublisher[T](opts...) Publisher[T]`（Go 1.27+）：从 Gap 实例创建类型化发布者
 - `g.NewEventPublisher(opts...) EventPublisher`：创建事件发布者
 - `publisher.Bind(tx Txer) (Publisher[T], error)`：将发布者绑定到事务以实现 Outbox 模式
 

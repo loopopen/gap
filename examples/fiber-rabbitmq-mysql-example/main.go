@@ -15,7 +15,6 @@ import (
 	"github.com/loopopen/gap"
 	"github.com/loopopen/gap/broker/xrabbitmq"
 	"github.com/loopopen/gap/storage/xmysql"
-	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -27,6 +26,11 @@ func main() {
 	defer stop()
 
 	g, svcCtx := initSvc(ctx)
+	app.Hooks().OnShutdown(func() error {
+		drainCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return g.Shutdown(drainCtx)
+	})
 	app.All("/dashboard/*", adaptor.HTTPHandler(g.DashboardHandler()))
 	app.Get("/api/greet", handlers.Greet(svcCtx.GreetSvc))
 
@@ -48,27 +52,11 @@ func main() {
 		os.Exit(1)
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	shutdownGroup, ctx := errgroup.WithContext(ctx)
-
-	shutdownGroup.Go(func() error {
-		err := g.Shutdown(ctx)
-		if err != nil {
-			slog.Warn("gap failed to drain", slog.Any("err", err))
-		}
-		return err
-	})
-
-	shutdownGroup.Go(func() error {
-		err := app.ShutdownWithContext(ctx)
-		if err != nil {
-			slog.Warn("server shutdown with error", slog.Any("err", err))
-		}
-		return err
-	})
-
-	if err := shutdownGroup.Wait(); err == nil {
+	if err := app.ShutdownWithContext(shutdownCtx); err != nil {
+		slog.Warn("server shutdown with error", slog.Any("err", err))
+	} else {
 		slog.Info("server shutdown successfully")
 	}
 }
