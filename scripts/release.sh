@@ -113,25 +113,28 @@ prepare_plugin() {
 	update_version "$module_dir"
 }
 
-commit_module() {
-	module_dir=$1
-	full_tag=$(tag_name "$module_dir" "$version")
-	file=$(version_file "$module_dir")
-	set -- "$file"
-	if [ "$module_dir" != "." ]; then
-		set -- "$@" "$module_dir/go.mod"
+commit_release() {
+	set -- "$(version_file .)"
+	for module_dir in $plugin_modules; do
+		set -- "$@" "$(version_file "$module_dir")" "$module_dir/go.mod"
 		if [ -f "$module_dir/go.sum" ]; then
 			set -- "$@" "$module_dir/go.sum"
 		fi
-	fi
+	done
 	git add -- "$@"
 	if git diff --cached --quiet -- "$@"; then
-		echo "release files already set; no commit needed: $(module_path "$module_dir")"
-	else
-		git commit -m "chore: $full_tag" -- "$@"
+		echo "release files already set; no commit needed"
+		return
 	fi
-	git tag "$full_tag"
-	echo "created tag: $full_tag"
+	git commit -m "chore: release $version" -- "$@"
+}
+
+tag_release() {
+	for module_dir in . $plugin_modules; do
+		full_tag=$(tag_name "$module_dir" "$version")
+		git tag "$full_tag"
+		echo "created tag: $full_tag"
+	done
 }
 
 release() {
@@ -157,10 +160,8 @@ release() {
 	done
 	make --no-print-directory test-isolated
 
-	commit_module .
-	for module_dir in $plugin_modules; do
-		commit_module "$module_dir"
-	done
+	commit_release
+	tag_release
 
 	set -- "HEAD:refs/heads/$branch" "refs/tags/$version"
 	for module_dir in $plugin_modules; do
