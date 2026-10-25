@@ -1,6 +1,6 @@
 # gap
 
-[![Language](https://img.shields.io/badge/language-中文-blue.svg)](https://github.com/loopopen/gap/blob/main/README.zh-cn.md)
+[![Language](https://img.shields.io/badge/language-中文-blue.svg)](https://github.com/loopopen/gap/blob/main/README.zh-cn.md) [![CI](https://github.com/loopopen/gap/actions/workflows/ci.yml/badge.svg)](https://github.com/loopopen/gap/actions/workflows/ci.yml)
 
 GAP is a lightweight, event-driven messaging library for Go. It uses the outbox pattern, so a message is written in the same database transaction as your data, then delivered once that transaction commits. It speaks RabbitMQ and Kafka today, and it can store messages in MySQL or in any database GORM already supports. More brokers and databases are part of the plan. The library is shaped so those can be added without tearing up what you already have.
 
