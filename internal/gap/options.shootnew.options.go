@@ -10,7 +10,7 @@ import (
 )
 
 // NewOptions constructs a new instance of type Options
-func NewOptions(context context.Context, drainContext context.Context, serviceName string, version string, defaultGroup string, claimBatchSize int, maxRetries int, lookbackSeconds int, pumpIntervalSeconds int, maxPublishConcurrency int, workerId int64, publishBufferSize int, workConcurrencyFactor int) *Options {
+func NewOptions(context context.Context, drainContext context.Context, serviceName string, version string, defaultGroup string, claimBatchSize int, maxRetries int, leaseTTLSeconds int, retryIntervalSeconds int, pumpIntervalSeconds int, maxPublishConcurrency int, workerId int64, publishBufferSize int, workConcurrencyFactor int) *Options {
 	return &Options{
 		Context:               context,
 		DrainContext:          drainContext,
@@ -19,7 +19,8 @@ func NewOptions(context context.Context, drainContext context.Context, serviceNa
 		DefaultGroup:          defaultGroup,
 		ClaimBatchSize:        claimBatchSize,
 		MaxRetries:            maxRetries,
-		LookbackSeconds:       lookbackSeconds,
+		LeaseTTLSeconds:       leaseTTLSeconds,
+		RetryIntervalSeconds:  retryIntervalSeconds,
 		PumpIntervalSeconds:   pumpIntervalSeconds,
 		MaxPublishConcurrency: maxPublishConcurrency,
 		WorkerID:              workerId,
@@ -86,10 +87,17 @@ func MaxRetries(maxRetries_ int) shoot.Option[Options, *Options] {
 	}
 }
 
-// LookbackSeconds is a configuration for the filed LookbackSeconds
-func LookbackSeconds(lookbackSeconds_ int) shoot.Option[Options, *Options] {
+// LeaseTTLSeconds is a configuration for the filed LeaseTTLSeconds
+func LeaseTTLSeconds(leaseTTLSeconds_ int) shoot.Option[Options, *Options] {
 	return func(o *Options) {
-		o.LookbackSeconds = lookbackSeconds_
+		o.LeaseTTLSeconds = leaseTTLSeconds_
+	}
+}
+
+// RetryIntervalSeconds is a configuration for the filed RetryIntervalSeconds
+func RetryIntervalSeconds(retryIntervalSeconds_ int) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.RetryIntervalSeconds = retryIntervalSeconds_
 	}
 }
 
@@ -136,7 +144,8 @@ func (o *Options) SetDefault() {
 	o.DefaultGroup = "default"
 	o.ClaimBatchSize = 200
 	o.MaxRetries = 30
-	o.LookbackSeconds = 180
+	o.LeaseTTLSeconds = 180
+	o.RetryIntervalSeconds = 10
 	o.PumpIntervalSeconds = 1
 	o.WorkerID = -1
 	o.PublishBufferSize = runtime.GOMAXPROCS(0) * 512

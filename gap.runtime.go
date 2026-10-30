@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/loopopen/gap/internal"
-	"github.com/loopopen/gap/internal/enum"
 	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/internal/plugin"
 	"github.com/loopopen/gap/internal/pump"
@@ -34,11 +33,6 @@ func New(opts ...shoot.Option[Options, *Options]) *Gap {
 	gapOpts.RuntimeIdentity()
 	gapOpts.InitializeRuntime()
 	stor := plugin.MustGetStorage(gapOpts)
-	if stor != nil {
-		if err := stor.UpdateStatusPublished(gapOpts.Context, 0, enum.StatusProcessing, enum.StatusFailed); err != nil {
-			panic(err)
-		}
-	}
 
 	initSnowflake(gapOpts.WorkerID)
 

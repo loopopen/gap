@@ -330,13 +330,7 @@ func (p *Pump) handleParallel(ctx context.Context, envelope *entity.Envelope, se
 			p.taskWG.Done()
 		}()
 
-		h, ok := p.handler(envelope)
-		if !ok {
-			envelope.Log().Error("no handler found in pump", slog.String("group", envelope.Group))
-			return
-		}
-		handler := h.(Handler)
-		err := handler.HandleAndUpdate(ctx, envelope)
+		err := p.handle(ctx, envelope)
 		if err != nil {
 			envelope.Log().Warn("falling back to db polling", slog.Any("err", err))
 		}
@@ -370,15 +364,8 @@ func (p *Pump) pollingHandle(ctx context.Context) {
 			}
 
 			for _, en := range rs {
-				h, ok := p.handler(en)
-				if !ok {
-					en.Log().Error("no handler found in pump", slog.String("group", en.Group))
-					continue
-				}
-				handler := h.(Handler)
-				err := handler.HandleAndUpdate(workCtx, en)
-				if err != nil && ctx.Err() == nil {
-					wait(ctx, 10*time.Second)
+				if err := p.handle(workCtx, en); err != nil {
+					en.Log().Error("failed to handle received message", slog.Any("err", err))
 				}
 			}
 		}
@@ -401,8 +388,30 @@ func (p *Pump) failPublished(ctx context.Context, envelope *entity.Envelope, cau
 	if p.storage == nil {
 		return cause
 	}
-	if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, 0, enum.StatusFailed); err != nil {
+	if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, envelope.LeaseToken, enum.StatusFailed); err != nil {
 		return fmt.Errorf("%w; mark published message failed: %v", cause, err)
+	}
+	return cause
+}
+
+func (p *Pump) handle(ctx context.Context, envelope *entity.Envelope) error {
+	h, ok := p.handler(envelope)
+	if ok {
+		return h.(Handler).HandleAndUpdate(ctx, envelope)
+	}
+
+	brokerType := envelope.Headers[entity.BrokerTypeHeader]
+	brokerName := envelope.Headers[entity.BrokerNameHeader]
+	cause := fmt.Errorf("handler not found for broker %q (%s), group %q", brokerName, brokerType, envelope.Group)
+	return p.failReceived(ctx, envelope, cause)
+}
+
+func (p *Pump) failReceived(ctx context.Context, envelope *entity.Envelope, cause error) error {
+	if p.storage == nil {
+		return cause
+	}
+	if err := p.storage.UpdateStatusReceived(ctx, envelope.ID, envelope.LeaseToken, enum.StatusFailed); err != nil {
+		return fmt.Errorf("%w; mark received message failed: %v", cause, err)
 	}
 	return cause
 }

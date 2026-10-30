@@ -2,11 +2,14 @@ package storage
 
 import (
 	"context"
+	"errors"
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/txer"
 )
+
+var ErrLeaseLost = errors.New("gap: message lease lost")
 
 // Role selects the data-plane pool or the dashboard read pool.
 type Role uint8
@@ -21,7 +24,8 @@ type Storage interface {
 
 	CreatePublished(ctx context.Context, envelope *entity.Envelope) error
 
-	UpdateStatusPublished(ctx context.Context, id uint, src enum.Status, status enum.Status) error
+	// UpdateStatusPublished writes status verbatim for the current lease and releases it.
+	UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error
 
 	ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*entity.Envelope, error)
 
@@ -29,7 +33,8 @@ type Storage interface {
 
 	ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*entity.Envelope, error)
 
-	UpdateStatusReceived(ctx context.Context, id uint, src enum.Status, status enum.Status) error
+	// UpdateStatusReceived writes status verbatim for the current lease and releases it.
+	UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error
 
 	StorageX
 }

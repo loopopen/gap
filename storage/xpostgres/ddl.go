@@ -27,7 +27,7 @@ BEGIN
         WHERE t.typname = 'status_enum'
         AND n.nspname = '%s'
     ) THEN
-        CREATE TYPE %s."status_enum" AS ENUM ('Pending', 'Processing', 'Succeeded', 'Failed');
+        CREATE TYPE %s."status_enum" AS ENUM ('Pending', 'Succeeded', 'Failed');
     END IF;
 END
 $$;`, schema, quotedSchema)
@@ -44,6 +44,9 @@ func publishedCreateSQL(table, statusType string) string {
 			`"headers" text,`+
 			`"payload" text,`+
 			`"retries" integer NOT NULL DEFAULT 0,`+
+			`"lease_token" varchar(32),`+
+			`"lease_until" timestamptz,`+
+			`"next_attempt_at" timestamptz NOT NULL,`+
 			`"expired_at" timestamptz,`+
 			`PRIMARY KEY ("id")`+
 			")",
@@ -62,6 +65,9 @@ func receivedCreateSQL(table, statusType string) string {
 			`"headers" text,`+
 			`"payload" text,`+
 			`"retries" integer NOT NULL DEFAULT 0,`+
+			`"lease_token" varchar(32),`+
+			`"lease_until" timestamptz,`+
+			`"next_attempt_at" timestamptz NOT NULL,`+
 			`"expired_at" timestamptz,`+
 			`"group" varchar(128) NOT NULL,`+
 			`PRIMARY KEY ("id")`+
@@ -76,7 +82,7 @@ func claimIndexSQL(quotedTable, index string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf(
-		`CREATE INDEX IF NOT EXISTS %s ON %s ("version", "status", "retries", "created_at")`,
+		`CREATE INDEX IF NOT EXISTS %s ON %s ("version", "status", "next_attempt_at", "lease_until", "retries")`,
 		quotedIndex, quotedTable,
 	), nil
 }

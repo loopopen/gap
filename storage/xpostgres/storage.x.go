@@ -33,12 +33,11 @@ func (s *Storage) messageStats(ctx context.Context, name string) (entity.Message
 	script := `SELECT
 		COUNT(*),
 		COALESCE(SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN status = 'Processing' THEN 1 ELSE 0 END), 0),
 		COALESCE(SUM(CASE WHEN status = 'Succeeded' THEN 1 ELSE 0 END), 0),
 		COALESCE(SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END), 0),
 		COALESCE(SUM(retries), 0),
 		MAX(created_at),
-		MIN(CASE WHEN status IN ('Pending', 'Processing') THEN created_at END)
+		MIN(CASE WHEN status = 'Pending' THEN created_at END)
 		FROM ` + table
 
 	var stats entity.MessageStats
@@ -47,7 +46,6 @@ func (s *Storage) messageStats(ctx context.Context, name string) (entity.Message
 	err = s.db.QueryRowContext(ctx, script).Scan(
 		&stats.Total,
 		&stats.Pending,
-		&stats.Processing,
 		&stats.Succeeded,
 		&stats.Failed,
 		&stats.Retries,

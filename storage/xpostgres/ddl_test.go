@@ -40,6 +40,11 @@ func TestCreateSQL(t *testing.T) {
 	if !strings.Contains(published, `"status" "gap"."status_enum" NOT NULL`) {
 		t.Fatal(published)
 	}
+	for _, column := range []string{`"lease_token" varchar(32)`, `"lease_until" timestamptz`, `"next_attempt_at" timestamptz NOT NULL`} {
+		if !strings.Contains(published, column) {
+			t.Fatalf("missing %q in %s", column, published)
+		}
+	}
 
 	received := receivedCreateSQL(`"gap"."received"`, `"gap"."status_enum"`)
 	if !strings.Contains(received, `"group" varchar(128) NOT NULL`) {
@@ -52,12 +57,41 @@ func TestClaimIndexSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `CREATE INDEX IF NOT EXISTS "idx_published_claim" ON "gap"."published" ("version", "status", "retries", "created_at")`
+	want := `CREATE INDEX IF NOT EXISTS "idx_published_claim" ON "gap"."published" ("version", "status", "next_attempt_at", "lease_until", "retries")`
 	if sql != want {
 		t.Fatal(sql)
 	}
 	if _, err := claimIndexSQL(`"gap"."published"`, `idx"; drop`); err == nil {
 		t.Fatal("accepted injected index")
+	}
+}
+
+func TestFailExhaustedSQL(t *testing.T) {
+	sql := failExhaustedSQL(`"gap"."published"`, `"gap"."status_enum"`)
+	for _, condition := range []string{
+		`UPDATE "gap"."published"`,
+		`"status" = $1::"gap"."status_enum"`,
+		`"lease_token" = NULL`,
+		`"lease_until" = NULL`,
+		`"version" = $2`,
+		`"status" = $3::"gap"."status_enum"`,
+		`"next_attempt_at" <= $4`,
+		`"retries" >= $5`,
+		`"lease_until" IS NULL OR "lease_until" <= $6`,
+	} {
+		if !strings.Contains(sql, condition) {
+			t.Fatalf("fail exhausted SQL %q does not contain %q", sql, condition)
+		}
+	}
+}
+
+func TestUpdateStatusSQLWritesStatusDirectly(t *testing.T) {
+	sql := updateStatusSQL(`"gap"."received"`, `"gap"."status_enum"`)
+	if strings.Contains(sql, "CASE") || strings.Contains(sql, "next_attempt_at") || strings.Contains(sql, "retries") {
+		t.Fatalf("update status still contains retry semantics: %s", sql)
+	}
+	if !strings.Contains(sql, `SET "status" = $1::"gap"."status_enum"`) {
+		t.Fatalf("update status does not write the supplied status directly: %s", sql)
 	}
 }
 
@@ -67,6 +101,9 @@ func TestStatusTypeSQL(t *testing.T) {
 		t.Fatal(sql)
 	}
 	if !strings.Contains(sql, `CREATE TYPE "gap"."status_enum"`) {
+		t.Fatal(sql)
+	}
+	if !strings.Contains(sql, `AS ENUM ('Pending', 'Succeeded', 'Failed')`) {
 		t.Fatal(sql)
 	}
 }
@@ -198,11 +235,14 @@ func TestToEntityInvalidHeaders(t *testing.T) {
 }
 
 func TestFromEntityPayloadAndHeaders(t *testing.T) {
+	now := time.Now()
 	en := &entity.Envelope{
-		ID:      4,
-		Topic:   "t",
-		Message: map[string]string{"a": "b"},
-		Headers: map[string]string{"h": "v"},
+		ID:            4,
+		Topic:         "t",
+		Message:       map[string]string{"a": "b"},
+		Headers:       map[string]string{"h": "v"},
+		LeaseUntil:    now.Add(time.Minute),
+		NextAttemptAt: now,
 	}
 	p := new(Published).FromEntity(en)
 	if p.err != nil {
@@ -216,5 +256,11 @@ func TestFromEntityPayloadAndHeaders(t *testing.T) {
 	}
 	if p.Status != enum.StatusPending {
 		t.Fatalf("status = %s", p.Status)
+	}
+	if !p.LeaseUntil.Valid || !p.LeaseUntil.V.Equal(en.LeaseUntil) {
+		t.Fatalf("lease until = %v, want %v", p.LeaseUntil, en.LeaseUntil)
+	}
+	if !p.NextAttemptAt.Equal(en.NextAttemptAt) {
+		t.Fatalf("next attempt at = %v, want %v", p.NextAttemptAt, en.NextAttemptAt)
 	}
 }

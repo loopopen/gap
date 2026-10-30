@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-const mysqlStatusType = "ENUM('Pending','Processing','Succeeded','Failed')"
+const mysqlStatusType = "ENUM('Pending','Succeeded','Failed')"
 
 func (s Status) String() string {
 	return enum.Status(s).String()

@@ -17,8 +17,8 @@ import (
 //go:generate go tool shoot new -opt -short -type=Options,BrokerOptions
 
 type Options struct {
-	runtimeID uint64
-	runtime   *runtimeLifecycle
+	runtimeID uint64            `new:"-"`
+	runtime   *runtimeLifecycle `new:"-"`
 
 	//@def=context.Background()
 	Context context.Context
@@ -41,7 +41,10 @@ type Options struct {
 	MaxRetries int
 
 	//@def=180
-	LookbackSeconds int
+	LeaseTTLSeconds int
+
+	//@def=10
+	RetryIntervalSeconds int
 
 	//@def=1
 	PumpIntervalSeconds int
@@ -271,8 +274,12 @@ type GroupOptions struct {
 	IngestConcurrency int
 }
 
-func (o *Options) Lookback() time.Duration {
-	return time.Second * (time.Duration(o.LookbackSeconds))
+func (o *Options) LeaseTTL() time.Duration {
+	return time.Second * time.Duration(o.LeaseTTLSeconds)
+}
+
+func (o *Options) RetryInterval() time.Duration {
+	return time.Second * time.Duration(o.RetryIntervalSeconds)
 }
 
 func (o *Options) PumpInterval() time.Duration {

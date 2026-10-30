@@ -8,11 +8,27 @@ import (
 	"time"
 
 	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/enum"
 	ingap "github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/storage"
 )
 
 type senderStub struct {
 	ids []uint
+}
+
+type statusStorageStub struct {
+	storage.Storage
+	receivedID         uint
+	receivedLeaseToken string
+	receivedStatus     enum.Status
+}
+
+func (s *statusStorageStub) UpdateStatusReceived(_ context.Context, id uint, leaseToken string, status enum.Status) error {
+	s.receivedID = id
+	s.receivedLeaseToken = leaseToken
+	s.receivedStatus = status
+	return nil
 }
 
 func (s *senderStub) SendAndUpdate(_ context.Context, envelope *entity.Envelope) error {
@@ -66,6 +82,36 @@ func TestPumpRejectsUnknownBrokerIdentity(t *testing.T) {
 	}}
 	if err := p.send(context.Background(), message); err == nil {
 		t.Fatal("expected unknown broker identity error")
+	}
+}
+
+func TestPumpMarksReceivedFailedWhenHandlerRouteIsMissing(t *testing.T) {
+	stor := new(statusStorageStub)
+	p := &Pump{
+		storage:  stor,
+		handlers: new(sync.Map),
+	}
+	envelope := &entity.Envelope{
+		ID:         42,
+		Group:      "billing",
+		LeaseToken: "lease-token",
+		Headers: map[string]string{
+			entity.BrokerNameHeader: "events",
+			entity.BrokerTypeHeader: "RabbitMQ",
+		},
+	}
+
+	if err := p.handle(context.Background(), envelope); err == nil {
+		t.Fatal("expected missing handler error")
+	}
+	if stor.receivedID != envelope.ID {
+		t.Fatalf("updated id = %d, want %d", stor.receivedID, envelope.ID)
+	}
+	if stor.receivedLeaseToken != envelope.LeaseToken {
+		t.Fatalf("updated lease token = %q, want %q", stor.receivedLeaseToken, envelope.LeaseToken)
+	}
+	if stor.receivedStatus != enum.StatusFailed {
+		t.Fatalf("updated status = %v, want %v", stor.receivedStatus, enum.StatusFailed)
 	}
 }
 

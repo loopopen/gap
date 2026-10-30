@@ -40,5 +40,5 @@ type Options = ingap.Options
 type BrokerOptions = ingap.BrokerOptions
 
 func init() {
-	dashboard.AddMeta(enum.PluginKindSelf, 0, version)
+	dashboard.AddMeta(enum.PluginKindGap, 0, version)
 }

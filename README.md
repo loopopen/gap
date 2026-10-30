@@ -170,6 +170,12 @@ The library supports graceful shutdown through context cancellation and a runtim
 
 - `g.Shutdown(ctx context.Context) error` stops intake, drains accepted work, and closes runtime-owned resources
 
+## Delivery Semantics
+
+GAP uses **at-least-once** message processing and does not guarantee exactly-once execution. The same logical message may reach a handler more than once, for example after broker redelivery, lease expiration, or a process failure after a business side effect succeeds but before the message status is persisted.
+
+Handlers must therefore be idempotent. Use a stable business key such as an order ID or event ID, and enforce idempotency in the same transaction as the handler's business changes—for example with a unique constraint or a processed-message record. Do not rely on message payload equality for deduplication, because publishing the same payload again may be intentional.
+
 ## Usage Examples
 
 For a complete working example, see [`./examples/rabbitmq-gorm-mysql-example`](./examples/rabbitmq-gorm-mysql-example).

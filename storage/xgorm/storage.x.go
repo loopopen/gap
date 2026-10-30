@@ -31,7 +31,6 @@ func messageStats(db *gorm.DB) (entity.MessageStats, error) {
 	type statsRow struct {
 		Total         int64
 		Pending       int64
-		Processing    int64
 		Succeeded     int64
 		Failed        int64
 		Retries       int64
@@ -42,12 +41,11 @@ func messageStats(db *gorm.DB) (entity.MessageStats, error) {
 	err := db.Select(`
 		COUNT(*) AS total,
 		COALESCE(SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END), 0) AS pending,
-		COALESCE(SUM(CASE WHEN status = 'Processing' THEN 1 ELSE 0 END), 0) AS processing,
 		COALESCE(SUM(CASE WHEN status = 'Succeeded' THEN 1 ELSE 0 END), 0) AS succeeded,
 		COALESCE(SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END), 0) AS failed,
 		COALESCE(SUM(retries), 0) AS retries,
 		MAX(created_at) AS last_activity,
-		MIN(CASE WHEN status IN ('Pending', 'Processing') THEN created_at END) AS oldest_backlog`,
+		MIN(CASE WHEN status = 'Pending' THEN created_at END) AS oldest_backlog`,
 	).Scan(&row).Error
 	if err != nil {
 		return entity.MessageStats{}, err
@@ -55,7 +53,6 @@ func messageStats(db *gorm.DB) (entity.MessageStats, error) {
 	return entity.MessageStats{
 		Total:         row.Total,
 		Pending:       row.Pending,
-		Processing:    row.Processing,
 		Succeeded:     row.Succeeded,
 		Failed:        row.Failed,
 		Retries:       row.Retries,

@@ -5,7 +5,6 @@ import "time"
 type MessageStats struct {
 	Total         int64      `json:"total"`
 	Pending       int64      `json:"pending"`
-	Processing    int64      `json:"processing"`
 	Succeeded     int64      `json:"succeeded"`
 	Failed        int64      `json:"failed"`
 	Retries       int64      `json:"retries"`

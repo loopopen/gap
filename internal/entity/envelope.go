@@ -11,6 +11,7 @@ import (
 	"github.com/bwmarrin/snowflake"
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/errx"
+	"github.com/loopopen/gap/internal/utility"
 )
 
 const (
@@ -33,18 +34,21 @@ func MustInitSnowflake(node int64) {
 }
 
 type Envelope struct {
-	ID        uint
-	CreatedAt time.Time
-	Headers   map[string]string
-	Version   string
-	Topic     string
-	Group     string
-	Status    enum.Status
-	Message   any
-	Payload   []byte
-	Retries   int
-	Tag       any
-	Logger    *slog.Logger
+	ID            uint              // Unique envelope ID.
+	CreatedAt     time.Time         // Creation time.
+	Headers       map[string]string // Message metadata.
+	Version       string            // Message version.
+	Topic         string            // Routing topic.
+	Group         string            // Consumer group.
+	Status        enum.Status       // Message status.
+	Message       any               // In-memory message.
+	Payload       []byte            // Serialized payload.
+	Retries       int               // Retry count.
+	LeaseToken    string            // Current lease token.
+	LeaseUntil    time.Time         // Lease expiry time.
+	NextAttemptAt time.Time         // Next eligible attempt time.
+	Tag           any               // Broker delivery metadata.
+	Logger        *slog.Logger      // Envelope-scoped logger.
 }
 
 func NewEnvelope(version string, topic string, msg any) *Envelope {
@@ -56,6 +60,16 @@ func NewEnvelope(version string, topic string, msg any) *Envelope {
 		Message: msg,
 		Logger:  slog.With("id", id),
 	}
+}
+
+// WithLease initializes a new lease for the envelope.
+func (e *Envelope) WithLease(ttl time.Duration) *Envelope {
+	now := time.Now()
+	e.LeaseToken = utility.GenFastToken(16)
+	e.Status = enum.StatusPending
+	e.LeaseUntil = now.Add(ttl)
+	e.NextAttemptAt = now
+	return e
 }
 
 func (e *Envelope) WithGroup(group string) *Envelope {

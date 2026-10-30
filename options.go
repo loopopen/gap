@@ -13,7 +13,8 @@ var (
 	WorkerID              = ingap.WorkerID
 	ClaimBatchSize        = ingap.ClaimBatchSize
 	MaxRetries            = ingap.MaxRetries
-	LookbackSeconds       = ingap.LookbackSeconds
+	LeaseTTLSeconds       = ingap.LeaseTTLSeconds
+	RetryIntervalSeconds  = ingap.RetryIntervalSeconds
 	PumpIntervalSeconds   = ingap.PumpIntervalSeconds
 	MaxPublishConcurrency = ingap.MaxPublishConcurrency
 	PublishBufferSize     = ingap.PublishBufferSize

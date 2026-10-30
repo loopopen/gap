@@ -161,13 +161,13 @@ func (p *Pub[T]) SendAndUpdate(ctx context.Context, envelope *entity.Envelope) e
 	if err != nil {
 		envelope.Log().Debug("failed to send message", slog.Any("err", err))
 
-		if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, 0, enum.StatusFailed); err != nil {
+		if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, envelope.LeaseToken, enum.StatusFailed); err != nil {
 			envelope.Log().Error("failed to set published status to Failed", slog.Any("err", err))
 			return err
 		}
 		return err
 	}
-	if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, 0, enum.StatusSucceeded); err != nil {
+	if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, envelope.LeaseToken, enum.StatusSucceeded); err != nil {
 		envelope.Log().Debug("failed to set published status to Succeeded", slog.Any("err", err))
 		return err
 	}

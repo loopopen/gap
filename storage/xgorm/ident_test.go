@@ -65,7 +65,7 @@ func TestPostgresClaimIndexSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sql != `CREATE INDEX IF NOT EXISTS "idx_published_claim" ON "gap"."published" ("version", "status", "retries", "created_at")` {
+	if sql != `CREATE INDEX IF NOT EXISTS "idx_published_claim" ON "gap"."published" ("version", "status", "next_attempt_at", "lease_until", "retries")` {
 		t.Fatal(sql)
 	}
 	if _, err := postgresClaimIndexSQL(`gap.published"; drop`, "idx_published_claim"); err == nil {

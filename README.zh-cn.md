@@ -170,6 +170,12 @@ go generate ./...
 
 - `g.Shutdown(ctx context.Context) error` 停止接收新任务、排空已接收任务，并关闭 Runtime 持有的资源
 
+## 投递语义
+
+GAP 采用 **at-least-once（至少一次）** 的消息处理语义，不保证 Handler 只执行一次。同一条逻辑消息可能多次到达 Handler，例如 Broker 重新投递、租约过期，或者业务操作已经成功但消息状态尚未持久化时进程退出。
+
+因此，Handler 必须保证幂等。建议使用订单 ID、事件 ID 等稳定的业务键，并在 Handler 的业务事务中同时完成幂等校验，例如使用唯一约束或记录已处理的消息。不要根据消息内容是否相同来去重，因为业务可能有意再次发布相同内容。
+
 ## 使用示例
 
 完整可运行示例请参见 [`./examples/rabbitmq-gorm-mysql-example`](./examples/rabbitmq-gorm-mysql-example)。

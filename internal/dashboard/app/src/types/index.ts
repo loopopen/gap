@@ -12,7 +12,6 @@ export interface PagedResult<T extends object> {
 
 export const MsgStatus = {
   Succeeded: 'Succeeded',
-  Processing: 'Processing',
   Pending: 'Pending',
   Failed: 'Failed',
 } as const;
@@ -21,7 +20,6 @@ export type MsgStatus = typeof MsgStatus[keyof typeof MsgStatus];
 
 export const MsgStatusColors: Record<MsgStatus, string> = {
   [MsgStatus.Succeeded]: 'green',
-  [MsgStatus.Processing]: 'blue',
   [MsgStatus.Pending]: 'orange',
   [MsgStatus.Failed]: 'red',
 };
@@ -36,7 +34,6 @@ export interface Meta {
 export interface MessageStats {
   total: number;
   pending: number;
-  processing: number;
   succeeded: number;
   failed: number;
   retries: number;

@@ -42,14 +42,13 @@ import { usePubMsgs, useRecMsgs, type MsgQueryParams } from '../hooks/useMsgs'
 import PageTitle from '../layout/PageTitle'
 import { MsgStatus, type MsgStatus as MsgStatusValue } from '../types'
 
-const statusVariant: Record<MsgStatusValue, 'green' | 'blue' | 'orange' | 'red'> = {
+const statusVariant: Record<MsgStatusValue, 'green' | 'orange' | 'red'> = {
   [MsgStatus.Succeeded]: 'green',
-  [MsgStatus.Processing]: 'blue',
   [MsgStatus.Pending]: 'orange',
   [MsgStatus.Failed]: 'red',
 }
 
-const statuses = [MsgStatus.Succeeded, MsgStatus.Processing, MsgStatus.Pending, MsgStatus.Failed]
+const statuses = [MsgStatus.Succeeded, MsgStatus.Pending, MsgStatus.Failed]
 const pageSizes = [10, 20, 50, 100] as const
 
 type MessageType = 'pub' | 'rec'
@@ -639,7 +638,10 @@ const Message = () => {
                 size="small"
                 value={filters.created_from}
                 onChange={(event) => setFilters((current) => ({ ...current, created_from: event.target.value }))}
-                css={{ minWidth: 0 }}
+                css={{
+                  minWidth: 0,
+                  '& input': { color: filters.created_from ? '$inputText' : '$inputPlaceholder' },
+                }}
               />
               <Text size="1" css={{ color: '$textSubtle', flexShrink: 0 }}>
                 to
@@ -650,7 +652,10 @@ const Message = () => {
                 size="small"
                 value={filters.created_to}
                 onChange={(event) => setFilters((current) => ({ ...current, created_to: event.target.value }))}
-                css={{ minWidth: 0 }}
+                css={{
+                  minWidth: 0,
+                  '& input': { color: filters.created_to ? '$inputText' : '$inputPlaceholder' },
+                }}
               />
             </Flex>
           </Flex>

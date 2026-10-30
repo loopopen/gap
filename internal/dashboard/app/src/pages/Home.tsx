@@ -141,12 +141,11 @@ const StreamCard = ({ title, stats, received }: { title: string; stats: MessageS
             display: 'grid',
             gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
             gap: '$4',
-            '@bp2': { gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' },
+            '@bp2': { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
           }}
         >
           <StatusCell label="Succeeded" value={stats.succeeded} color="$green9" />
           <StatusCell label="Pending" value={stats.pending} color="$orange9" />
-          <StatusCell label="Processing" value={stats.processing} color="$blue9" />
           <StatusCell label="Failed" value={stats.failed} color="$red9" />
         </Box>
         <Box css={{ height: 1, backgroundColor: '$tableRowBorder' }} />
@@ -171,7 +170,7 @@ const Home = () => {
   const published = stats?.published
   const received = stats?.received
   const failed = (published?.failed || 0) + (received?.failed || 0)
-  const backlog = (published?.pending || 0) + (published?.processing || 0) + (received?.pending || 0) + (received?.processing || 0)
+  const backlog = (published?.pending || 0) + (received?.pending || 0)
   const retries = (published?.retries || 0) + (received?.retries || 0)
   const healthy = !error && failed === 0
 
@@ -220,7 +219,7 @@ const Home = () => {
             <Flex direction="column" gap={1}>
               <Text css={{ fontWeight: 700 }}>{healthy ? 'Message delivery is healthy' : `${formatNumber(failed)} failed messages require attention`}</Text>
               <Text size="1" css={{ color: '$textSubtle' }}>
-                {backlog ? `${formatNumber(backlog)} messages are currently pending or processing.` : 'There is no active message backlog.'}
+                {backlog ? `${formatNumber(backlog)} messages are currently pending.` : 'There is no active message backlog.'}
               </Text>
             </Flex>
           </Flex>
@@ -240,7 +239,7 @@ const Home = () => {
       >
         <MetricCard label="Published" value={published?.total || 0} hint="Messages created by this node" tone="blue" icon={<FiSend size={20} />} />
         <MetricCard label="Received" value={received?.total || 0} hint="Messages consumed by this node" tone="green" icon={<FiDownload size={20} />} />
-        <MetricCard label="In flight" value={backlog} hint="Pending and processing" tone="orange" icon={<FiClock size={20} />} />
+        <MetricCard label="Pending" value={backlog} hint="Awaiting completion" tone="orange" icon={<FiClock size={20} />} />
         <MetricCard label="Failed" value={failed} hint="Across both message flows" tone="red" icon={<FiAlertTriangle size={20} />} />
       </Box>
 

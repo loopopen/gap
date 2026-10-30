@@ -3,6 +3,7 @@ package xgorm
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
@@ -62,11 +63,14 @@ func TestFromEntityRejectsUnmarshalablePayload(t *testing.T) {
 }
 
 func TestFromEntityPayloadAndHeaders(t *testing.T) {
+	now := time.Now()
 	en := &entity.Envelope{
-		ID:      4,
-		Topic:   "t",
-		Message: map[string]string{"a": "b"},
-		Headers: map[string]string{"h": "v"},
+		ID:            4,
+		Topic:         "t",
+		Message:       map[string]string{"a": "b"},
+		Headers:       map[string]string{"h": "v"},
+		LeaseUntil:    now.Add(time.Minute),
+		NextAttemptAt: now,
 	}
 	p := new(Published).FromEntity(en)
 	if p.err != nil {
@@ -81,9 +85,18 @@ func TestFromEntityPayloadAndHeaders(t *testing.T) {
 	if p.Status != Status(enum.StatusPending) {
 		t.Fatalf("status = %s", p.Status)
 	}
+	if !p.LeaseUntil.Valid || !p.LeaseUntil.V.Equal(en.LeaseUntil) {
+		t.Fatalf("lease until = %v, want %v", p.LeaseUntil, en.LeaseUntil)
+	}
+	if !p.NextAttemptAt.Equal(en.NextAttemptAt) {
+		t.Fatalf("next attempt at = %v, want %v", p.NextAttemptAt, en.NextAttemptAt)
+	}
 }
 
 func TestStatusGormDBDataType(t *testing.T) {
+	if mysqlStatusType != "ENUM('Pending','Succeeded','Failed')" {
+		t.Fatalf("mysql status type = %q", mysqlStatusType)
+	}
 	db, _ := openStorage(t)
 	if got := (Status(0)).GormDBDataType(db, nil); got != mysqlStatusType {
 		t.Fatalf("mysql status type = %q, want %q", got, mysqlStatusType)

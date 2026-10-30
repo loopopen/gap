@@ -13,6 +13,7 @@ import (
 	"github.com/loopopen/gap/internal/errx"
 	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/internal/txer"
+	"github.com/loopopen/gap/internal/utility"
 	"github.com/loopopen/gap/storage"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -40,6 +41,7 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 		return errx.ErrParamIsNil("envelope")
 	}
 
+	envelope.WithLease(s.gapOpts.LeaseTTL())
 	pub := new(Published).FromEntity(envelope)
 	if pub.err != nil {
 		return pub.err
@@ -58,6 +60,7 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 		return errx.ErrParamIsNil("envelope")
 	}
 
+	envelope.WithLease(s.gapOpts.LeaseTTL())
 	rec := new(Received).FromEntity(envelope)
 	if rec.err != nil {
 		return rec.err
@@ -121,6 +124,9 @@ func (s *Storage) init() error {
 		if err := s.db.Exec(createType).Error; err != nil {
 			return err
 		}
+		if err := s.migratePostgresStatusType(&Published{}, &Received{}); err != nil {
+			return err
+		}
 	}
 
 	return s.autoMigrate(&Published{}, &Received{})
@@ -129,15 +135,20 @@ func (s *Storage) init() error {
 func (s *Storage) autoMigrate(models ...any) error {
 	dname := s.db.Dialector.Name()
 	for _, model := range models {
-		if err := s.db.AutoMigrate(model); err != nil {
-			return err
-		}
-
 		stmt := &gorm.Statement{DB: s.db}
 		if err := stmt.Parse(model); err != nil {
 			return err
 		}
 		tableName := stmt.Schema.Table
+
+		if dname == "mysql" && s.db.Migrator().HasTable(model) {
+			if err := s.ensureMySQLStatusColumn(tableName); err != nil {
+				return err
+			}
+		}
+		if err := s.db.AutoMigrate(model); err != nil {
+			return err
+		}
 
 		if dname == "postgres" {
 			migrator := s.db.Table(tableName).Migrator()
@@ -174,6 +185,98 @@ func (s *Storage) autoMigrate(models ...any) error {
 	return nil
 }
 
+func (s *Storage) migratePostgresStatusType(models ...any) error {
+	quotedSchema, err := quoteIdent(s.opts.Schema)
+	if err != nil {
+		return err
+	}
+	statusType := quotedSchema + `."status_enum"`
+	tables := make([]string, 0, len(models))
+	for _, model := range models {
+		if !s.db.Migrator().HasTable(model) {
+			continue
+		}
+		stmt := &gorm.Statement{DB: s.db}
+		if err := stmt.Parse(model); err != nil {
+			return err
+		}
+		table, err := quoteQualified(stmt.Schema.Table)
+		if err != nil {
+			return err
+		}
+		tables = append(tables, table)
+	}
+
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, s.opts.Schema+".status_enum").Error; err != nil {
+			return err
+		}
+		var unexpected int
+		if err := tx.Raw(`
+SELECT COUNT(*)
+FROM pg_enum e
+JOIN pg_type t ON t.oid = e.enumtypid
+JOIN pg_namespace n ON n.oid = t.typnamespace
+WHERE n.nspname = ?
+  AND t.typname = 'status_enum'
+  AND e.enumlabel NOT IN ('Pending', 'Succeeded', 'Failed')`, s.opts.Schema).Scan(&unexpected).Error; err != nil {
+			return err
+		}
+		if unexpected == 0 {
+			return nil
+		}
+		for _, table := range tables {
+			if err := tx.Exec(
+				"UPDATE "+table+` SET "status" = ?::`+statusType+` WHERE "status"::text NOT IN (?, ?, ?)`,
+				enum.StatusPending, enum.StatusPending, enum.StatusSucceeded, enum.StatusFailed,
+			).Error; err != nil {
+				return err
+			}
+			if err := tx.Exec("ALTER TABLE " + table + ` ALTER COLUMN "status" TYPE text USING "status"::text`).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Exec("DROP TYPE " + statusType).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("CREATE TYPE " + statusType + " AS ENUM ('Pending', 'Succeeded', 'Failed')").Error; err != nil {
+			return err
+		}
+		for _, table := range tables {
+			if err := tx.Exec(
+				"ALTER TABLE " + table + ` ALTER COLUMN "status" TYPE ` + statusType + ` USING "status"::` + statusType,
+			).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *Storage) ensureMySQLStatusColumn(tableName string) error {
+	var columnType string
+	if err := s.db.Raw(
+		`SELECT COLUMN_TYPE FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = 'status'`,
+		tableName,
+	).Scan(&columnType).Error; err != nil {
+		return err
+	}
+	if strings.EqualFold(columnType, mysqlStatusType) {
+		return nil
+	}
+	quotedTable, err := quoteIdent(tableName)
+	if err != nil {
+		return err
+	}
+	if err := s.db.Exec(
+		"UPDATE "+quotedTable+" SET `status` = ? WHERE `status` NOT IN (?, ?, ?)",
+		enum.StatusPending, enum.StatusPending, enum.StatusSucceeded, enum.StatusFailed,
+	).Error; err != nil {
+		return err
+	}
+	return s.db.Exec("ALTER TABLE " + quotedTable + " MODIFY COLUMN `status` " + mysqlStatusType + " NOT NULL").Error
+}
+
 func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
 	db, ok := txer.Tx().(*gorm.DB)
 	if !ok {
@@ -195,19 +298,8 @@ func (s *Storage) InTx() bool {
 	return ok
 }
 
-func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, src enum.Status, status enum.Status) error {
-	db := s.db.WithContext(ctx).Model(&Published{})
-	if id != 0 {
-		db.Where(&Model{ID: id})
-	} else {
-		db.Where(&Model{
-			Version: s.gapOpts.Version,
-			Status:  Status(src),
-		})
-	}
-
-	err := db.Updates(&Model{Status: Status(status)}).Error
-	if err != nil {
+func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+	if err := s.updateStatus(ctx, &Published{}, id, leaseToken, status); err != nil {
 		return err
 	}
 
@@ -219,25 +311,21 @@ func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, src enum.S
 
 func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*entity.Envelope, error) {
 	o := s.gapOpts
-	minutsAge := time.Now().Add(-o.Lookback())
+	now := time.Now()
 
 	var pubs []*Published
 	var es []*entity.Envelope
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if result := s.failExhausted(tx, &Published{}, now); result.Error != nil {
+			return result.Error
+		}
 		err := tx.
 			Model(&Published{}).
 			Where(&Model{Version: o.Version}).
-			Where(clause.IN{
-				Column: "status",
-				Values: []any{enum.StatusPending, enum.StatusFailed},
-			}).
+			Where("status = ? AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until <= ?)", enum.StatusPending, now, now).
 			Where(clause.Lt{
 				Column: "retries",
 				Value:  o.MaxRetries,
-			}).
-			Where(clause.Lt{
-				Column: "created_at",
-				Value:  minutsAge,
 			}).
 			Limit(batchSize).
 			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
@@ -248,10 +336,13 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 		if len(pubs) == 0 {
 			return nil
 		}
+		leaseToken := utility.GenFastToken(16)
+		leaseUntil := now.Add(o.LeaseTTL())
 		var ids []any
 		for _, p := range pubs {
 			ids = append(ids, p.ID)
 			p.Retries++
+			p.LeaseToken = leaseToken
 		}
 		if err := tx.
 			Model(&Published{}).
@@ -260,8 +351,9 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 				Values: ids,
 			}).
 			Updates(map[string]any{
-				"status":  enum.StatusProcessing,
-				"retries": gorm.Expr("retries + 1"),
+				"retries":     gorm.Expr("retries + 1"),
+				"lease_token": leaseToken,
+				"lease_until": leaseUntil,
 			}).Error; err != nil {
 			return err
 		}
@@ -277,25 +369,21 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 
 func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*entity.Envelope, error) {
 	o := s.gapOpts
-	minutsAge := time.Now().Add(-o.Lookback())
+	now := time.Now()
 
 	var recs []*Received
 	var es []*entity.Envelope
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if result := s.failExhausted(tx, &Received{}, now); result.Error != nil {
+			return result.Error
+		}
 		err := tx.
 			Model(&Received{}).
 			Where(&Model{Version: o.Version}).
-			Where(clause.IN{
-				Column: "status",
-				Values: []any{enum.StatusPending, enum.StatusFailed},
-			}).
+			Where("status = ? AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until <= ?)", enum.StatusPending, now, now).
 			Where(clause.Lt{
 				Column: "retries",
 				Value:  o.MaxRetries,
-			}).
-			Where(clause.Lt{
-				Column: "created_at",
-				Value:  minutsAge,
 			}).
 			Limit(batchSize).
 			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
@@ -306,10 +394,13 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 		if len(recs) == 0 {
 			return nil
 		}
+		leaseToken := utility.GenFastToken(16)
+		leaseUntil := now.Add(o.LeaseTTL())
 		var ids []any
 		for _, p := range recs {
 			ids = append(ids, p.ID)
 			p.Retries++
+			p.LeaseToken = leaseToken
 		}
 		if err := tx.
 			Model(&Received{}).
@@ -318,8 +409,9 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 				Values: ids,
 			}).
 			Updates(map[string]any{
-				"status":  enum.StatusProcessing,
-				"retries": gorm.Expr("retries + 1"),
+				"retries":     gorm.Expr("retries + 1"),
+				"lease_token": leaseToken,
+				"lease_until": leaseUntil,
 			}).Error; err != nil {
 			return err
 		}
@@ -333,16 +425,24 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 	return es, nil
 }
 
-func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.Status, status enum.Status) error {
-	db := s.db.WithContext(ctx).Model(&Received{})
-	if id != 0 {
-		db.Where(&Model{ID: id})
-	} else {
-		db.Where(&Model{Version: s.gapOpts.Version, Status: Status(src)})
-	}
+func (s *Storage) failExhausted(tx *gorm.DB, model any, now time.Time) *gorm.DB {
+	return s.exhaustedQuery(tx, model, now).
+		Updates(map[string]any{
+			"status":      enum.StatusFailed,
+			"lease_token": nil,
+			"lease_until": nil,
+		})
+}
 
-	err := db.Updates(&Model{Status: Status(status)}).Error
-	if err != nil {
+func (s *Storage) exhaustedQuery(tx *gorm.DB, model any, now time.Time) *gorm.DB {
+	return tx.
+		Model(model).
+		Where(&Model{Version: s.gapOpts.Version}).
+		Where("status = ? AND next_attempt_at <= ? AND retries >= ? AND (lease_until IS NULL OR lease_until <= ?)", enum.StatusPending, now, s.gapOpts.MaxRetries, now)
+}
+
+func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+	if err := s.updateStatus(ctx, &Received{}, id, leaseToken, status); err != nil {
 		return err
 	}
 
@@ -350,6 +450,28 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, src enum.St
 		slog.Debug("updated status of received", slog.Any("id", id), slog.String("status", status.String()))
 	}
 	return nil
+}
+
+func (s *Storage) updateStatus(ctx context.Context, model any, id uint, leaseToken string, status enum.Status) error {
+	result := s.db.WithContext(ctx).
+		Model(model).
+		Where("id = ? AND status = ? AND lease_token = ?", id, enum.StatusPending, leaseToken).
+		Updates(statusUpdates(status))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return storage.ErrLeaseLost
+	}
+	return nil
+}
+
+func statusUpdates(status enum.Status) map[string]any {
+	return map[string]any{
+		"status":      status,
+		"lease_token": nil,
+		"lease_until": nil,
+	}
 }
 
 func claimIndexName(model any) string {
@@ -418,7 +540,7 @@ func mysqlClaimIndexSQL(table, index string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf(
-		"CREATE INDEX %s ON %s (`version`, `status`, `retries`, `created_at`)",
+		"CREATE INDEX %s ON %s (`version`, `status`, `next_attempt_at`, `lease_until`, `retries`)",
 		quotedIndex, quotedTable,
 	), nil
 }
@@ -433,7 +555,7 @@ func postgresClaimIndexSQL(table, index string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf(
-		`CREATE INDEX IF NOT EXISTS %s ON %s ("version", "status", "retries", "created_at")`,
+		`CREATE INDEX IF NOT EXISTS %s ON %s ("version", "status", "next_attempt_at", "lease_until", "retries")`,
 		quotedIndex, quotedTable,
 	), nil
 }
@@ -481,7 +603,7 @@ BEGIN
         WHERE t.typname = 'status_enum' 
         AND n.nspname = '%s'
     ) THEN
-        CREATE TYPE %s."status_enum" AS ENUM ('Pending', 'Processing', 'Succeeded', 'Failed');
+        CREATE TYPE %s."status_enum" AS ENUM ('Pending', 'Succeeded', 'Failed');
     END IF;
 END
 $$;`, schema, quoted)

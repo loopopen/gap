@@ -37,13 +37,12 @@ func (g *Gap) Subscribe(publisher BrokerOptionsGetter, opts ...shoot.Option[Opti
 		panic(err)
 	}
 
-	err = g.subs.ListeningAll()
-	if err != nil {
-		panic(err)
-	}
-
 	if g.pump != nil {
 		g.pump.StartHandler()
 	}
 
+	err = g.subs.ListeningAll()
+	if err != nil {
+		panic(err)
+	}
 }

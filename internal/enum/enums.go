@@ -9,7 +9,6 @@ const StatusInvalid = -2
 const (
 	StatusFailed  Status = -1
 	StatusPending Status = iota //1; not use 0
-	StatusProcessing
 	StatusSucceeded
 )
 
@@ -18,7 +17,7 @@ const (
 type PluginKind int32
 
 const (
-	PluginKindSelf PluginKind = iota
+	PluginKindGap PluginKind = iota
 	PluginKindStorage
 	PluginKindBroker
 )

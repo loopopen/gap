@@ -63,6 +63,35 @@ func TestMessageOrderByID(t *testing.T) {
 	}
 }
 
+func TestFailExhaustedWhere(t *testing.T) {
+	db, stor := openStorage(t)
+	stor.gapOpts.MaxRetries = 3
+	where := whereText(stor.exhaustedQuery(db, &Published{}, time.Now()))
+	for _, condition := range []string{
+		"`version` = ?",
+		"status = ?",
+		"next_attempt_at <= ?",
+		"retries >= ?",
+		"lease_until IS NULL OR lease_until <= ?",
+	} {
+		if !strings.Contains(where, condition) {
+			t.Fatalf("fail exhausted WHERE %q does not contain %q", where, condition)
+		}
+	}
+}
+
+func TestStatusUpdatesWriteStatusDirectly(t *testing.T) {
+	updates := statusUpdates(enum.StatusFailed)
+	if updates["status"] != enum.StatusFailed {
+		t.Fatalf("status update = %v, want %v", updates["status"], enum.StatusFailed)
+	}
+	for _, field := range []string{"retries", "next_attempt_at"} {
+		if _, ok := updates[field]; ok {
+			t.Fatalf("status update unexpectedly changes %s", field)
+		}
+	}
+}
+
 func TestSetDBSharedStatementLeaksCallerClause(t *testing.T) {
 	db, stor := openStorage(t)
 	if stor.db.Statement != db.Statement {

@@ -20,7 +20,6 @@ type GroupedSubs struct {
 	subs              map[string]*Sub
 	HandlerOtpsLst    []ingap.HandlerOptions
 	DependencyOtpsLst []ingap.DependencyOptions
-	fixOnce           sync.Once
 }
 
 func NewGroupedSubs() *GroupedSubs {
@@ -64,14 +63,6 @@ func (g *GroupedSubs) subscribeOne(gapOpts *ingap.Options, brokerOpts *ingap.Bro
 		consumer := plugin.MustGetConsumer(gapOpts, brokerOpts, group)
 		if consumer == nil {
 			panic("consumer broker must not be nil")
-		}
-		if stor != nil {
-			g.fixOnce.Do(func() {
-				err := stor.UpdateStatusReceived(gapOpts.Context, 0, enum.StatusProcessing, enum.StatusFailed)
-				if err != nil {
-					panic(err)
-				}
-			})
 		}
 
 		sub = NewSub(gapOpts, &opts.GroupOptions, consumer, stor, messagePump, brokerType, brokerName, configIdentity)
@@ -348,14 +339,14 @@ func (s *Sub) HandleAndUpdate(ctx context.Context, envelope *entity.Envelope) er
 	if err != nil {
 		envelope.Log().Error("failed to handle received message", slog.Any("err", err))
 
-		if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, 0, enum.StatusFailed); err != nil {
+		if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, envelope.LeaseToken, enum.StatusFailed); err != nil {
 			envelope.Log().Error("failed to set received status to Failed", slog.Any("err", err))
 			return err
 		}
 		return err
 	}
 
-	if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, 0, enum.StatusSucceeded); err != nil {
+	if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, envelope.LeaseToken, enum.StatusSucceeded); err != nil {
 		envelope.Log().Warn("failed to set received status to Succeeded", slog.Any("err", err))
 		return err
 	}
