@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/jackc/pgx/v5 v5.7.4
-	github.com/loopopen/gap v1.0.0-beta.1
+	github.com/loopopen/gap v1.0.0-beta.2
 	github.com/loopopen/shoot v1.0.0
 )
 
