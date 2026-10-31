@@ -4,12 +4,13 @@ go 1.24.0
 
 require (
 	github.com/loopopen/gap v1.0.0-beta.1
-	github.com/loopopen/shoot v0.9.0
+	github.com/loopopen/shoot v1.0.0
 	gorm.io/gorm v1.31.1
 )
 
 require (
 	github.com/bwmarrin/snowflake v0.3.0 // indirect
+	github.com/docker/go-units v0.5.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	golang.org/x/text v0.20.0 // indirect
