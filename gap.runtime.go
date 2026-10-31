@@ -30,6 +30,9 @@ type Gap struct {
 // New creates an application-scoped Gap instance.
 func New(opts ...shoot.Option[Options, *Options]) *Gap {
 	gapOpts := new(Options).With(opts...)
+	if err := gapOpts.Validate(); err != nil {
+		panic(err)
+	}
 	gapOpts.RuntimeIdentity()
 	gapOpts.InitializeRuntime()
 	stor := plugin.MustGetStorage(gapOpts)

@@ -3,6 +3,7 @@ package gap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -71,6 +72,8 @@ var nextRuntimeID atomic.Uint64
 
 var ErrRuntimeStopping = errors.New("gap: runtime is shutting down")
 
+const maxDurationSeconds int64 = (1<<63 - 1) / int64(time.Second)
+
 type closer interface {
 	Close() error
 }
@@ -89,6 +92,38 @@ type runtimeLifecycle struct {
 
 	closeOnce sync.Once
 	closeErr  error
+}
+
+// Validate checks options that affect the message state machine before the
+// runtime starts any workers or opens storage resources.
+func (o *Options) Validate() error {
+	if o == nil {
+		return errors.New("gap: options must not be nil")
+	}
+
+	var errs []error
+	errs = append(errs, validatePositiveOption("ClaimBatchSize", o.ClaimBatchSize))
+	errs = append(errs, validatePositiveOption("MaxRetries", o.MaxRetries))
+	errs = append(errs, validateDurationSeconds("LeaseTTLSeconds", o.LeaseTTLSeconds))
+	errs = append(errs, validateDurationSeconds("PumpIntervalSeconds", o.PumpIntervalSeconds))
+	return errors.Join(errs...)
+}
+
+func validatePositiveOption(field string, value int) error {
+	if value <= 0 {
+		return fmt.Errorf("gap: invalid %s=%d: must be greater than 0", field, value)
+	}
+	return nil
+}
+
+func validateDurationSeconds(field string, value int) error {
+	if err := validatePositiveOption(field, value); err != nil {
+		return err
+	}
+	if int64(value) > maxDurationSeconds {
+		return fmt.Errorf("gap: invalid %s=%d: must not exceed %d", field, value, maxDurationSeconds)
+	}
+	return nil
 }
 
 // RuntimeIdentity identifies all option snapshots owned by the same Gap.

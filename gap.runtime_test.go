@@ -3,6 +3,8 @@ package gap
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -14,6 +16,34 @@ import (
 	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/shoot"
 )
+
+func TestNewRejectsInvalidStateMachineOptions(t *testing.T) {
+	tests := []struct {
+		name   string
+		field  string
+		option shoot.Option[Options, *Options]
+	}{
+		{name: "claim batch", field: "ClaimBatchSize=0", option: ClaimBatchSize(0)},
+		{name: "max retries", field: "MaxRetries=0", option: MaxRetries(0)},
+		{name: "lease ttl", field: "LeaseTTLSeconds=0", option: LeaseTTLSeconds(0)},
+		{name: "pump interval", field: "PumpIntervalSeconds=0", option: PumpIntervalSeconds(0)},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			defer func() {
+				recovered := recover()
+				if recovered == nil {
+					t.Fatal("New() did not panic")
+				}
+				if got := fmt.Sprint(recovered); !strings.Contains(got, test.field) {
+					t.Fatalf("New() panic = %q, want %q", got, test.field)
+				}
+			}()
+			New(test.option)
+		})
+	}
+}
 
 type runtimeProducerStub struct{}
 
