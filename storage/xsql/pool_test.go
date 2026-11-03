@@ -20,14 +20,8 @@ func TestDataPlaneMaxOpen(t *testing.T) {
 	opts := &ingap.Options{
 		MaxPublishConcurrency: 4,
 		WorkConcurrencyFactor: 2,
-		HandlerOptsLst: []ingap.HandlerOptions{
-			{GroupOptions: ingap.GroupOptions{Group: "a", IngestConcurrency: 3}},
-			{GroupOptions: ingap.GroupOptions{Group: "a", IngestConcurrency: 1}},
-			{GroupOptions: ingap.GroupOptions{Group: "b", IngestConcurrency: 0}},
-		},
 	}
-	// group a contributes 3, group b contributes 1 (serial ingest).
-	want := dataPlaneClaims + 4 + procs*2 + 4 + dataPlaneHeadroom
+	want := dataPlaneClaims + 4 + procs*2 + dataPlaneHeadroom
 	if got := DataPlaneMaxOpen(opts); got != want {
 		t.Fatalf("max open = %d, want %d", got, want)
 	}
@@ -37,7 +31,6 @@ func TestDataPlaneMaxOpen(t *testing.T) {
 
 	opts.MaxPublishConcurrency = 0
 	opts.WorkConcurrencyFactor = 0
-	opts.HandlerOptsLst = nil
 	want = dataPlaneClaims + 1 + 1 + dataPlaneHeadroom
 	if got := DataPlaneMaxOpen(opts); got != want {
 		t.Fatalf("serial max open = %d, want %d", got, want)

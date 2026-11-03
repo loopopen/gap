@@ -18,7 +18,7 @@ func checkType[T any]() {
 	}
 }
 
-func HandleTopicWithinGroup[T any](handler Handler[T], topic string, group string) shoot.Option[Options, *Options] {
+func HandleTopicWithinGroup[T any](handler Handler[T], topic string, group string) shoot.Option[BrokerOptions, *BrokerOptions] {
 	checkType[T]()
 	if handler == nil {
 		panic(errx.ErrParamIsNil("handler"))
@@ -34,11 +34,11 @@ func HandleTopicWithinGroup[T any](handler Handler[T], topic string, group strin
 	return HandleTopicWithinGroupRaw(h, topic, group)
 }
 
-func HandleTopicWithinGroupRaw(handler Handler[[]byte], topic string, group string) shoot.Option[Options, *Options] {
+func HandleTopicWithinGroupRaw(handler Handler[[]byte], topic string, group string) shoot.Option[BrokerOptions, *BrokerOptions] {
 	if handler == nil {
 		panic(errx.ErrParamIsNil("handler"))
 	}
-	return func(o *Options) {
+	return func(o *BrokerOptions) {
 		o.HandlerOptsLst = append(o.HandlerOptsLst, HandlerOptions{
 			GroupOptions: GroupOptions{
 				Group:             group,

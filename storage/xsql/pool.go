@@ -183,8 +183,8 @@ func (p *Pool) EnsureSchema(schema string, init func() error) error {
 }
 
 // DataPlaneMaxOpen sizes the shared pool to the connections the pipeline can
-// hold at once: two claim transactions, publish updates, handler updates,
-// ingest inserts across groups, plus a little headroom.
+// hold at once: two claim transactions, publish updates, handler updates, and
+// a little headroom.
 // A later subscriber raises the limit; it is never lowered.
 func DataPlaneMaxOpen(opts *ingap.Options) int {
 	publish := opts.MaxPublishConcurrency
@@ -195,23 +195,5 @@ func DataPlaneMaxOpen(opts *ingap.Options) int {
 	if handle < 1 {
 		handle = 1
 	}
-	return dataPlaneClaims + publish + handle + ingestSlots(opts) + dataPlaneHeadroom
-}
-
-func ingestSlots(opts *ingap.Options) int {
-	perGroup := make(map[string]int)
-	for _, h := range opts.HandlerOptsLst {
-		n := h.IngestConcurrency
-		if n < 1 {
-			n = 1
-		}
-		if cur, ok := perGroup[h.Group]; !ok || n > cur {
-			perGroup[h.Group] = n
-		}
-	}
-	total := 0
-	for _, n := range perGroup {
-		total += n
-	}
-	return total
+	return dataPlaneClaims + publish + handle + dataPlaneHeadroom
 }

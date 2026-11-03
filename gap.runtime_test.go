@@ -147,13 +147,6 @@ func (b *isolatedRuntimeBroker) OpenConsumer(*ingap.Options, string) (broker.Con
 	return consumer, nil
 }
 
-func runtimeContexts(ctx context.Context) shoot.Option[Options, *Options] {
-	return func(o *Options) {
-		o.Context = ctx
-		o.DrainContext = ctx
-	}
-}
-
 func useIsolatedRuntimeBroker(consumers chan *isolatedRuntimeConsumer) shoot.Option[BrokerOptions, *BrokerOptions] {
 	return func(o *BrokerOptions) {
 		o.Plugin = &isolatedRuntimeBroker{consumers: consumers}
@@ -162,25 +155,21 @@ func useIsolatedRuntimeBroker(consumers chan *isolatedRuntimeConsumer) shoot.Opt
 
 func TestConsumersAreIsolatedByGapRuntime(t *testing.T) {
 	consumers := make(chan *isolatedRuntimeConsumer, 2)
-	firstCtx, cancelFirst := context.WithCancel(context.Background())
-	secondCtx, cancelSecond := context.WithCancel(context.Background())
-	defer cancelSecond()
-
-	first := New(runtimeContexts(firstCtx))
-	firstPublisher := first.NewEventPublisher(useIsolatedRuntimeBroker(consumers))
-	second := New(runtimeContexts(secondCtx))
-	secondPublisher := second.NewEventPublisher(useIsolatedRuntimeBroker(consumers))
+	first := New()
+	second := New()
 	handler := func(context.Context, string, map[string]string) error { return nil }
 
-	first.Subscribe(firstPublisher, HandleTopicWithinGroup("group", "events", handler))
-	second.Subscribe(secondPublisher, HandleTopicWithinGroup("group", "events", handler))
+	first.Subscribe(useIsolatedRuntimeBroker(consumers), HandleTopicWithinGroup("group", "events", handler))
+	second.Subscribe(useIsolatedRuntimeBroker(consumers), HandleTopicWithinGroup("group", "events", handler))
 	firstConsumer := <-consumers
 	secondConsumer := <-consumers
 	if firstConsumer == secondConsumer {
 		t.Fatal("two runtimes shared the same consumer")
 	}
 
-	cancelFirst()
+	if err := first.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case <-firstConsumer.stopped:
 	case <-time.After(time.Second):
@@ -192,11 +181,40 @@ func TestConsumersAreIsolatedByGapRuntime(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	cancelSecond()
+	if err := second.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case <-secondConsumer.stopped:
 	case <-time.After(time.Second):
 		t.Fatal("second runtime consumer did not stop")
+	}
+}
+
+func TestRuntimeContextsAreOwnedByGap(t *testing.T) {
+	g := New()
+	pub := NewPublisher[string](g, useRuntimeBroker("runtime-contexts", new(atomic.Int32)))
+
+	if err := g.opts.IntakeContext().Err(); err != nil {
+		t.Fatalf("intake context before shutdown: %v", err)
+	}
+	if err := g.opts.WorkContext().Err(); err != nil {
+		t.Fatalf("work context before shutdown: %v", err)
+	}
+	if err := pub.Publish(context.Background(), "events", "before-shutdown"); err != nil {
+		t.Fatalf("Publish() error = %v, want admission before shutdown", err)
+	}
+	if err := g.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(g.opts.IntakeContext().Err(), context.Canceled) {
+		t.Fatalf("intake context after shutdown = %v, want canceled", g.opts.IntakeContext().Err())
+	}
+	if !errors.Is(g.opts.WorkContext().Err(), context.Canceled) {
+		t.Fatalf("work context after shutdown = %v, want canceled", g.opts.WorkContext().Err())
+	}
+	if err := pub.Publish(context.Background(), "events", "after-shutdown"); !errors.Is(err, ErrRuntimeStopping) {
+		t.Fatalf("Publish() error = %v, want %v", err, ErrRuntimeStopping)
 	}
 }
 
@@ -232,8 +250,8 @@ func TestGapOwnsSharedOptionsAndSupportsMultiplePublishers(t *testing.T) {
 	}
 
 	handler := func(context.Context, string, map[string]string) error { return nil }
-	g.Subscribe(rabbit, HandleTopic(handler, "events"))
-	g.Subscribe(kafka)
+	g.Subscribe(From(rabbit), HandleTopic(handler, "events"))
+	g.Subscribe(From(kafka))
 
 	if got := len(g.subs.HandlerOtpsLst); got != 1 {
 		t.Fatalf("registered handler count = %d, want 1", got)
@@ -257,7 +275,7 @@ func TestShutdownRejectsNewPublishAndWaitsForAcceptedPublish(t *testing.T) {
 	shutdown := make(chan error, 1)
 	go func() { shutdown <- g.Shutdown(context.Background()) }()
 	select {
-	case <-g.opts.Context.Done():
+	case <-g.opts.IntakeContext().Done():
 	case <-time.After(time.Second):
 		t.Fatal("shutdown did not stop runtime intake")
 	}

@@ -79,6 +79,14 @@ func (c *sharedConn) Channel() (*amqp.Channel, error) {
 }
 
 func (c *sharedConn) Close() error {
+	return c.CloseContext(context.Background())
+}
+
+func (c *sharedConn) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
@@ -92,11 +100,37 @@ func (c *sharedConn) Close() error {
 	if conn == nil || conn.IsClosed() {
 		return nil
 	}
-	if err := conn.Close(); err != nil {
+	err := callWithin(ctx, func() error {
+		// Close waits forever for close-ok. A deadline makes a stalled peer
+		// return, and callWithin covers a reader that never observes it.
+		if deadline, ok := ctx.Deadline(); ok {
+			return conn.CloseDeadline(deadline)
+		}
+		return conn.Close()
+	})
+	if err != nil {
 		return err
 	}
 	slog.Debug("rabbitmq connection closed")
 	return nil
+}
+
+// callWithin runs fn and returns when ctx ends. Channel.Close does not accept
+// a deadline, so a shutdown context is the only bound on that wait.
+func callWithin(ctx context.Context, fn func() error) error {
+	if ctx == nil || ctx.Done() == nil {
+		return fn()
+	}
+	errc := make(chan error, 1)
+	go func() {
+		errc <- fn()
+	}()
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 type publisherChannel struct {
@@ -307,8 +341,15 @@ func newRuntimeResources(opts *Options, publisherConcurrency int) *runtimeResour
 }
 
 func (r *runtimeResources) Close() error {
+	return r.CloseContext(context.Background())
+}
+
+func (r *runtimeResources) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	r.closeOnce.Do(func() {
-		r.closeErr = errors.Join(r.publishers.Close(), r.conn.Close())
+		r.closeErr = errors.Join(callWithin(ctx, r.publishers.Close), r.conn.CloseContext(ctx))
 	})
 	return r.closeErr
 }

@@ -10,7 +10,7 @@ PLUGIN_MODULES := \
 
 EXAMPLE_MODULES := \
 	examples/fiber-rabbitmq-kafka-mysql-example \
-	examples/fiber-rabbitmq-mysql-example \
+	examples/rabbitmq-mysql-example-fiber \
 	examples/gin-kafka-mysql-example \
 	examples/gin-kafka2-postgres-example \
 	examples/kafka-gorm-postgres-example \
@@ -66,7 +66,7 @@ gen-modules:
 	done
 
 build-ui:
-	cd internal/dashboard/app && npm run build
+	cd internal/dashboard/app && npm install && npm run build
 
 versions:
 	@./scripts/release.sh versions $(PLUGIN_MODULES)

@@ -6,12 +6,13 @@ use (
 	./broker/xkafka
 	./broker/xrabbitmq
 	./examples/fiber-rabbitmq-kafka-mysql-example
-	./examples/fiber-rabbitmq-mysql-example
+	./examples/rabbitmq-mysql-example-fiber
+	./examples/rabbitmq-mysql-example-worker
 	./examples/gin-kafka-mysql-example
 	./examples/gin-kafka2-postgres-example
 	./examples/kafka-gorm-postgres-example
 	./examples/rabbitmq-gorm-mysql-example
-	./examples/rabbitmq-mysql-example
+
 	./storage/xgorm
 	./storage/xmysql
 	./storage/xpostgres

@@ -15,6 +15,9 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
+var _ broker.Closer = (*Consumer)(nil)
+var _ broker.Consumer = (*Consumer)(nil)
+
 var (
 	errInvalidDeliveryTag       = errors.New("kafka: invalid delivery tag")
 	errDeliverySettled          = errors.New("kafka: delivery already settled")
@@ -146,13 +149,11 @@ func NewConsumer(gapOpts *ingap.Options, opts *Options, group string) *Consumer 
 	c.newReader = func(topics []string) kafkaReader {
 		return newKafkaReader(opts, dialer, groupID, topics)
 	}
-
-	var _ broker.Consumer = c
 	return c
 }
 
 func (c *Consumer) init() error {
-	return c.ensurer.ensure(c.gapOpts.Context)
+	return c.ensurer.ensure(c.gapOpts.IntakeContext())
 }
 
 // Subscribe implements [broker.Consumer]. Subscriptions are immutable after Consume
@@ -310,8 +311,8 @@ func (c *Consumer) readLoop(ctx context.Context, reader kafkaReader, enCh chan<-
 }
 
 func (c *Consumer) deliveryContext(intakeCtx context.Context) context.Context {
-	if c.gapOpts != nil && c.gapOpts.DrainContext != nil {
-		return c.gapOpts.DrainContext
+	if c.gapOpts != nil {
+		return c.gapOpts.WorkContext()
 	}
 	return intakeCtx
 }
@@ -431,5 +432,3 @@ func (c *Consumer) deliveryTag(tag any) (*deliveryTag, error) {
 	}
 	return delivery, nil
 }
-
-var _ broker.Closer = (*Consumer)(nil)

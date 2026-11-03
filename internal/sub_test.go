@@ -44,7 +44,8 @@ func (*consumerStub) Reject(any) error { return nil }
 
 func TestSubListeningStartsConsumerOnce(t *testing.T) {
 	consumer := new(consumerStub)
-	opts := &ingap.Options{Context: context.Background(), DrainContext: context.Background()}
+	opts := new(ingap.Options).With()
+	opts.InitRuntime()
 	group := &ingap.GroupOptions{Group: "group"}
 	sub := NewSub(opts, group, consumer, nil, nil, "RabbitMQ", "broker", "config")
 
@@ -61,7 +62,7 @@ func TestSubListeningStartsConsumerOnce(t *testing.T) {
 
 func TestSubStopsAcceptingMessagesDuringShutdown(t *testing.T) {
 	opts := new(ingap.Options).With()
-	opts.InitializeRuntime()
+	opts.InitRuntime()
 	consumer := &controlledConsumer{envelopes: make(chan *entity.Envelope, 2)}
 	sub := NewSub(opts, &ingap.GroupOptions{Group: "group"}, consumer, nil, nil, "RabbitMQ", "broker", "config")
 

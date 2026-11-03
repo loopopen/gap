@@ -89,7 +89,7 @@ func (p *Pub[T]) bind(txer txer.Txer) (*Pub[T], error) {
 		configIdentity: p.configIdentity,
 	}
 	txer.SetFlushHandler(func(e *entity.Envelope) {
-		pub.dispatch(pub.opts.DrainContext, e)
+		pub.dispatch(pub.opts.WorkContext(), e)
 	})
 	return pub, nil
 }

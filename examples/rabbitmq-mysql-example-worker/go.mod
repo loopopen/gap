@@ -1,4 +1,4 @@
-module examples/rabbitmq-mysql-example
+module examples/rabbitmq-mysql-example-worker
 
 go 1.24.0
 

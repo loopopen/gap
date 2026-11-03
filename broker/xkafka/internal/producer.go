@@ -42,7 +42,7 @@ func NewProducer(gapOpts *ingap.Options, opts *Options) *Producer {
 }
 
 func (p *Producer) init() error {
-	err := p.ensurer.ensure(p.gapOpts.Context)
+	err := p.ensurer.ensure(p.gapOpts.IntakeContext())
 	if err != nil {
 		return err
 	}

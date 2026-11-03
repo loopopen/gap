@@ -27,14 +27,14 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	g, svcCtx := initSvc(ctx)
+	g, svcHub := initSvc()
 	app.Hooks().OnShutdown(func() error {
 		drainCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return g.Shutdown(drainCtx)
 	})
 	app.All("/dashboard/*", adaptor.HTTPHandler(g.DashboardHandler()))
-	app.Get("/api/greet", handlers.Greet(svcCtx.GreetSvc))
+	app.Get("/api/greet", handlers.Greet(svcHub.GreetSvc))
 
 	go func() {
 		err := app.Listen(":8084")
@@ -63,12 +63,11 @@ func main() {
 	}
 }
 
-func initSvc(ctx context.Context) (*gap.Gap, *service.SvcHub) {
+func initSvc() (*gap.Gap, *service.SvcHub) {
 	dsn := "root:root@tcp(127.0.0.1:3306)/example?charset=utf8mb4&parseTime=True&loc=Local"
 	db := must(sql.Open("mysql", dsn))
 
 	g := gap.New(
-		gap.Context(ctx),
 		gap.UseDashboard(),
 		xmysql.UseMySQL(xmysql.DSN(dsn)),
 	)
@@ -90,11 +89,11 @@ func initSvc(ctx context.Context) (*gap.Gap, *service.SvcHub) {
 	svcHub.Init()
 
 	g.Subscribe(
-		pubR,
+		gap.From(pubR),
 		gap.Inject(svcHub.GreetSvc),
 	)
 	g.Subscribe(
-		pubK,
+		gap.From(pubK),
 		gap.Inject(svcHub.GreetSvc),
 	)
 

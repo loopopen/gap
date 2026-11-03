@@ -102,8 +102,10 @@ func (f *blockingReadConsumer) Close() error {
 
 func testConsumer(client consumerClient) *Consumer {
 	entity.MustInitSnowflake(1)
+	gapOpts := &gap.Options{Version: "test"}
+	gapOpts.InitRuntime()
 	consumer := &Consumer{
-		gapOpts:        &gap.Options{Version: "test"},
+		gapOpts:        gapOpts,
 		group:          "test-group",
 		groupID:        "gap.test.g.test-group",
 		state:          consumerSubscribed,
@@ -203,9 +205,6 @@ func TestCommitDeliveredMessageAfterIntakeStops(t *testing.T) {
 		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: 0, Offset: 13},
 	}
 	consumer := testConsumer(fake)
-	workCtx, cancelWork := context.WithCancel(context.Background())
-	defer cancelWork()
-	consumer.gapOpts.DrainContext = workCtx
 	intakeCtx, stopIntake := context.WithCancel(context.Background())
 	envelopes, err := consumer.Consume(intakeCtx)
 	if err != nil {

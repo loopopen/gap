@@ -119,7 +119,7 @@ func (s *Sub) Subscribe(topic string, handler ingap.Handler[[]byte]) error {
 
 	slog.Debug(fmt.Sprintf("subscribe: topic(%s) -> group(%s:%d)", topic, s.groupOpts.Group, s.groupOpts.IngestConcurrency))
 
-	ctx := s.opts.Context
+	ctx := s.opts.IntakeContext()
 	err := s.consumer.Subscribe(ctx, topic)
 	if err != nil {
 		return err
@@ -165,8 +165,8 @@ func (s *Sub) Listening() error {
 }
 
 func (s *Sub) startListening() error {
-	intakeCtx := s.opts.Context
-	workCtx := s.opts.DrainContext
+	intakeCtx := s.opts.IntakeContext()
+	workCtx := s.opts.WorkContext()
 	enCh, err := s.consumer.Consume(intakeCtx)
 	if err != nil {
 		return err

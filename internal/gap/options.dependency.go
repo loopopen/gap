@@ -36,8 +36,8 @@ func ResolveType[T any](typeName string, resolve func(v T)) shoot.Option[Depende
 	}
 }
 
-func Resolve(opts ...shoot.Option[DependencyOptions, *DependencyOptions]) shoot.Option[Options, *Options] {
-	return func(o *Options) {
+func Resolve(opts ...shoot.Option[DependencyOptions, *DependencyOptions]) shoot.Option[BrokerOptions, *BrokerOptions] {
+	return func(o *BrokerOptions) {
 		options := new(DependencyOptions).With(opts...)
 		o.DependencyOptsLst = append(o.DependencyOptsLst, *options)
 	}

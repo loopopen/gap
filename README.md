@@ -90,7 +90,7 @@ func main() {
 
     // Create the application-scoped Gap instance
     g := gap.New(
-        gap.Context(ctx),
+        gap.ServiceName("my-service.worker"),
         xgorm.UseGorm(
             xgorm.DB(db),
         ),
@@ -105,8 +105,7 @@ func main() {
 
     // Set up subscriber
     g.Subscribe(
-        pub,
-        gap.ServiceName("my-service.worker"),
+        gap.From(pub),
         gap.Inject(/*handler_dependencies*/),
     )
 
@@ -166,9 +165,10 @@ This will generate the necessary handler code automatically.
 
 ### 4. Graceful Shutdown
 
-The library supports graceful shutdown through context cancellation and a runtime-owned shutdown sequence.
+The library supports graceful shutdown through an explicit, runtime-owned shutdown sequence.
 
 - `g.Shutdown(ctx context.Context) error` stops intake, drains accepted work, and closes runtime-owned resources
+- Canceling the application's signal context does not shut down Gap; call `g.Shutdown` explicitly with a dedicated drain context
 
 ## Delivery Semantics
 
@@ -203,13 +203,13 @@ go run .
 
 ### Subscribers
 
-- `g.Subscribe(publisher, opts...)`: Set up subscribers with handlers
+- `g.Subscribe(opts...)`: Set up subscribers with broker, handler, and dependency options
 - `g.DashboardHandler()`: Create the dashboard HTTP handler
 - `g.Shutdown(ctx)`: Stop intake, drain accepted work, and close runtime-owned resources
 
 ### Options
 
-- Runtime `Options` are passed to `gap.New`: `gap.Context`, `gap.UseDashboard`, and storage options such as `xmysql.UseMySQL`
+- Runtime `Options` are passed to `gap.New`: `gap.UseDashboard` and storage options such as `xmysql.UseMySQL`
 - `BrokerOptions` are passed to publisher constructors: `gap.BrokerName` and broker options such as `xrabbitmq.UseRabbitMQ`
 - Subscriber options are passed to `g.Subscribe`: `gap.ServiceName` and `gap.Inject`
 

@@ -2,17 +2,17 @@ package service
 
 import "github.com/loopopen/gap"
 
-type SvcContext struct {
+type SvcHub struct {
 	Pub gap.EventPublisher
 	*GreetSvc
 }
 
-func NewSvcContext(pub gap.EventPublisher) *SvcContext {
-	return &SvcContext{
+func NewSvcHub(pub gap.EventPublisher) *SvcHub {
+	return &SvcHub{
 		Pub: pub,
 	}
 }
 
-func (s *SvcContext) Init() {
+func (s *SvcHub) Init() {
 	s.GreetSvc = NewGreetSvc(s.Pub)
 }

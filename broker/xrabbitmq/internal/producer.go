@@ -19,7 +19,7 @@ type Producer struct {
 	opts    *Options
 	group   string
 	chPool  *pubChannelPool
-	release func() error
+	release func(context.Context) error
 	closed  atomic.Bool
 	x       string
 	q       string
@@ -40,7 +40,7 @@ func NewProducer(gapOpts *ingap.Options, opts *Options) *Producer {
 }
 
 func (p *Producer) init() error {
-	pooled, err := p.chPool.Rent(p.gapOpts.Context)
+	pooled, err := p.chPool.Rent(p.gapOpts.IntakeContext())
 	if err != nil {
 		return err
 	}
@@ -148,11 +148,18 @@ func (p *Producer) exchange() string {
 }
 
 func (p *Producer) Close() error {
+	return p.CloseContext(context.Background())
+}
+
+func (p *Producer) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if !p.closed.CompareAndSwap(false, true) {
 		return nil
 	}
 	if p.release != nil {
-		return p.release()
+		return p.release(ctx)
 	}
 	return nil
 }

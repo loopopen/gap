@@ -149,7 +149,7 @@ func NewConsumer(gapOpts *ingap.Options, opts *Options, group string) (*Consumer
 }
 
 func (c *Consumer) init() error {
-	return c.ensurer.ensure(c.gapOpts.Context)
+	return c.ensurer.ensure(c.gapOpts.IntakeContext())
 }
 
 func (c *Consumer) Subscribe(ctx context.Context, topic string) error {
@@ -288,8 +288,8 @@ func (c *Consumer) consumeLoop(ctx context.Context, client consumerClient, envel
 }
 
 func (c *Consumer) deliveryContext(intakeCtx context.Context) context.Context {
-	if c.gapOpts != nil && c.gapOpts.DrainContext != nil {
-		return c.gapOpts.DrainContext
+	if c.gapOpts != nil {
+		return c.gapOpts.WorkContext()
 	}
 	return intakeCtx
 }

@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -101,7 +102,7 @@ func (o *Options) ConfigIdentity() string {
 	return broker.ConfigIdentity("xrabbitmq", o.producerKey())
 }
 
-func (o *Options) acquireRuntime(gapOpts *ingap.Options) (*runtimeResources, func() error) {
+func (o *Options) acquireRuntime(gapOpts *ingap.Options) (*runtimeResources, func(context.Context) error) {
 	registry := o.registry()
 	runtimeID := gapOpts.RuntimeIdentity()
 	registry.mu.Lock()
@@ -120,7 +121,7 @@ func (o *Options) acquireRuntime(gapOpts *ingap.Options) (*runtimeResources, fun
 
 	var once sync.Once
 	var closeErr error
-	return ref.resources, func() error {
+	return ref.resources, func(ctx context.Context) error {
 		once.Do(func() {
 			registry.mu.Lock()
 			current := registry.runtimes[runtimeID]
@@ -135,7 +136,7 @@ func (o *Options) acquireRuntime(gapOpts *ingap.Options) (*runtimeResources, fun
 			}
 			delete(registry.runtimes, runtimeID)
 			registry.mu.Unlock()
-			closeErr = ref.resources.Close()
+			closeErr = ref.resources.CloseContext(ctx)
 		})
 		return closeErr
 	}

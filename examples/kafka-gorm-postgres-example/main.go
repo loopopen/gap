@@ -34,7 +34,7 @@ func main() {
 	}))
 
 	g := gap.New(
-		gap.Context(ctx),
+		gap.ServiceName("kafka-gorm-postgres-example.worker"),
 		xgorm.UseGorm(
 			xgorm.DSN(dsn, postgres.Open),
 		),
@@ -50,8 +50,7 @@ func main() {
 	)
 
 	g.Subscribe(
-		pub,
-		gap.ServiceName("kafka-gorm-postgres-example.worker"),
+		gap.From(pub),
 	)
 
 	go runjob(ctx, db, pub)

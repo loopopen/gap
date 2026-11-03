@@ -9,30 +9,30 @@ var registered = internal.NewGroupedSubs()
 
 // Register stores generated handler and dependency definitions during package
 // initialization. Applications start them with [Gap.Subscribe].
-func Register(opts ...shoot.Option[Options, *Options]) {
-	gapOpts := new(Options).With(opts...)
-	registered.AddDependencyOtps(gapOpts.DependencyOptsLst)
-	registered.AddHandlerOtps(gapOpts.HandlerOptsLst)
+func Register(opts ...shoot.Option[BrokerOptions, *BrokerOptions]) {
+	brokerOpts := new(BrokerOptions).With(opts...)
+	registered.AddDependencyOtps(brokerOpts.DependencyOptsLst)
+	registered.AddHandlerOtps(brokerOpts.HandlerOptsLst)
 }
 
-func (g *Gap) Subscribe(publisher BrokerOptionsGetter, opts ...shoot.Option[Options, *Options]) {
+// Subscribe configures the broker and registers all configured handlers.
+func (g *Gap) Subscribe(opts ...shoot.Option[BrokerOptions, *BrokerOptions]) {
 	done, beginErr := g.opts.BeginOperation()
 	if beginErr != nil {
 		panic(beginErr)
 	}
 	defer done()
 
-	gapOpts := g.subscriberOptions(opts...)
-	brokerOpts := publisher.BrokerOptions()
+	brokerOpts := g.publisherOptions(opts...)
 
-	g.subs.AddDependencyOtps(gapOpts.DependencyOptsLst)
-	g.subs.AddHandlerOtps(gapOpts.HandlerOptsLst)
+	g.subs.AddDependencyOtps(brokerOpts.DependencyOptsLst)
+	g.subs.AddHandlerOtps(brokerOpts.HandlerOptsLst)
 
 	for _, o := range g.subs.DependencyOtpsLst {
-		o.Resolve(gapOpts.Dependencies)
+		o.Resolve(brokerOpts.Dependencies)
 	}
 
-	err := g.subs.SubscribeAll(gapOpts, brokerOpts, g.storage, g.pump)
+	err := g.subs.SubscribeAll(g.opts, brokerOpts, g.storage, g.pump)
 	if err != nil {
 		panic(err)
 	}

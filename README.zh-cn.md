@@ -90,7 +90,7 @@ func main() {
 
     // 创建应用级 Gap 实例
     g := gap.New(
-        gap.Context(ctx),
+        gap.ServiceName("my-service.worker"),
         xgorm.UseGorm(
             xgorm.DB(db),
         ),
@@ -105,8 +105,7 @@ func main() {
 
     // 设置 subscriber
     g.Subscribe(
-        pub,
-        gap.ServiceName("my-service.worker"),
+        gap.From(pub),
         gap.Inject(/*handler_dependencies*/),
     )
 
@@ -166,9 +165,10 @@ go generate ./...
 
 ### 4. 优雅关机
 
-该库通过上下文取消和 Runtime 统一管理的关闭流程支持优雅关机。
+该库通过显式调用 Runtime 统一管理的关闭流程支持优雅关机。
 
 - `g.Shutdown(ctx context.Context) error` 停止接收新任务、排空已接收任务，并关闭 Runtime 持有的资源
+- 取消应用的信号上下文不会关闭 Gap；应使用独立的排空上下文显式调用 `g.Shutdown`
 
 ## 投递语义
 
@@ -203,13 +203,13 @@ go run .
 
 ### 订阅者
 
-- `g.Subscribe(publisher, opts...)`：设置带处理器的订阅者
+- `g.Subscribe(opts...)`：使用 broker、handler 与依赖选项设置订阅者
 - `g.DashboardHandler()`：创建 Dashboard HTTP handler
 - `g.Shutdown(ctx)`：停止接收新任务、排空已接收任务，并关闭 Runtime 持有的资源
 
 ### 选项
 
-- 传给 `gap.New` 的运行时 `Options`：`gap.Context`、`gap.UseDashboard`，以及 `xmysql.UseMySQL` 等 storage 配置
+- 传给 `gap.New` 的运行时 `Options`：`gap.UseDashboard`，以及 `xmysql.UseMySQL` 等 storage 配置
 - 传给 publisher 构造函数的 `BrokerOptions`：`gap.BrokerName`，以及 `xrabbitmq.UseRabbitMQ` 等 broker 配置
 - 传给 `g.Subscribe` 的订阅配置：`gap.ServiceName` 和 `gap.Inject`
 

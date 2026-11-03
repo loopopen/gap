@@ -116,14 +116,14 @@ func (p *Pump) startSender() {
 	p.sourceWG.Add(1)
 	go func() {
 		defer p.sourceWG.Done()
-		p.pollingSend(o.Context)
+		p.pollingSend(o.IntakeContext())
 	}()
 
 	// Queued work uses the drain context.
 	p.dispatcherWG.Add(1)
 	go func() {
 		defer p.dispatcherWG.Done()
-		p.dispatchingSend(o.DrainContext, o.MaxPublishConcurrency)
+		p.dispatchingSend(o.WorkContext(), o.MaxPublishConcurrency)
 	}()
 }
 
@@ -142,13 +142,13 @@ func (p *Pump) startHandlerOnce() {
 	p.sourceWG.Add(1)
 	go func() {
 		defer p.sourceWG.Done()
-		p.pollingHandle(o.Context)
+		p.pollingHandle(o.IntakeContext())
 	}()
 
 	p.dispatcherWG.Add(1)
 	go func() {
 		defer p.dispatcherWG.Done()
-		p.dispatchingHandle(o.DrainContext, size)
+		p.dispatchingHandle(o.WorkContext(), size)
 	}()
 }
 
@@ -193,7 +193,7 @@ func (p *Pump) DispatchToHandle(ctx context.Context, envelope *entity.Envelope) 
 }
 
 func (p *Pump) pollingSend(ctx context.Context) {
-	workCtx := p.gapOpts.DrainContext
+	workCtx := p.gapOpts.WorkContext()
 	ticker := time.NewTicker(p.gapOpts.PumpInterval())
 	defer ticker.Stop()
 
@@ -338,7 +338,7 @@ func (p *Pump) handleParallel(ctx context.Context, envelope *entity.Envelope, se
 }
 
 func (p *Pump) pollingHandle(ctx context.Context) {
-	workCtx := p.gapOpts.DrainContext
+	workCtx := p.gapOpts.WorkContext()
 	ticker := time.NewTicker(p.gapOpts.PumpInterval())
 	defer ticker.Stop()
 

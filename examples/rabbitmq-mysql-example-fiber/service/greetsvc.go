@@ -2,9 +2,10 @@ package service
 
 import (
 	"context"
-	"examples/fiber-rabbitmq-mysql-example/event"
+	"examples/rabbitmq-mysql-example-fiber/event"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/loopopen/gap"
 )
@@ -23,6 +24,8 @@ func (svc *GreetSvc) Greet(ctx context.Context, name string) error {
 	e := event.Hello{
 		Name: name,
 	}
+	slog.Info("!!!!!!!!!!!")
+	time.Sleep(5000 * time.Millisecond)
 	err := svc.pub.Publish(ctx, e)
 	return err
 }

@@ -62,11 +62,11 @@ func MustGetConsumer(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions, gr
 	if brokerOpts == nil {
 		return nil
 	}
-	opts := brokerOpts.Plugin
-	if opts == nil {
+	plugin := brokerOpts.Plugin
+	if plugin == nil {
 		return nil
 	}
-	consumer, err := opts.OpenConsumer(gapOpts, group)
+	consumer, err := plugin.OpenConsumer(gapOpts, group)
 	if err != nil {
 		panic(err)
 	}

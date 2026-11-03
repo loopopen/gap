@@ -1,4 +1,4 @@
-module examples/fiber-rabbitmq-mysql-example
+module examples/rabbitmq-mysql-example-fiber
 
 go 1.24.0
 
