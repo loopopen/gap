@@ -24,7 +24,11 @@ func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, e
 	if err != nil {
 		return nil, err
 	}
-	return &entity.DashboardStats{Published: published, Received: received}, nil
+	groups, err := s.receivedGroupStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &entity.DashboardStats{Published: published, Received: received, Groups: groups}, nil
 }
 
 func messageStats(db *gorm.DB) (entity.MessageStats, error) {
@@ -59,6 +63,63 @@ func messageStats(db *gorm.DB) (entity.MessageStats, error) {
 		LastActivity:  row.LastActivity,
 		OldestBacklog: row.OldestBacklog,
 	}, nil
+}
+
+func (s *Storage) receivedGroupStats(ctx context.Context) ([]entity.GroupMessageStats, error) {
+	var rows []groupMessageStatsRow
+	err := receivedGroupStatsQuery(s.db.WithContext(ctx)).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	groups := make([]entity.GroupMessageStats, 0, len(rows))
+	for _, row := range rows {
+		groups = append(groups, entity.GroupMessageStats{
+			Group: row.Group,
+			MessageStats: entity.MessageStats{
+				Total:         row.Total,
+				Pending:       row.Pending,
+				Succeeded:     row.Succeeded,
+				Failed:        row.Failed,
+				Retries:       row.Retries,
+				LastActivity:  row.LastActivity,
+				OldestBacklog: row.OldestBacklog,
+			},
+		})
+	}
+	return groups, nil
+}
+
+type groupMessageStatsRow struct {
+	Group         string `gorm:"column:grp"`
+	Total         int64
+	Pending       int64
+	Succeeded     int64
+	Failed        int64
+	Retries       int64
+	LastActivity  *time.Time
+	OldestBacklog *time.Time
+}
+
+func receivedGroupStatsQuery(db *gorm.DB) *gorm.DB {
+	col := quotedGroupColumn(db.Dialector.Name())
+	return db.Model(&Received{}).
+		Select(col + ` AS grp,
+		COUNT(*) AS total,
+		COALESCE(SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END), 0) AS pending,
+		COALESCE(SUM(CASE WHEN status = 'Succeeded' THEN 1 ELSE 0 END), 0) AS succeeded,
+		COALESCE(SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END), 0) AS failed,
+		COALESCE(SUM(retries), 0) AS retries,
+		MAX(created_at) AS last_activity,
+		MIN(CASE WHEN status = 'Pending' THEN created_at END) AS oldest_backlog`).
+		Group("group").
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "group"}})
+}
+
+func quotedGroupColumn(dialect string) string {
+	if dialect == "postgres" {
+		return `"group"`
+	}
+	return "`group`"
 }
 
 func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {

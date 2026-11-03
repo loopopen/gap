@@ -22,7 +22,11 @@ func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, e
 	if err != nil {
 		return nil, err
 	}
-	return &entity.DashboardStats{Published: published, Received: received}, nil
+	groups, err := s.receivedGroupStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &entity.DashboardStats{Published: published, Received: received, Groups: groups}, nil
 }
 
 func (s *Storage) messageStats(ctx context.Context, name string) (entity.MessageStats, error) {
@@ -62,6 +66,62 @@ func (s *Storage) messageStats(ctx context.Context, name string) (entity.Message
 		stats.OldestBacklog = &oldestBacklog.Time
 	}
 	return stats, nil
+}
+
+func (s *Storage) receivedGroupStats(ctx context.Context) ([]entity.GroupMessageStats, error) {
+	table, err := s.quotedTable("received")
+	if err != nil {
+		return nil, err
+	}
+	script := `SELECT
+		"group",
+		COUNT(*),
+		COALESCE(SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN status = 'Succeeded' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(retries), 0),
+		MAX(created_at),
+		MIN(CASE WHEN status = 'Pending' THEN created_at END)
+		FROM ` + table + `
+		GROUP BY "group"
+		ORDER BY "group"`
+
+	rows, err := s.db.QueryContext(ctx, script)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	groups := make([]entity.GroupMessageStats, 0)
+	for rows.Next() {
+		var item entity.GroupMessageStats
+		var lastActivity sql.NullTime
+		var oldestBacklog sql.NullTime
+		err = rows.Scan(
+			&item.Group,
+			&item.Total,
+			&item.Pending,
+			&item.Succeeded,
+			&item.Failed,
+			&item.Retries,
+			&lastActivity,
+			&oldestBacklog,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if lastActivity.Valid {
+			item.LastActivity = &lastActivity.Time
+		}
+		if oldestBacklog.Valid {
+			item.OldestBacklog = &oldestBacklog.Time
+		}
+		groups = append(groups, item)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return groups, nil
 }
 
 func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {

@@ -1,10 +1,25 @@
-import { Badge, Box, Button, Card, Flex, H1, Text } from '@traefik-labs/faency'
-import { useEffect, useRef } from 'react'
+import {
+  Badge,
+  Box,
+  Button,
+  Card,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+  Flex,
+  H1,
+  Text,
+} from '@traefik-labs/faency'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FiActivity,
   FiAlertTriangle,
   FiCheckCircle,
+  FiChevronDown,
   FiClock,
   FiDatabase,
   FiDownload,
@@ -15,7 +30,7 @@ import {
 import { useDashboardStats } from '../hooks/useDashboardStats'
 import { useMetas } from '../hooks/useMetas'
 import PageTitle from '../layout/PageTitle'
-import type { MessageStats } from '../types'
+import type { GroupMessageStats, MessageStats } from '../types'
 
 const PROGRESS_RADIUS = 6.25
 const PROGRESS_CIRCUMFERENCE = 2 * Math.PI * PROGRESS_RADIUS
@@ -53,6 +68,22 @@ const RefreshProgress = ({ startedAt, intervalMs }: { startedAt: number; interva
 
 const numberFormatter = new Intl.NumberFormat()
 const formatNumber = (value: number) => numberFormatter.format(value)
+const allGroupsValue = '__all__'
+
+const emptyMessageStats: MessageStats = {
+  total: 0,
+  pending: 0,
+  succeeded: 0,
+  failed: 0,
+  retries: 0,
+  lastActivity: null,
+  oldestBacklog: null,
+}
+
+const receivedStatsFor = (stats: MessageStats, groups: GroupMessageStats[] | undefined, group: string) => {
+  if (!group) return stats
+  return groups?.find((item) => item.group === group) ?? emptyMessageStats
+}
 
 const formatDate = (value: string | null) => {
   if (!value) return 'No activity yet'
@@ -103,13 +134,29 @@ const StatusCell = ({ label, value, color }: { label: string; value: number; col
   </Flex>
 )
 
-const StreamCard = ({ title, stats, received }: { title: string; stats: MessageStats; received?: boolean }) => {
+const StreamCard = ({
+  title,
+  stats,
+  received,
+  groups,
+  group,
+  onGroupChange,
+}: {
+  title: string
+  stats: MessageStats
+  received?: boolean
+  groups?: GroupMessageStats[]
+  group?: string
+  onGroupChange?: (group: string) => void
+}) => {
   const navigate = useNavigate()
   const rate = successRate(stats)
+  const groupNames = groups?.map((item) => item.group) ?? []
+  if (group && !groupNames.includes(group)) groupNames.unshift(group)
 
   return (
     <Card css={{ p: 0, overflow: 'hidden' }}>
-      <Flex justify="space-between" align="center" css={{ px: '$4', py: '$3', borderBottom: '1px solid $tableRowBorder' }}>
+      <Flex justify="space-between" align="center" gap={2} css={{ px: '$4', py: '$3', borderBottom: '1px solid $tableRowBorder', flexWrap: 'wrap' }}>
         <Flex align="center" gap={2}>
           <Flex align="center" justify="center" css={{ color: received ? '$green11' : '$blue11' }}>
             {received ? <FiDownload size={18} /> : <FiSend size={18} />}
@@ -117,14 +164,60 @@ const StreamCard = ({ title, stats, received }: { title: string; stats: MessageS
           <Text css={{ fontWeight: 700 }}>{title}</Text>
           <Badge variant={received ? 'green' : 'blue'}>{formatNumber(stats.total)}</Badge>
         </Flex>
-        <Button
-          ghost
-          variant="secondary"
-          onClick={() => navigate(`/message?type=${received ? 'received' : 'published'}`)}
-          css={{ height: 28 }}
-        >
-          View messages
-        </Button>
+        <Flex align="center" gap={2}>
+          {received && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  ghost
+                  variant="secondary"
+                  aria-label="Received message group"
+                  css={{ height: 28, maxWidth: 220, minWidth: 0, gap: '$1', px: '$2' }}
+                >
+                  <Text size="1" css={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {group || 'All groups'}
+                  </Text>
+                  <FiChevronDown aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuContent
+                  align="end"
+                  sideOffset={4}
+                  css={{ minWidth: 180, maxHeight: 320, overflowY: 'auto', zIndex: 9999 }}
+                >
+                  <DropdownMenuRadioGroup
+                    value={group || allGroupsValue}
+                    onValueChange={(value: string) => onGroupChange?.(value === allGroupsValue ? '' : value)}
+                  >
+                    <DropdownMenuRadioItem value={allGroupsValue} css={{ height: '$6', cursor: 'pointer' }}>
+                      All groups
+                    </DropdownMenuRadioItem>
+                    {groupNames.map((name) => (
+                      <DropdownMenuRadioItem key={name || '(empty)'} value={name} css={{ height: '$6', cursor: 'pointer' }}>
+                        <Text size="1" css={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {name || '(empty)'}
+                        </Text>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenuPortal>
+            </DropdownMenu>
+          )}
+          <Button
+            ghost
+            variant="secondary"
+            onClick={() => {
+              const params = new URLSearchParams({ type: received ? 'received' : 'published' })
+              if (received && group) params.set('group', group)
+              navigate(`/message?${params.toString()}`)
+            }}
+            css={{ height: 28 }}
+          >
+            View messages
+          </Button>
+        </Flex>
       </Flex>
       <Flex direction="column" gap={4} css={{ p: '$4' }}>
         <Box>
@@ -167,6 +260,7 @@ const StreamCard = ({ title, stats, received }: { title: string; stats: MessageS
 const Home = () => {
   const { stats, loading, error, updatedAt, refetch, cycleStartedAt, refreshIntervalMs, cycleRefreshInterval } = useDashboardStats()
   const { metas, loading: metasLoading, error: metasError } = useMetas()
+  const [receivedGroup, setReceivedGroup] = useState('')
   const published = stats?.published
   const received = stats?.received
   const failed = (published?.failed || 0) + (received?.failed || 0)
@@ -246,25 +340,32 @@ const Home = () => {
       {loading && !stats ? <Text css={{ color: '$textSubtle' }}>Loading message statistics…</Text> : stats && (
         <Box css={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '$4', '@bp3': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }, '@bp4': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' } }}>
           <StreamCard title="Published messages" stats={stats.published} />
-          <StreamCard title="Received messages" stats={stats.received} received />
+          <StreamCard
+            title="Received messages"
+            stats={receivedStatsFor(stats.received, stats.groups, receivedGroup)}
+            groups={stats.groups}
+            group={receivedGroup}
+            onGroupChange={setReceivedGroup}
+            received
+          />
         </Box>
       )}
 
       <Box css={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '$4', '@bp2': { gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)' } }}>
         <Card css={{ p: 0, overflow: 'hidden' }}>
-          <Flex align="center" gap={2} css={{ px: '$4', py: '$3', borderBottom: '1px solid $tableRowBorder' }}>
+          <Flex align="center" gap={2} css={{ px: '$4', py: '$3', borderBottom: '1px solid $tableRowBorder', color: '$textDefault' }}>
             <FiDatabase /><Text css={{ fontWeight: 700 }}>Runtime configuration</Text>
           </Flex>
           {metasError && <Text css={{ p: '$4', color: '$red10' }}>{metasError}</Text>}
           {metasLoading && !metasError && <Text css={{ p: '$4', color: '$textSubtle' }}>Loading configuration…</Text>}
           {!metasLoading && !metasError && metas.map((item) => (
             <Flex key={`${item.type}-${item.plugin}-${item.version}`} justify="space-between" align="center" css={{ px: '$4', py: '$3', borderBottom: '1px solid $tableRowBorder' }}>
-              <Flex align="center" gap={2}>
+              <Flex align="center" gap={2} css={{ color: '$textDefault' }}>
                 <FiActivity />
-                <Text>{item.type === 'Self' ? 'GAP runtime' : item.type}</Text>
+                <Text>{item.type === 'Gap' ? 'GAP runtime' : item.type}</Text>
               </Flex>
               <Flex align="center" gap={2}>
-                <Badge variant={item.type === 'Self' ? 'blue' : 'green'}>{item.type === 'Self' ? 'GAP' : item.plugin}</Badge>
+                <Badge variant={item.type === 'Gap' ? 'blue' : 'green'}>{item.type === 'Gap' ? 'Gap' : item.plugin}</Badge>
                 <Text size="1" css={{ color: '$textSubtle' }}>{item.version}</Text>
               </Flex>
             </Flex>
@@ -272,7 +373,7 @@ const Home = () => {
         </Card>
         <Card css={{ p: '$4' }}>
           <Flex direction="column" gap={3}>
-            <Flex align="center" gap={2}><FiRepeat /><Text css={{ fontWeight: 700 }}>Delivery pressure</Text></Flex>
+            <Flex align="center" gap={2} css={{ color: '$textDefault' }}><FiRepeat /><Text css={{ fontWeight: 700 }}>Delivery pressure</Text></Flex>
             <Flex justify="space-between"><Text size="1" css={{ color: '$textSubtle' }}>Retry attempts</Text><Text css={{ fontWeight: 700 }}>{formatNumber(retries)}</Text></Flex>
             <Flex justify="space-between"><Text size="1" css={{ color: '$textSubtle' }}>Active backlog</Text><Text css={{ fontWeight: 700 }}>{formatNumber(backlog)}</Text></Flex>
             <Flex justify="space-between"><Text size="1" css={{ color: '$textSubtle' }}>Failed messages</Text><Text css={{ fontWeight: 700, color: failed ? '$red11' : '$green11' }}>{formatNumber(failed)}</Text></Flex>

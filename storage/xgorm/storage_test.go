@@ -51,6 +51,15 @@ func TestApplyMessageFilters(t *testing.T) {
 	}
 }
 
+func TestQuotedGroupColumn(t *testing.T) {
+	if got := quotedGroupColumn("mysql"); got != "`group`" {
+		t.Fatalf("mysql group column = %q", got)
+	}
+	if got := quotedGroupColumn("postgres"); got != `"group"` {
+		t.Fatalf("postgres group column = %q", got)
+	}
+}
+
 func TestMessageOrderByID(t *testing.T) {
 	ascending := messageOrderByID(nil)
 	if ascending.Column.Name != "id" || ascending.Desc {
