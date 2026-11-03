@@ -44,8 +44,8 @@ func (o *Options) producerKey() string {
 	return o.connectionKey()
 }
 
-func (o *Options) ConfigIdentity() string {
-	return broker.ConfigIdentity("xkafka", o.producerKey())
+func (o *Options) ConfigID() string {
+	return broker.ConfigID("xkafka", o.producerKey())
 }
 
 func newKafkaConnections(opts *Options) *kafkaConnections {

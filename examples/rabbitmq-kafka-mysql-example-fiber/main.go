@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"database/sql"
-	"examples/fiber-rabbitmq-kafka-mysql-example/handlers"
-	"examples/fiber-rabbitmq-kafka-mysql-example/service"
+	"examples/rabbitmq-kafka-mysql-example-fiber/handlers"
+	"examples/rabbitmq-kafka-mysql-example-fiber/service"
 	"log/slog"
 	"os"
 	"os/signal"

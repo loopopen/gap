@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
-	"examples/fiber-rabbitmq-kafka-mysql-example/event"
+	"examples/rabbitmq-kafka-mysql-example-fiber/event"
 	"fmt"
 	"log/slog"
 

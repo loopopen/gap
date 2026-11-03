@@ -5,7 +5,7 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"examples/fiber-rabbitmq-kafka-mysql-example/event"
+	"examples/rabbitmq-kafka-mysql-example-fiber/event"
 
 	"github.com/loopopen/gap"
 	"github.com/loopopen/gap/gapc"
@@ -33,7 +33,7 @@ func init() {
 				return nil
 			},
 			event.Hello{}.Topic(),
-			"examples.fiber-rabbitmq-kafka-mysql-example",
+			"examples.rabbitmq-kafka-mysql-example-fiber",
 		),
 	)
 }

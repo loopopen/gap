@@ -22,7 +22,7 @@ func (p *producerStub) Produce(_ context.Context, envelope *entity.Envelope) err
 type brokerPluginStub struct{}
 
 func (*brokerPluginStub) PluginType() enum.Plugin { return enum.PluginRabbitMQ }
-func (*brokerPluginStub) ConfigIdentity() string  { return "config" }
+func (*brokerPluginStub) ConfigID() string        { return "config" }
 func (*brokerPluginStub) OpenProducer(*ingap.Options) (broker.Producer, error) {
 	return nil, nil
 }

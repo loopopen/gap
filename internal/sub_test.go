@@ -47,7 +47,11 @@ func TestSubListeningStartsConsumerOnce(t *testing.T) {
 	opts := new(ingap.Options).With()
 	opts.InitRuntime()
 	group := &ingap.GroupOptions{Group: "group"}
-	sub := NewSub(opts, group, consumer, nil, nil, "RabbitMQ", "broker", "config")
+	brokerOpts := &ingap.BrokerOptions{BrokerName: "broker", Plugin: new(brokerPluginStub)}
+	sub := NewSub(opts, brokerOpts, group, consumer, nil, nil)
+	if sub.brokerType != "RabbitMQ" || sub.brokerName != "broker" {
+		t.Fatalf("sub broker identity = %q/%q, want RabbitMQ/broker", sub.brokerType, sub.brokerName)
+	}
 
 	if err := sub.Listening(); err != nil {
 		t.Fatal(err)
@@ -64,7 +68,8 @@ func TestSubStopsAcceptingMessagesDuringShutdown(t *testing.T) {
 	opts := new(ingap.Options).With()
 	opts.InitRuntime()
 	consumer := &controlledConsumer{envelopes: make(chan *entity.Envelope, 2)}
-	sub := NewSub(opts, &ingap.GroupOptions{Group: "group"}, consumer, nil, nil, "RabbitMQ", "broker", "config")
+	brokerOpts := &ingap.BrokerOptions{BrokerName: "broker", Plugin: new(brokerPluginStub)}
+	sub := NewSub(opts, brokerOpts, &ingap.GroupOptions{Group: "group"}, consumer, nil, nil)
 
 	var handled atomic.Int32
 	var first sync.Once

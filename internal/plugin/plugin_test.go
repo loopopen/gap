@@ -55,6 +55,7 @@ func (*lifecycleBrokerOptionsStub) PluginType() enum.Plugin { return enum.Plugin
 func (o *lifecycleBrokerOptionsStub) OpenProducer(*ingap.Options) (broker.Producer, error) {
 	return o.producer, nil
 }
+
 func (o *lifecycleBrokerOptionsStub) OpenConsumer(*ingap.Options, string) (broker.Consumer, error) {
 	return o.consumer, nil
 }
@@ -65,7 +66,7 @@ func TestBrokerClientsCloseWithRuntimeResources(t *testing.T) {
 	plugin := &lifecycleBrokerOptionsStub{producer: producer, consumer: consumer}
 	gapOpts := new(ingap.Options).With()
 	gapOpts.InitRuntime()
-	brokerOpts := &ingap.BrokerOptions{Plugin: plugin}
+	brokerOpts := &ingap.BrokerOptions{BrokerName: "orders", Plugin: plugin}
 
 	if got := MustGetProducer(gapOpts, brokerOpts); got != producer {
 		t.Fatal("unexpected producer")
@@ -123,7 +124,7 @@ func (*brokerOptionsStub) OpenConsumer(*ingap.Options, string) (broker.Consumer,
 	return nil, nil
 }
 
-func (o *brokerOptionsStub) ConfigIdentity() string {
+func (o *brokerOptionsStub) ConfigID() string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(o.endpoint)))
 }
 
@@ -134,8 +135,8 @@ func TestBrokerNameIsIndependentOfBrokerConfiguration(t *testing.T) {
 	if got, want := BrokerName(first), BrokerName(second); got != want {
 		t.Fatalf("BrokerName changed with endpoint: %q != %q", got, want)
 	}
-	if BrokerConfigIdentity(first) == BrokerConfigIdentity(second) {
-		t.Fatal("config identity should change with endpoint")
+	if BrokerConfigID(first) == BrokerConfigID(second) {
+		t.Fatal("config ID should change with endpoint")
 	}
 }
 

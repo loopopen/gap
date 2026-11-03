@@ -18,15 +18,15 @@ import (
 )
 
 type Pub[T any] struct {
-	opts           *ingap.Options
-	brokerOpts     *ingap.BrokerOptions
-	storage        storage.Storage
-	producer       broker.Producer
-	pump           *pump.Pump
-	txer           txer.Txer
-	brokerName     string
-	brokerType     string
-	configIdentity string
+	opts       *ingap.Options
+	brokerOpts *ingap.BrokerOptions
+	storage    storage.Storage
+	producer   broker.Producer
+	pump       *pump.Pump
+	txer       txer.Txer
+	brokerName string
+	brokerType string
+	configID   string
 }
 
 func NewPub[T any](opts *ingap.Options, brokerOpts *ingap.BrokerOptions, producer broker.Producer, storage storage.Storage, messagePump *pump.Pump) *Pub[T] {
@@ -35,20 +35,20 @@ func NewPub[T any](opts *ingap.Options, brokerOpts *ingap.BrokerOptions, produce
 	}
 
 	pub := &Pub[T]{
-		opts:           opts,
-		brokerOpts:     brokerOpts,
-		storage:        storage,
-		producer:       producer,
-		brokerName:     plugin.BrokerName(brokerOpts),
-		brokerType:     plugin.BrokerType(brokerOpts),
-		configIdentity: plugin.BrokerConfigIdentity(brokerOpts),
+		opts:       opts,
+		brokerOpts: brokerOpts,
+		storage:    storage,
+		producer:   producer,
+		brokerName: plugin.BrokerName(brokerOpts),
+		brokerType: plugin.BrokerType(brokerOpts),
+		configID:   plugin.BrokerConfigID(brokerOpts),
 	}
 
 	if storage != nil {
 		if messagePump == nil {
 			panic("message pump must not be nil when storage is configured")
 		}
-		if err := messagePump.SetSender(pub.brokerType, pub.brokerName, pub.configIdentity, pub); err != nil {
+		if err := messagePump.SetSender(pub.brokerName, pub.configID, pub); err != nil {
 			panic(err)
 		}
 		pub.pump = messagePump
@@ -78,15 +78,15 @@ func (p *Pub[T]) bind(txer txer.Txer) (*Pub[T], error) {
 		return nil, err
 	}
 	pub := &Pub[T]{
-		opts:           p.opts,
-		brokerOpts:     p.brokerOpts,
-		storage:        stor,
-		producer:       p.producer,
-		pump:           p.pump,
-		txer:           txer,
-		brokerName:     p.brokerName,
-		brokerType:     p.brokerType,
-		configIdentity: p.configIdentity,
+		opts:       p.opts,
+		brokerOpts: p.brokerOpts,
+		storage:    stor,
+		producer:   p.producer,
+		pump:       p.pump,
+		txer:       txer,
+		brokerName: p.brokerName,
+		brokerType: p.brokerType,
+		configID:   p.configID,
 	}
 	txer.SetFlushHandler(func(e *entity.Envelope) {
 		pub.dispatch(pub.opts.WorkContext(), e)

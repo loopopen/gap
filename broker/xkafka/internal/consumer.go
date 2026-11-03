@@ -103,6 +103,7 @@ func (t *deliveryTag) submit(kind deliveryActionKind) error {
 type Consumer struct {
 	gapOpts *ingap.Options
 	opts    *Options
+
 	client  *kafka.Client
 	dialer  *kafka.Dialer
 	group   string

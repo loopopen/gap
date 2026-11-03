@@ -9,13 +9,13 @@ PLUGIN_MODULES := \
 	storage/xpostgres
 
 EXAMPLE_MODULES := \
-	examples/fiber-rabbitmq-kafka-mysql-example \
-	examples/rabbitmq-mysql-example-fiber \
+	examples/rabbitmq-kafka-mysql-example-fiber \
 	examples/gin-kafka-mysql-example \
 	examples/gin-kafka2-postgres-example \
 	examples/kafka-gorm-postgres-example \
 	examples/rabbitmq-gorm-mysql-example \
-	examples/rabbitmq-mysql-example
+	examples/rabbitmq-mysql-example-fiber \
+	examples/rabbitmq-mysql-example-worker
 
 MODULES := . $(PLUGIN_MODULES) $(EXAMPLE_MODULES)
 

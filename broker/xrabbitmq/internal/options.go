@@ -98,8 +98,8 @@ func (o *Options) producerKey() string {
 	}, "\x00")
 }
 
-func (o *Options) ConfigIdentity() string {
-	return broker.ConfigIdentity("xrabbitmq", o.producerKey())
+func (o *Options) ConfigID() string {
+	return broker.ConfigID("xrabbitmq", o.producerKey())
 }
 
 func (o *Options) acquireRuntime(gapOpts *ingap.Options) (*runtimeResources, func(context.Context) error) {

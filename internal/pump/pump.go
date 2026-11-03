@@ -60,11 +60,11 @@ func New(gapOpts *ingap.Options, stor storage.Storage) *Pump {
 	return p
 }
 
-func routeKey(brokerType, brokerName string) string {
-	return brokerType + "\x00" + brokerName
+func routeKey(brokerName string) string {
+	return brokerName
 }
 
-func (p *Pump) SetSender(brokerType, brokerName, configIdentity string, sender Sender) error {
+func (p *Pump) SetSender(brokerName, configID string, sender Sender) error {
 	p.senderMu.Lock()
 	defer p.senderMu.Unlock()
 	if p.senders == nil {
@@ -73,33 +73,33 @@ func (p *Pump) SetSender(brokerType, brokerName, configIdentity string, sender S
 	if p.senderConfigs == nil {
 		p.senderConfigs = make(map[string]string)
 	}
-	key := routeKey(brokerType, brokerName)
-	if existing, ok := p.senderConfigs[key]; ok && existing != configIdentity {
-		return fmt.Errorf("broker route %q (%s) has multiple configurations; set a unique BrokerName", brokerName, brokerType)
+	key := routeKey(brokerName)
+	if existing, ok := p.senderConfigs[key]; ok && existing != configID {
+		return fmt.Errorf("broker name %q has multiple configurations; set a unique BrokerName", brokerName)
 	}
 	if _, ok := p.senders[key]; !ok {
 		p.senders[key] = sender
-		p.senderConfigs[key] = configIdentity
+		p.senderConfigs[key] = configID
 	}
 	return nil
 }
 
-func handlerKey(brokerType, brokerName, group string) string {
-	return routeKey(brokerType, brokerName) + "\x00" + group
+func handlerKey(brokerName, group string) string {
+	return routeKey(brokerName) + "\x00" + group
 }
 
-func (p *Pump) SetHandler(brokerType, brokerName, configIdentity, group string, handler Handler) error {
+func (p *Pump) SetHandler(brokerName, configID, group string, handler Handler) error {
 	if p.handlers == nil {
 		p.handlers = &sync.Map{}
 	}
 	if p.handlerConfigs == nil {
 		p.handlerConfigs = &sync.Map{}
 	}
-	key := routeKey(brokerType, brokerName)
-	if existing, loaded := p.handlerConfigs.LoadOrStore(key, configIdentity); loaded && existing != configIdentity {
-		return fmt.Errorf("broker route %q (%s) has multiple configurations; set a unique BrokerName", brokerName, brokerType)
+	key := routeKey(brokerName)
+	if existing, loaded := p.handlerConfigs.LoadOrStore(key, configID); loaded && existing != configID {
+		return fmt.Errorf("broker name %q has multiple configurations; set a unique BrokerName", brokerName)
 	}
-	p.handlers.LoadOrStore(handlerKey(brokerType, brokerName, group), handler)
+	p.handlers.LoadOrStore(handlerKey(brokerName, group), handler)
 	return nil
 }
 
@@ -376,7 +376,7 @@ func (p *Pump) send(ctx context.Context, envelope *entity.Envelope) error {
 	p.senderMu.RLock()
 	brokerType := envelope.Headers[entity.BrokerTypeHeader]
 	brokerName := envelope.Headers[entity.BrokerNameHeader]
-	if sender, ok := p.senders[routeKey(brokerType, brokerName)]; ok {
+	if sender, ok := p.senders[routeKey(brokerName)]; ok {
 		p.senderMu.RUnlock()
 		return sender.SendAndUpdate(ctx, envelope)
 	}
@@ -423,9 +423,8 @@ func (p *Pump) hasSender() bool {
 }
 
 func (p *Pump) handler(envelope *entity.Envelope) (any, bool) {
-	brokerType := envelope.Headers[entity.BrokerTypeHeader]
 	brokerName := envelope.Headers[entity.BrokerNameHeader]
-	return p.handlers.Load(handlerKey(brokerType, brokerName, envelope.Group))
+	return p.handlers.Load(handlerKey(brokerName, envelope.Group))
 }
 
 func wait(ctx context.Context, duration time.Duration) {

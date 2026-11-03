@@ -8,7 +8,7 @@ import (
 	"github.com/loopopen/gap/storage"
 )
 
-func BrokerConfigIdentity(brokerOpts *ingap.BrokerOptions) string {
+func BrokerConfigID(brokerOpts *ingap.BrokerOptions) string {
 	if brokerOpts == nil {
 		return ""
 	}
@@ -17,7 +17,7 @@ func BrokerConfigIdentity(brokerOpts *ingap.BrokerOptions) string {
 		return ""
 	}
 	if identified, ok := opts.(broker.ConfigIdentifier); ok {
-		return identified.ConfigIdentity()
+		return identified.ConfigID()
 	}
 	return fmt.Sprintf("%T:%s", opts, opts.PluginType().String())
 }

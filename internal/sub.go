@@ -54,9 +54,7 @@ func (g *GroupedSubs) SubscribeAll(gapOpts *ingap.Options, brokerOpts *ingap.Bro
 func (g *GroupedSubs) subscribeOne(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions, stor storage.Storage, messagePump *pump.Pump, opts *ingap.HandlerOptions) error {
 	group := opts.Group
 	brokerName := plugin.BrokerName(brokerOpts)
-	brokerType := plugin.BrokerType(brokerOpts)
-	configIdentity := plugin.BrokerConfigIdentity(brokerOpts)
-	key := brokerType + "\x00" + brokerName + "\x00" + group
+	key := brokerName + "\x00" + group
 
 	sub, ok := g.subs[key]
 	if !ok {
@@ -65,7 +63,7 @@ func (g *GroupedSubs) subscribeOne(gapOpts *ingap.Options, brokerOpts *ingap.Bro
 			panic("consumer broker must not be nil")
 		}
 
-		sub = NewSub(gapOpts, &opts.GroupOptions, consumer, stor, messagePump, brokerType, brokerName, configIdentity)
+		sub = NewSub(gapOpts, brokerOpts, &opts.GroupOptions, consumer, stor, messagePump)
 		g.subs[key] = sub
 	}
 	err := sub.Subscribe(opts.Topic, opts.Handler)
@@ -128,7 +126,7 @@ func (s *Sub) Subscribe(topic string, handler ingap.Handler[[]byte]) error {
 	return nil
 }
 
-func NewSub(opts *ingap.Options, groupOpts *ingap.GroupOptions, consumer broker.Consumer, storage storage.Storage, messagePump *pump.Pump, brokerType, brokerName, configIdentity string) *Sub {
+func NewSub(opts *ingap.Options, brokerOpts *ingap.BrokerOptions, groupOpts *ingap.GroupOptions, consumer broker.Consumer, storage storage.Storage, messagePump *pump.Pump) *Sub {
 	if consumer == nil {
 		panic(errx.ErrNoBroker)
 	}
@@ -138,8 +136,8 @@ func NewSub(opts *ingap.Options, groupOpts *ingap.GroupOptions, consumer broker.
 		groupOpts:  groupOpts,
 		storage:    storage,
 		consumer:   consumer,
-		brokerName: brokerName,
-		brokerType: brokerType,
+		brokerName: plugin.BrokerName(brokerOpts),
+		brokerType: plugin.BrokerType(brokerOpts),
 		handlers:   make(map[string]ingap.Handler[[]byte]),
 	}
 
@@ -147,7 +145,8 @@ func NewSub(opts *ingap.Options, groupOpts *ingap.GroupOptions, consumer broker.
 		if messagePump == nil {
 			panic("message pump must not be nil when storage is configured")
 		}
-		if err := messagePump.SetHandler(brokerType, brokerName, configIdentity, groupOpts.Group, sub); err != nil {
+		configID := plugin.BrokerConfigID(brokerOpts)
+		if err := messagePump.SetHandler(sub.brokerName, configID, groupOpts.Group, sub); err != nil {
 			panic(err)
 		}
 		sub.pump = messagePump

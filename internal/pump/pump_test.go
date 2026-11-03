@@ -17,6 +17,10 @@ type senderStub struct {
 	ids []uint
 }
 
+type handlerStub struct{}
+
+func (*handlerStub) HandleAndUpdate(context.Context, *entity.Envelope) error { return nil }
+
 type statusStorageStub struct {
 	storage.Storage
 	receivedID         uint
@@ -40,19 +44,19 @@ func TestPumpRoutesMessagesToConfiguredSender(t *testing.T) {
 	p := &Pump{}
 	rabbit := new(senderStub)
 	kafka := new(senderStub)
-	if err := p.SetSender("RabbitMQ", "events", "rabbit-config", rabbit); err != nil {
+	if err := p.SetSender("rabbit-events", "rabbit-config", rabbit); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.SetSender("Kafka", "events", "kafka-config", kafka); err != nil {
+	if err := p.SetSender("kafka-events", "kafka-config", kafka); err != nil {
 		t.Fatal(err)
 	}
 
 	rabbitMessage := &entity.Envelope{ID: 1, Headers: map[string]string{
-		entity.BrokerNameHeader: "events",
+		entity.BrokerNameHeader: "rabbit-events",
 		entity.BrokerTypeHeader: "RabbitMQ",
 	}}
 	kafkaMessage := &entity.Envelope{ID: 2, Headers: map[string]string{
-		entity.BrokerNameHeader: "events",
+		entity.BrokerNameHeader: "kafka-events",
 		entity.BrokerTypeHeader: "Kafka",
 	}}
 	if err := p.send(context.Background(), rabbitMessage); err != nil {
@@ -72,12 +76,12 @@ func TestPumpRoutesMessagesToConfiguredSender(t *testing.T) {
 
 func TestPumpRejectsUnknownBrokerIdentity(t *testing.T) {
 	p := &Pump{}
-	if err := p.SetSender("RabbitMQ", "events", "rabbit-config", new(senderStub)); err != nil {
+	if err := p.SetSender("events", "rabbit-config", new(senderStub)); err != nil {
 		t.Fatal(err)
 	}
 
 	message := &entity.Envelope{Headers: map[string]string{
-		entity.BrokerNameHeader: "events",
+		entity.BrokerNameHeader: "missing",
 		entity.BrokerTypeHeader: "Kafka",
 	}}
 	if err := p.send(context.Background(), message); err == nil {
@@ -118,13 +122,40 @@ func TestPumpMarksReceivedFailedWhenHandlerRouteIsMissing(t *testing.T) {
 func TestPumpRejectsTwoLiveConfigsForSameBrokerRoute(t *testing.T) {
 	p := &Pump{}
 	first := new(senderStub)
-	if err := p.SetSender("RabbitMQ", "events", "old-config", first); err != nil {
+	if err := p.SetSender("events", "old-config", first); err != nil {
 		t.Fatal(err)
 	}
 
-	err := p.SetSender("RabbitMQ", "events", "new-config", new(senderStub))
+	err := p.SetSender("events", "new-config", new(senderStub))
 	if err == nil {
 		t.Fatal("expected duplicate broker route configuration error")
+	}
+	if got, want := err.Error(), `broker name "events" has multiple configurations; set a unique BrokerName`; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestPumpRejectsSameBrokerNameWithDifferentConfigs(t *testing.T) {
+	p := &Pump{}
+	if err := p.SetSender("events", "rabbit-config", new(senderStub)); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetSender("events", "kafka-config", new(senderStub)); err == nil {
+		t.Fatal("expected duplicate broker name configuration error")
+	}
+}
+
+func TestPumpRejectsSameHandlerBrokerNameWithDifferentConfigs(t *testing.T) {
+	p := &Pump{}
+	if err := p.SetHandler("events", "rabbit-config", "billing", new(handlerStub)); err != nil {
+		t.Fatal(err)
+	}
+	err := p.SetHandler("events", "kafka-config", "billing", new(handlerStub))
+	if err == nil {
+		t.Fatal("expected duplicate handler broker name configuration error")
+	}
+	if got, want := err.Error(), `broker name "events" has multiple configurations; set a unique BrokerName`; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
 	}
 }
 
@@ -149,7 +180,7 @@ func (s *blockingSender) SendAndUpdate(_ context.Context, envelope *entity.Envel
 func newDispatchTestPump(sender Sender, concurrency, queueSize int) *Pump {
 	p := &Pump{
 		sendCh:         make(chan *entity.Envelope, queueSize),
-		senders:        map[string]Sender{routeKey("RabbitMQ", "events"): sender},
+		senders:        map[string]Sender{routeKey("events"): sender},
 		senderConfigs:  make(map[string]string),
 		handlers:       new(sync.Map),
 		handlerConfigs: new(sync.Map),
@@ -218,7 +249,7 @@ func TestDrainWaitsWhenTaskCountChangesFromZero(t *testing.T) {
 	startDispatcher := make(chan struct{})
 	p := &Pump{
 		sendCh:         make(chan *entity.Envelope, 1),
-		senders:        map[string]Sender{routeKey("RabbitMQ", "events"): sender},
+		senders:        map[string]Sender{routeKey("events"): sender},
 		senderConfigs:  make(map[string]string),
 		handlers:       new(sync.Map),
 		handlerConfigs: new(sync.Map),

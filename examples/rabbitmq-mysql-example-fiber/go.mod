@@ -7,6 +7,7 @@ require (
 	github.com/loopopen/gap v1.0.0
 	github.com/loopopen/gap/broker/xrabbitmq v1.0.0
 	github.com/loopopen/gap/storage/xmysql v1.0.0
+	github.com/valyala/fasthttp v1.51.0
 )
 
 require (
@@ -24,7 +25,6 @@ require (
 	github.com/rabbitmq/amqp091-go v1.15.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.51.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
 )

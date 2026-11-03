@@ -99,6 +99,7 @@ func (t *deliveryTag) submit(kind deliveryActionKind) error {
 type Consumer struct {
 	gapOpts *ingap.Options
 	opts    *Options
+
 	group   string
 	groupID string
 	ensurer *Ensurer

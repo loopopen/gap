@@ -89,7 +89,7 @@ type blockingRuntimeBroker struct {
 }
 
 func (*blockingRuntimeBroker) PluginType() enum.Plugin { return enum.PluginRabbitMQ }
-func (*blockingRuntimeBroker) ConfigIdentity() string  { return "blocking-runtime" }
+func (*blockingRuntimeBroker) ConfigID() string        { return "blocking-runtime" }
 func (b *blockingRuntimeBroker) OpenProducer(*ingap.Options) (broker.Producer, error) {
 	return b.producer, nil
 }
@@ -137,7 +137,7 @@ type isolatedRuntimeBroker struct {
 }
 
 func (*isolatedRuntimeBroker) PluginType() enum.Plugin { return enum.PluginKafka }
-func (*isolatedRuntimeBroker) ConfigIdentity() string  { return "shared-config" }
+func (*isolatedRuntimeBroker) ConfigID() string        { return "shared-config" }
 func (*isolatedRuntimeBroker) OpenProducer(*ingap.Options) (broker.Producer, error) {
 	return new(runtimeProducerStub), nil
 }
@@ -223,8 +223,8 @@ type runtimeBrokerStub struct {
 	opened   *atomic.Int32
 }
 
-func (*runtimeBrokerStub) PluginType() enum.Plugin  { return enum.PluginRabbitMQ }
-func (b *runtimeBrokerStub) ConfigIdentity() string { return b.identity }
+func (*runtimeBrokerStub) PluginType() enum.Plugin { return enum.PluginRabbitMQ }
+func (b *runtimeBrokerStub) ConfigID() string      { return b.identity }
 func (*runtimeBrokerStub) OpenProducer(*ingap.Options) (broker.Producer, error) {
 	return new(runtimeProducerStub), nil
 }
@@ -328,7 +328,7 @@ func TestShutdownTimeoutCancelsAcceptedWork(t *testing.T) {
 	}
 	select {
 	case <-producer.closed:
-	default:
+	case <-time.After(time.Second):
 		t.Fatal("producer was not closed after shutdown timeout")
 	}
 }

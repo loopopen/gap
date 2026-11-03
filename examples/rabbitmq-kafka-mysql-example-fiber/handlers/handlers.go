@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"examples/fiber-rabbitmq-kafka-mysql-example/service"
+	"examples/rabbitmq-kafka-mysql-example-fiber/service"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -10,7 +10,7 @@ func Greet(svc *service.GreetSvc) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		name := c.Query("name", "Unknow")
 
-		err := svc.Greet(c.Context(), name)
+		err := svc.Greet(c.UserContext(), name)
 		if err != nil {
 			return err
 		}

@@ -71,8 +71,8 @@ func (o *Options) producerKey() string {
 	return o.connectionKey()
 }
 
-func (o *Options) ConfigIdentity() string {
-	return broker.ConfigIdentity("xconfluent", o.producerKey())
+func (o *Options) ConfigID() string {
+	return broker.ConfigID("xconfluent", o.producerKey())
 }
 
 var (
