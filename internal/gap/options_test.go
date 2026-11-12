@@ -30,6 +30,8 @@ func TestValidateStateMachineOptions(t *testing.T) {
 		{name: "max retries negative", field: "MaxRetries", value: -1, mutate: func(o *Options, v int) { o.MaxRetries = v }},
 		{name: "lease ttl zero", field: "LeaseTTLSeconds", value: 0, mutate: func(o *Options, v int) { o.LeaseTTLSeconds = v }},
 		{name: "lease ttl negative", field: "LeaseTTLSeconds", value: -1, mutate: func(o *Options, v int) { o.LeaseTTLSeconds = v }},
+		{name: "retry interval zero", field: "RetryIntervalSeconds", value: 0, mutate: func(o *Options, v int) { o.RetryIntervalSeconds = v }},
+		{name: "retry interval negative", field: "RetryIntervalSeconds", value: -1, mutate: func(o *Options, v int) { o.RetryIntervalSeconds = v }},
 		{name: "pump interval zero", field: "PumpIntervalSeconds", value: 0, mutate: func(o *Options, v int) { o.PumpIntervalSeconds = v }},
 		{name: "pump interval negative", field: "PumpIntervalSeconds", value: -1, mutate: func(o *Options, v int) { o.PumpIntervalSeconds = v }},
 	}
@@ -55,6 +57,7 @@ func TestValidateAcceptsReasonableUpperValues(t *testing.T) {
 	opts.ClaimBatchSize = 10_000
 	opts.MaxRetries = 1_000_000
 	opts.LeaseTTLSeconds = 30 * 24 * 60 * 60
+	opts.RetryIntervalSeconds = 60
 	opts.PumpIntervalSeconds = 60 * 60
 	if err := opts.Validate(); err != nil {
 		t.Fatal(err)
@@ -67,13 +70,16 @@ func TestValidateRejectsDurationOverflow(t *testing.T) {
 		t.Skip("int cannot represent a duration-overflowing seconds value")
 	}
 
-	for _, field := range []string{"LeaseTTLSeconds", "PumpIntervalSeconds"} {
+	for _, field := range []string{"LeaseTTLSeconds", "RetryIntervalSeconds", "PumpIntervalSeconds"} {
 		t.Run(field, func(t *testing.T) {
 			opts := new(Options).With()
 			value := int(maxDurationSeconds + 1)
-			if field == "LeaseTTLSeconds" {
+			switch field {
+			case "LeaseTTLSeconds":
 				opts.LeaseTTLSeconds = value
-			} else {
+			case "RetryIntervalSeconds":
+				opts.RetryIntervalSeconds = value
+			default:
 				opts.PumpIntervalSeconds = value
 			}
 			err := opts.Validate()

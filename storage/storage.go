@@ -24,7 +24,9 @@ type Storage interface {
 
 	CreatePublished(ctx context.Context, envelope *entity.Envelope) error
 
-	// UpdateStatusPublished writes status verbatim for the current lease and releases it.
+	// UpdateStatusPublished releases the current lease.
+	// Succeeded and Failed are written as given. Pending keeps that status and
+	// schedules the next attempt after RetryInterval.
 	UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error
 
 	ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*entity.Envelope, error)

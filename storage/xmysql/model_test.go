@@ -24,19 +24,76 @@ func TestClaimIndexSQL(t *testing.T) {
 
 func TestFailExhaustedSQL(t *testing.T) {
 	sql := failExhaustedSQL("`gap_published`")
+	assertPendingDueWhere(t, sql)
 	for _, condition := range []string{
 		"UPDATE `gap_published`",
-		"`status` = ?",
+		"SET `status` = ?",
 		"`lease_token` = NULL",
 		"`lease_until` = NULL",
-		"`version` = ?",
-		"`status` = ?",
-		"`next_attempt_at` <= ?",
 		"`retries` >= ?",
-		"`lease_until` IS NULL OR `lease_until` <= ?",
 	} {
 		if !strings.Contains(sql, condition) {
 			t.Fatalf("fail exhausted SQL %q does not contain %q", sql, condition)
+		}
+	}
+	if strings.Contains(sql, "`retries` < ?") {
+		t.Fatalf("fail exhausted SQL %q also claims retries", sql)
+	}
+}
+
+func TestClaimSelectSQL(t *testing.T) {
+	published := claimPublishedSQL("`gap_published`")
+	assertPendingDueWhere(t, published)
+	for _, condition := range []string{
+		"SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` FROM `gap_published`",
+		"`retries` < ?",
+		"LIMIT ? FOR UPDATE SKIP LOCKED",
+	} {
+		if !strings.Contains(published, condition) {
+			t.Fatalf("claim SQL %q does not contain %q", published, condition)
+		}
+	}
+	if strings.Contains(published, "`retries` >= ?") || strings.Contains(published, "`group`") {
+		t.Fatalf("published claim SQL %q includes the wrong clause", published)
+	}
+
+	received := claimReceivedSQL("`gap_received`")
+	assertPendingDueWhere(t, received)
+	if !strings.Contains(received, "`expired_at`,`group` FROM `gap_received`") {
+		t.Fatalf("received claim SQL %q does not select group", received)
+	}
+}
+
+func assertPendingDueWhere(t *testing.T, sql string) {
+	t.Helper()
+	for _, condition := range []string{
+		"`version` = ?",
+		"`status` = ?",
+		"`next_attempt_at` <= ?",
+		"`lease_until` IS NULL OR `lease_until` <= ?",
+	} {
+		if !strings.Contains(sql, condition) {
+			t.Fatalf("SQL %q does not contain %q", sql, condition)
+		}
+	}
+}
+
+func TestRetryPublishedSQLKeepsStatus(t *testing.T) {
+	sql := retryPublishedSQL("`gap_published`")
+	if strings.Contains(sql, "`status` = ?") && strings.Contains(sql, "SET `status`") {
+		t.Fatalf("retry SQL changes status: %s", sql)
+	}
+	for _, condition := range []string{
+		"UPDATE `gap_published`",
+		"`lease_token` = NULL",
+		"`lease_until` = NULL",
+		"`next_attempt_at` = ?",
+		"`id` = ?",
+		"`status` = ?",
+		"`lease_token` = ?",
+	} {
+		if !strings.Contains(sql, condition) {
+			t.Fatalf("retry SQL %q does not contain %q", sql, condition)
 		}
 	}
 }

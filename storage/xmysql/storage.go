@@ -72,14 +72,6 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 	now := time.Now()
 
 	var pubs []*Published
-	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` FROM %s " +
-		"WHERE `version` = ? " +
-		"AND `status` = ? " +
-		"AND `next_attempt_at` <= ? " +
-		"AND (`lease_until` IS NULL OR `lease_until` <= ?) " +
-		"AND `retries` < ? " +
-		"LIMIT ? FOR UPDATE SKIP LOCKED"
-
 	table, err := s.quotedTable("published")
 	if err != nil {
 		return nil, err
@@ -100,7 +92,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 	if err = s.failExhausted(ctx, tx, table, now); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, fmt.Sprintf(script1, table),
+	rows, err := tx.QueryContext(ctx, claimPublishedSQL(table),
 		o.Version,
 		enum.StatusPending,
 		now,
@@ -167,14 +159,6 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 	now := time.Now()
 
 	var recs []*Received
-	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` FROM %s " +
-		"WHERE `version` = ? " +
-		"AND `status` = ? " +
-		"AND `next_attempt_at` <= ? " +
-		"AND (`lease_until` IS NULL OR `lease_until` <= ?) " +
-		"AND `retries` < ? " +
-		"LIMIT ? FOR UPDATE SKIP LOCKED"
-
 	table, err := s.quotedTable("received")
 	if err != nil {
 		return nil, err
@@ -195,7 +179,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 	if err = s.failExhausted(ctx, tx, table, now); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, fmt.Sprintf(script1, table),
+	rows, err := tx.QueryContext(ctx, claimReceivedSQL(table),
 		o.Version,
 		enum.StatusPending,
 		now,
@@ -258,13 +242,46 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 }
 
 func (s *Storage) failExhausted(ctx context.Context, tx *sql.Tx, table string, now time.Time) error {
-	_, err := tx.ExecContext(ctx, failExhaustedSQL(table), enum.StatusFailed, s.gapOpts.Version, enum.StatusPending, now, s.gapOpts.MaxRetries, now)
+	_, err := tx.ExecContext(ctx, failExhaustedSQL(table), enum.StatusFailed, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries)
 	return err
 }
 
+func claimPublishedSQL(table string) string {
+	return fmt.Sprintf(
+		"SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` FROM %s "+
+			"WHERE `version` = ? "+
+			"AND `status` = ? "+
+			"AND `next_attempt_at` <= ? "+
+			"AND (`lease_until` IS NULL OR `lease_until` <= ?) "+
+			"AND `retries` < ? "+
+			"LIMIT ? FOR UPDATE SKIP LOCKED",
+		table,
+	)
+}
+
+func claimReceivedSQL(table string) string {
+	return fmt.Sprintf(
+		"SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` FROM %s "+
+			"WHERE `version` = ? "+
+			"AND `status` = ? "+
+			"AND `next_attempt_at` <= ? "+
+			"AND (`lease_until` IS NULL OR `lease_until` <= ?) "+
+			"AND `retries` < ? "+
+			"LIMIT ? FOR UPDATE SKIP LOCKED",
+		table,
+	)
+}
+
 func failExhaustedSQL(table string) string {
-	return "UPDATE " + table + " SET `status` = ?, `lease_token` = NULL, `lease_until` = NULL " +
-		"WHERE `version` = ? AND `status` = ? AND `next_attempt_at` <= ? AND `retries` >= ? AND (`lease_until` IS NULL OR `lease_until` <= ?)"
+	return fmt.Sprintf(
+		"UPDATE %s SET `status` = ?, `lease_token` = NULL, `lease_until` = NULL "+
+			"WHERE `version` = ? "+
+			"AND `status` = ? "+
+			"AND `next_attempt_at` <= ? "+
+			"AND (`lease_until` IS NULL OR `lease_until` <= ?) "+
+			"AND `retries` >= ?",
+		table,
+	)
 }
 
 // CreatePublished implements [storage.Storage].
@@ -349,6 +366,9 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 
 // UpdateStatusPublished implements [storage.Storage].
 func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+	if status == enum.StatusPending {
+		return s.schedulePublishedRetry(ctx, id, leaseToken)
+	}
 	table, err := s.quotedTable("published")
 	if err != nil {
 		return err
@@ -393,6 +413,31 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken 
 
 func (s *Storage) updateStatus(ctx context.Context, table string, id uint, leaseToken string, status enum.Status) (sql.Result, error) {
 	return s.execer().ExecContext(ctx, updateStatusSQL(table), status, id, enum.StatusPending, leaseToken)
+}
+
+func (s *Storage) schedulePublishedRetry(ctx context.Context, id uint, leaseToken string) error {
+	table, err := s.quotedTable("published")
+	if err != nil {
+		return err
+	}
+	nextAttemptAt := time.Now().Add(s.gapOpts.RetryInterval())
+	result, err := s.execer().ExecContext(ctx, retryPublishedSQL(table), nextAttemptAt, id, enum.StatusPending, leaseToken)
+	if err != nil {
+		return err
+	}
+	if n, err := result.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return storage.ErrLeaseLost
+	}
+	if id != 0 {
+		slog.Debug("scheduled published retry", slog.Any("id", id), slog.Time("next_attempt_at", nextAttemptAt))
+	}
+	return nil
+}
+
+func retryPublishedSQL(table string) string {
+	return "UPDATE " + table + " SET `lease_token` = NULL, `lease_until` = NULL, `next_attempt_at` = ? WHERE `id` = ? AND `status` = ? AND `lease_token` = ?"
 }
 
 func updateStatusSQL(table string) string {

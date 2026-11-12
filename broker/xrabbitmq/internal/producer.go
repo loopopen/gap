@@ -101,9 +101,7 @@ func (p *Producer) send(ctx context.Context, routingKey string, headers map[stri
 		}
 		reusable = true
 	} else {
-		confirm, err := ch.PublishWithDeferredConfirmWithContext(
-			ctx, p.exchange(), routingKey, p.opts.Mandatory, false, publishing,
-		)
+		confirm, err := ch.PublishWithDeferredConfirmWithContext(ctx, p.exchange(), routingKey, p.opts.Mandatory, false, publishing)
 		if err != nil {
 			return err
 		}

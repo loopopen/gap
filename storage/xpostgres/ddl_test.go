@@ -3,6 +3,7 @@ package xpostgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -68,19 +69,78 @@ func TestClaimIndexSQL(t *testing.T) {
 
 func TestFailExhaustedSQL(t *testing.T) {
 	sql := failExhaustedSQL(`"gap"."published"`, `"gap"."status_enum"`)
+	assertPendingDueWhere(t, sql, 2)
 	for _, condition := range []string{
 		`UPDATE "gap"."published"`,
 		`"status" = $1::"gap"."status_enum"`,
 		`"lease_token" = NULL`,
 		`"lease_until" = NULL`,
-		`"version" = $2`,
-		`"status" = $3::"gap"."status_enum"`,
-		`"next_attempt_at" <= $4`,
-		`"retries" >= $5`,
-		`"lease_until" IS NULL OR "lease_until" <= $6`,
+		`"retries" >= $6`,
 	} {
 		if !strings.Contains(sql, condition) {
 			t.Fatalf("fail exhausted SQL %q does not contain %q", sql, condition)
+		}
+	}
+	if strings.Contains(sql, `"retries" <`) {
+		t.Fatalf("fail exhausted SQL %q also claims retries", sql)
+	}
+}
+
+func TestClaimSelectSQL(t *testing.T) {
+	published := claimPublishedSQL(`"gap"."published"`, `"gap"."status_enum"`)
+	assertPendingDueWhere(t, published, 1)
+	for _, condition := range []string{
+		`SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at"`,
+		`FROM "gap"."published"`,
+		`"retries" < $5`,
+		"LIMIT $6 FOR UPDATE SKIP LOCKED",
+	} {
+		if !strings.Contains(published, condition) {
+			t.Fatalf("claim SQL %q does not contain %q", published, condition)
+		}
+	}
+	if strings.Contains(published, `"retries" >=`) || strings.Contains(published, `"group"`) {
+		t.Fatalf("published claim SQL %q includes the wrong clause", published)
+	}
+
+	received := claimReceivedSQL(`"gap"."received"`, `"gap"."status_enum"`)
+	assertPendingDueWhere(t, received, 1)
+	if !strings.Contains(received, `"expired_at","group"`) || !strings.Contains(received, `FROM "gap"."received"`) {
+		t.Fatalf("received claim SQL %q does not select group", received)
+	}
+}
+
+func assertPendingDueWhere(t *testing.T, sql string, start int) {
+	t.Helper()
+	statusType := `"gap"."status_enum"`
+	for _, condition := range []string{
+		fmt.Sprintf(`"version" = $%d`, start),
+		fmt.Sprintf(`"status" = $%d::%s`, start+1, statusType),
+		fmt.Sprintf(`"next_attempt_at" <= $%d`, start+2),
+		fmt.Sprintf(`"lease_until" IS NULL OR "lease_until" <= $%d`, start+3),
+	} {
+		if !strings.Contains(sql, condition) {
+			t.Fatalf("SQL %q does not contain %q", sql, condition)
+		}
+	}
+}
+
+func TestRetryPublishedSQLKeepsStatus(t *testing.T) {
+	sql := retryPublishedSQL(`"gap"."published"`, `"gap"."status_enum"`)
+	if strings.Contains(sql, `SET "status"`) {
+		t.Fatalf("retry SQL changes status: %s", sql)
+	}
+	for _, condition := range []string{
+		`UPDATE "gap"."published"`,
+		`"lease_token" = NULL`,
+		`"lease_until" = NULL`,
+		`"next_attempt_at" = $1`,
+		`"id" = $2`,
+		`"status" = $3::"gap"."status_enum"`,
+		`"lease_token" = $4`,
+	} {
+		if !strings.Contains(sql, condition) {
+			t.Fatalf("retry SQL %q does not contain %q", sql, condition)
 		}
 	}
 }

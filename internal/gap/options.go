@@ -102,6 +102,7 @@ func (o *Options) Validate() error {
 	errs = append(errs, validatePositiveOption("ClaimBatchSize", o.ClaimBatchSize))
 	errs = append(errs, validatePositiveOption("MaxRetries", o.MaxRetries))
 	errs = append(errs, validateDurationSeconds("LeaseTTLSeconds", o.LeaseTTLSeconds))
+	errs = append(errs, validateDurationSeconds("RetryIntervalSeconds", o.RetryIntervalSeconds))
 	errs = append(errs, validateDurationSeconds("PumpIntervalSeconds", o.PumpIntervalSeconds))
 	return errors.Join(errs...)
 }

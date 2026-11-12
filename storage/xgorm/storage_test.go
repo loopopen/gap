@@ -75,17 +75,52 @@ func TestMessageOrderByID(t *testing.T) {
 func TestFailExhaustedWhere(t *testing.T) {
 	db, stor := openStorage(t)
 	stor.gapOpts.MaxRetries = 3
-	where := whereText(stor.exhaustedQuery(db, &Published{}, time.Now()))
+	now := time.Now()
+	where := whereText(stor.exhaustedQuery(db, &Published{}, now))
+	assertPendingDueWhere(t, where)
+	if !strings.Contains(where, "retries >= ?") {
+		t.Fatalf("fail exhausted WHERE %q does not contain retries >= ?", where)
+	}
+}
+
+func TestClaimWhere(t *testing.T) {
+	db, stor := openStorage(t)
+	stor.gapOpts.MaxRetries = 3
+	where := whereText(stor.claimQuery(db, &Published{}, time.Now(), 10))
+	assertPendingDueWhere(t, where)
+	if !strings.Contains(where, "retries < ?") {
+		t.Fatalf("claim WHERE %q does not contain retries < ?", where)
+	}
+	if strings.Contains(where, "retries >= ?") {
+		t.Fatalf("claim WHERE %q also exhausts retries", where)
+	}
+}
+
+func assertPendingDueWhere(t *testing.T, where string) {
+	t.Helper()
 	for _, condition := range []string{
 		"`version` = ?",
 		"status = ?",
 		"next_attempt_at <= ?",
-		"retries >= ?",
 		"lease_until IS NULL OR lease_until <= ?",
 	} {
 		if !strings.Contains(where, condition) {
-			t.Fatalf("fail exhausted WHERE %q does not contain %q", where, condition)
+			t.Fatalf("WHERE %q does not contain %q", where, condition)
 		}
+	}
+}
+
+func TestRetryUpdatesKeepStatus(t *testing.T) {
+	next := time.Date(2026, 11, 11, 8, 30, 0, 0, time.UTC)
+	updates := retryUpdates(next)
+	if _, ok := updates["status"]; ok {
+		t.Fatal("retry update changes status")
+	}
+	if updates["next_attempt_at"] != next {
+		t.Fatalf("next attempt = %v, want %v", updates["next_attempt_at"], next)
+	}
+	if updates["lease_token"] != nil || updates["lease_until"] != nil {
+		t.Fatalf("retry update = %#v, want cleared lease", updates)
 	}
 }
 

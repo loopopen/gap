@@ -26,6 +26,7 @@ func TestNewRejectsInvalidStateMachineOptions(t *testing.T) {
 		{name: "claim batch", field: "ClaimBatchSize=0", option: ClaimBatchSize(0)},
 		{name: "max retries", field: "MaxRetries=0", option: MaxRetries(0)},
 		{name: "lease ttl", field: "LeaseTTLSeconds=0", option: LeaseTTLSeconds(0)},
+		{name: "retry interval", field: "RetryIntervalSeconds=0", option: RetryIntervalSeconds(0)},
 		{name: "pump interval", field: "PumpIntervalSeconds=0", option: PumpIntervalSeconds(0)},
 	}
 

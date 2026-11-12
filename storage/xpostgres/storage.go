@@ -83,17 +83,10 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base string, re
 		return nil, err
 	}
 
-	columns := `"id","created_at","version","topic","status","headers","payload","retries","expired_at"`
+	script1 := claimPublishedSQL(table, statusType)
 	if received {
-		columns += `,"group"`
+		script1 = claimReceivedSQL(table, statusType)
 	}
-	script1 := "SELECT " + columns + " FROM " + table + " " +
-		`WHERE "version" = $1 ` +
-		`AND "status" = $2::` + statusType + ` ` +
-		`AND "next_attempt_at" <= $3 ` +
-		`AND ("lease_until" IS NULL OR "lease_until" <= $4) ` +
-		`AND "retries" < $5 ` +
-		`LIMIT $6 FOR UPDATE SKIP LOCKED`
 
 	tx, own, err := s.beginClaim(ctx)
 	if err != nil {
@@ -213,13 +206,43 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base string, re
 }
 
 func (s *Storage) failExhausted(ctx context.Context, tx *sql.Tx, table, statusType string, now time.Time) error {
-	_, err := tx.ExecContext(ctx, failExhaustedSQL(table, statusType), enum.StatusFailed, s.gapOpts.Version, enum.StatusPending, now, s.gapOpts.MaxRetries, now)
+	_, err := tx.ExecContext(ctx, failExhaustedSQL(table, statusType), enum.StatusFailed, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries)
 	return err
 }
 
+func claimPublishedSQL(table, statusType string) string {
+	return fmt.Sprintf(`
+SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at"
+FROM %s
+WHERE "version" = $1
+AND "status" = $2::%s
+AND "next_attempt_at" <= $3
+AND ("lease_until" IS NULL OR "lease_until" <= $4)
+AND "retries" < $5
+LIMIT $6 FOR UPDATE SKIP LOCKED`, table, statusType)
+}
+
+func claimReceivedSQL(table, statusType string) string {
+	return fmt.Sprintf(`
+SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at","group"
+FROM %s
+WHERE "version" = $1
+AND "status" = $2::%s
+AND "next_attempt_at" <= $3
+AND ("lease_until" IS NULL OR "lease_until" <= $4)
+AND "retries" < $5
+LIMIT $6 FOR UPDATE SKIP LOCKED`, table, statusType)
+}
+
 func failExhaustedSQL(table, statusType string) string {
-	return "UPDATE " + table + ` SET "status" = $1::` + statusType + `, "lease_token" = NULL, "lease_until" = NULL ` +
-		`WHERE "version" = $2 AND "status" = $3::` + statusType + ` AND "next_attempt_at" <= $4 AND "retries" >= $5 AND ("lease_until" IS NULL OR "lease_until" <= $6)`
+	return fmt.Sprintf(`
+UPDATE %s
+SET "status" = $1::%s, "lease_token" = NULL, "lease_until" = NULL
+WHERE "version" = $2
+AND "status" = $3::%s
+AND "next_attempt_at" <= $4
+AND ("lease_until" IS NULL OR "lease_until" <= $5)
+AND "retries" >= $6`, table, statusType, statusType)
 }
 
 // CreatePublished implements [storage.Storage].
@@ -309,6 +332,9 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 
 // UpdateStatusPublished implements [storage.Storage].
 func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+	if status == enum.StatusPending {
+		return s.schedulePublishedRetry(ctx, id, leaseToken)
+	}
 	return s.updateStatus(ctx, "published", id, leaseToken, status)
 }
 
@@ -343,6 +369,35 @@ func (s *Storage) updateStatus(ctx context.Context, base string, id uint, leaseT
 
 func updateStatusSQL(table, statusType string) string {
 	return "UPDATE " + table + ` SET "status" = $1::` + statusType + `, "lease_token" = NULL, "lease_until" = NULL WHERE "id" = $2 AND "status" = $3::` + statusType + ` AND "lease_token" = $4`
+}
+
+func (s *Storage) schedulePublishedRetry(ctx context.Context, id uint, leaseToken string) error {
+	table, err := s.quotedTable("published")
+	if err != nil {
+		return err
+	}
+	statusType, err := s.statusType()
+	if err != nil {
+		return err
+	}
+	nextAttemptAt := time.Now().Add(s.gapOpts.RetryInterval())
+	result, err := s.execer().ExecContext(ctx, retryPublishedSQL(table, statusType), nextAttemptAt, id, enum.StatusPending, leaseToken)
+	if err != nil {
+		return err
+	}
+	if n, rowsErr := result.RowsAffected(); rowsErr != nil {
+		return rowsErr
+	} else if n == 0 {
+		return storage.ErrLeaseLost
+	}
+	if id != 0 {
+		slog.Debug("scheduled published retry", slog.Any("id", id), slog.Time("next_attempt_at", nextAttemptAt))
+	}
+	return nil
+}
+
+func retryPublishedSQL(table, statusType string) string {
+	return "UPDATE " + table + ` SET "lease_token" = NULL, "lease_until" = NULL, "next_attempt_at" = $1 WHERE "id" = $2 AND "status" = $3::` + statusType + ` AND "lease_token" = $4`
 }
 
 func NewStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *Storage {

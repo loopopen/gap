@@ -298,13 +298,42 @@ func (s *Storage) InTx() bool {
 	return ok
 }
 
+func retryUpdates(nextAttemptAt time.Time) map[string]any {
+	return map[string]any{
+		"lease_token":     nil,
+		"lease_until":     nil,
+		"next_attempt_at": nextAttemptAt,
+	}
+}
+
 func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+	if status == enum.StatusPending {
+		return s.schedulePublishedRetry(ctx, id, leaseToken)
+	}
 	if err := s.updateStatus(ctx, &Published{}, id, leaseToken, status); err != nil {
 		return err
 	}
 
 	if id != 0 {
 		slog.Debug("updated status published", slog.Any("id", id), slog.String("status", status.String()))
+	}
+	return nil
+}
+
+func (s *Storage) schedulePublishedRetry(ctx context.Context, id uint, leaseToken string) error {
+	nextAttemptAt := time.Now().Add(s.gapOpts.RetryInterval())
+	result := s.db.WithContext(ctx).
+		Model(&Published{}).
+		Where("id = ? AND status = ? AND lease_token = ?", id, enum.StatusPending, leaseToken).
+		Updates(retryUpdates(nextAttemptAt))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return storage.ErrLeaseLost
+	}
+	if id != 0 {
+		slog.Debug("scheduled published retry", slog.Any("id", id), slog.Time("next_attempt_at", nextAttemptAt))
 	}
 	return nil
 }
@@ -319,17 +348,8 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 		if result := s.failExhausted(tx, &Published{}, now); result.Error != nil {
 			return result.Error
 		}
-		err := tx.
-			Model(&Published{}).
-			Where(&Model{Version: o.Version}).
-			Where("status = ? AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until <= ?)", enum.StatusPending, now, now).
-			Where(clause.Lt{
-				Column: "retries",
-				Value:  o.MaxRetries,
-			}).
-			Limit(batchSize).
-			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
-			Scan(&pubs).Error
+
+		err := s.claimQuery(tx, &Published{}, now, batchSize).Scan(&pubs).Error
 		if err != nil {
 			return err
 		}
@@ -377,17 +397,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 		if result := s.failExhausted(tx, &Received{}, now); result.Error != nil {
 			return result.Error
 		}
-		err := tx.
-			Model(&Received{}).
-			Where(&Model{Version: o.Version}).
-			Where("status = ? AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until <= ?)", enum.StatusPending, now, now).
-			Where(clause.Lt{
-				Column: "retries",
-				Value:  o.MaxRetries,
-			}).
-			Limit(batchSize).
-			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
-			Scan(&recs).Error
+		err := s.claimQuery(tx, &Received{}, now, batchSize).Scan(&recs).Error
 		if err != nil {
 			return err
 		}
@@ -434,11 +444,24 @@ func (s *Storage) failExhausted(tx *gorm.DB, model any, now time.Time) *gorm.DB 
 		})
 }
 
-func (s *Storage) exhaustedQuery(tx *gorm.DB, model any, now time.Time) *gorm.DB {
+// pendingDueQuery selects this version's pending messages that are due and have no live lease.
+func (s *Storage) pendingDueQuery(tx *gorm.DB, model any, now time.Time) *gorm.DB {
 	return tx.
 		Model(model).
 		Where(&Model{Version: s.gapOpts.Version}).
-		Where("status = ? AND next_attempt_at <= ? AND retries >= ? AND (lease_until IS NULL OR lease_until <= ?)", enum.StatusPending, now, s.gapOpts.MaxRetries, now)
+		Where("status = ? AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until <= ?)", enum.StatusPending, now, now)
+}
+
+func (s *Storage) claimQuery(tx *gorm.DB, model any, now time.Time, batchSize int) *gorm.DB {
+	return s.pendingDueQuery(tx, model, now).
+		Where("retries < ?", s.gapOpts.MaxRetries).
+		Limit(batchSize).
+		Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"})
+}
+
+func (s *Storage) exhaustedQuery(tx *gorm.DB, model any, now time.Time) *gorm.DB {
+	return s.pendingDueQuery(tx, model, now).
+		Where("retries >= ?", s.gapOpts.MaxRetries)
 }
 
 func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {

@@ -128,6 +128,7 @@ func initSvc() (*gap.Gap, *service.SvcHub) {
 	pub := g.NewEventPublisher(
 		xrabbitmq.UseRabbitMQ(
 			xrabbitmq.URL("amqp://guest:guest@127.0.0.1:5672/example"),
+			xrabbitmq.Mandatory(true),
 		),
 	)
 

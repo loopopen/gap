@@ -24,8 +24,11 @@ func (svc *GreetSvc) Greet(ctx context.Context, name string) error {
 	e := event.Hello{
 		Name: name,
 	}
-	slog.Info("!!!!!!!!!!!")
-	time.Sleep(5000 * time.Millisecond)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(2 * time.Second):
+	}
 	err := svc.pub.Publish(ctx, e)
 	return err
 }
