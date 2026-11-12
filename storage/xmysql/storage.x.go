@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/storage"
@@ -172,11 +171,9 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 		return nil, nil, err
 	}
 	const script2 = "SELECT COUNT(*) FROM %s %s"
-
 	var count int64
 	script := fmt.Sprintf(script2, table, wh.String())
 	params := wh.Params()
-	slog.Info(script, slog.Any("args", params))
 	err = s.db.QueryRowContext(ctx, script, params...).Scan(&count)
 	if err != nil {
 		return nil, nil, err
@@ -187,7 +184,6 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 
 	pg := page.Normalize()
 	script = fmt.Sprintf(script1, table, wh.String(), messageOrder(filter), paginate(pg))
-	slog.Info(script, slog.Any("args", params))
 	rows, err := s.db.QueryContext(ctx, script, params...)
 	if err != nil {
 		return nil, nil, err

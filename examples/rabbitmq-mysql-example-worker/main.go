@@ -16,6 +16,8 @@ import (
 )
 
 func main() {
+	slog.SetLogLoggerLevel(slog.LevelDebug)
+
 	dsn := "root:root@tcp(127.0.0.1:3306)/example?charset=utf8mb4&parseTime=True&loc=Local"
 	url := "amqp://guest:guest@127.0.0.1:5672/example"
 
@@ -26,6 +28,7 @@ func main() {
 		gap.ServiceName("rabbitmq-mysql-example.worker"),
 		xmysql.UseMySQL(
 			xmysql.DSN(dsn),
+			xmysql.Log(true),
 		),
 	)
 

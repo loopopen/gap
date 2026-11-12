@@ -15,13 +15,14 @@ import (
 	"github.com/loopopen/gap/internal/txer"
 	"github.com/loopopen/gap/internal/utility"
 	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/storage/xsql"
 )
 
 type Storage struct {
 	gapOpts *ingap.Options
 	opts    *Options
-	db      *sql.DB
-	tx      *sql.Tx
+	db      *xsql.DB
+	tx      *xsql.Tx
 }
 
 func (s *Storage) execer() Execer {
@@ -31,7 +32,7 @@ func (s *Storage) execer() Execer {
 	return s.db
 }
 
-func (s *Storage) beginClaim(ctx context.Context) (tx *sql.Tx, own bool, err error) {
+func (s *Storage) beginClaim(ctx context.Context) (tx *xsql.Tx, own bool, err error) {
 	if s.tx != nil {
 		return s.tx, false, nil
 	}
@@ -52,7 +53,7 @@ func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
 		gapOpts: s.gapOpts,
 		opts:    s.opts,
 		db:      s.db,
-		tx:      tx,
+		tx:      xsql.WrapTx(tx, logSQL(s.opts)),
 	}
 	return &newS, nil
 }
@@ -205,7 +206,7 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base string, re
 	return pubsToEntities(pubs)
 }
 
-func (s *Storage) failExhausted(ctx context.Context, tx *sql.Tx, table, statusType string, now time.Time) error {
+func (s *Storage) failExhausted(ctx context.Context, tx *xsql.Tx, table, statusType string, now time.Time) error {
 	_, err := tx.ExecContext(ctx, failExhaustedSQL(table, statusType), enum.StatusFailed, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries)
 	return err
 }
@@ -403,11 +404,15 @@ func retryAttemptSQL(table, statusType string) string {
 	return "UPDATE " + table + ` SET "lease_token" = NULL, "lease_until" = NULL, "next_attempt_at" = $1 WHERE "id" = $2 AND "status" = $3::` + statusType + ` AND "lease_token" = $4`
 }
 
+func logSQL(opts *Options) bool {
+	return opts != nil && opts.Log
+}
+
 func NewStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *Storage {
 	s := &Storage{
 		gapOpts: gapOpts,
 		opts:    opts,
-		db:      db,
+		db:      xsql.WrapDB(db, logSQL(opts)),
 	}
 	var _ storage.Storage = s
 	return s

@@ -18,6 +18,7 @@ import (
 	"github.com/loopopen/gap/internal/txer"
 	"github.com/loopopen/gap/internal/utility"
 	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/storage/xsql"
 )
 
 var mysqlIdentRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -25,8 +26,8 @@ var mysqlIdentRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 type Storage struct {
 	gapOpts *ingap.Options
 	opts    *Options
-	db      *sql.DB
-	tx      *sql.Tx
+	db      *xsql.DB
+	tx      *xsql.Tx
 }
 
 func (s *Storage) execer() Execer {
@@ -36,7 +37,7 @@ func (s *Storage) execer() Execer {
 	return s.db
 }
 
-func (s *Storage) beginClaim(ctx context.Context) (tx *sql.Tx, own bool, err error) {
+func (s *Storage) beginClaim(ctx context.Context) (tx *xsql.Tx, own bool, err error) {
 	if s.tx != nil {
 		return s.tx, false, nil
 	}
@@ -57,7 +58,7 @@ func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
 		gapOpts: s.gapOpts,
 		opts:    s.opts,
 		db:      s.db,
-		tx:      tx,
+		tx:      xsql.WrapTx(tx, logSQL(s.opts)),
 	}
 	return &newS, nil
 }
@@ -241,7 +242,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 	return es, nil
 }
 
-func (s *Storage) failExhausted(ctx context.Context, tx *sql.Tx, table string, now time.Time) error {
+func (s *Storage) failExhausted(ctx context.Context, tx *xsql.Tx, table string, now time.Time) error {
 	_, err := tx.ExecContext(ctx, failExhaustedSQL(table), enum.StatusFailed, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries)
 	return err
 }
@@ -447,11 +448,15 @@ func updateStatusSQL(table string) string {
 	return "UPDATE " + table + " SET `status` = ?, `lease_token` = NULL, `lease_until` = NULL WHERE `id` = ? AND `status` = ? AND `lease_token` = ?"
 }
 
+func logSQL(opts *Options) bool {
+	return opts != nil && opts.Log
+}
+
 func NewStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *Storage {
 	s := &Storage{
 		gapOpts: gapOpts,
 		opts:    opts,
-		db:      db,
+		db:      xsql.WrapDB(db, logSQL(opts)),
 	}
 	var _ storage.Storage = s
 	return s

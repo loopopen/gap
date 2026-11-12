@@ -7,10 +7,11 @@ import (
 )
 
 // NewOptions constructs a new instance of type Options
-func NewOptions(schema string, dsn string) *Options {
+func NewOptions(schema string, dsn string, log bool) *Options {
 	return &Options{
 		Schema: schema,
 		DSN:    dsn,
+		Log:    log,
 	}
 }
 
@@ -34,6 +35,13 @@ func Schema(schema_ string) shoot.Option[Options, *Options] {
 func DSN(dsn_ string) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		o.DSN = dsn_
+	}
+}
+
+// Log is a configuration for the filed Log
+func Log(log_ bool) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.Log = log_
 	}
 }
 

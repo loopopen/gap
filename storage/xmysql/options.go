@@ -15,6 +15,8 @@ type Options struct {
 	Schema string
 
 	DSN string
+
+	Log bool
 }
 
 func (o *Options) PluginType() enum.Plugin {
