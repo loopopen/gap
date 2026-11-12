@@ -59,8 +59,24 @@ func TestClaimSelectSQL(t *testing.T) {
 
 	received := claimReceivedSQL("`gap_received`")
 	assertPendingDueWhere(t, received)
-	if !strings.Contains(received, "`expired_at`,`group` FROM `gap_received`") {
-		t.Fatalf("received claim SQL %q does not select group", received)
+	for _, condition := range []string{
+		"`expired_at`,`group` FROM `gap_received`",
+		"`group` = ?",
+	} {
+		if !strings.Contains(received, condition) {
+			t.Fatalf("received claim SQL %q does not contain %q", received, condition)
+		}
+	}
+
+	exhausted := failExhaustedReceivedSQL("`gap_received`")
+	assertPendingDueWhere(t, exhausted)
+	for _, condition := range []string{
+		"`retries` >= ?",
+		"`group` = ?",
+	} {
+		if !strings.Contains(exhausted, condition) {
+			t.Fatalf("received exhausted SQL %q does not contain %q", exhausted, condition)
+		}
 	}
 }
 

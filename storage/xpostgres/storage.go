@@ -64,15 +64,15 @@ func (s *Storage) InTx() bool {
 
 // ClaimPublishedBatch implements [storage.Storage].
 func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []*entity.Envelope, err error) {
-	return s.claimBatch(ctx, batchSize, "published", false)
+	return s.claimBatch(ctx, batchSize, "published", "")
 }
 
 // ClaimReceivedBatch implements [storage.Storage].
-func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*entity.Envelope, err error) {
-	return s.claimBatch(ctx, batchSize, "received", true)
+func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group string) (es []*entity.Envelope, err error) {
+	return s.claimBatch(ctx, batchSize, "received", group)
 }
 
-func (s *Storage) claimBatch(ctx context.Context, batchSize int, base string, received bool) (es []*entity.Envelope, err error) {
+func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group string) (es []*entity.Envelope, err error) {
 	o := s.gapOpts
 	now := time.Now()
 	table, err := s.quotedTable(base)
@@ -84,10 +84,7 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base string, re
 		return nil, err
 	}
 
-	script1 := claimPublishedSQL(table, statusType)
-	if received {
-		script1 = claimReceivedSQL(table, statusType)
-	}
+	received := base == "received"
 
 	tx, own, err := s.beginClaim(ctx)
 	if err != nil {
@@ -102,17 +99,33 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base string, re
 			}
 		}()
 	}
-	if err = s.failExhausted(ctx, tx, table, statusType, now); err != nil {
-		return nil, err
+	var rows *sql.Rows
+	if received {
+		if err = s.failExhaustedReceived(ctx, tx, table, statusType, now, group); err != nil {
+			return nil, err
+		}
+		rows, err = tx.QueryContext(ctx, claimReceivedSQL(table, statusType),
+			o.Version,
+			enum.StatusPending,
+			now,
+			now,
+			o.MaxRetries,
+			group,
+			batchSize,
+		)
+	} else {
+		if err = s.failExhausted(ctx, tx, table, statusType, now); err != nil {
+			return nil, err
+		}
+		rows, err = tx.QueryContext(ctx, claimPublishedSQL(table, statusType),
+			o.Version,
+			enum.StatusPending,
+			now,
+			now,
+			o.MaxRetries,
+			batchSize,
+		)
 	}
-	rows, err := tx.QueryContext(ctx, script1,
-		o.Version,
-		enum.StatusPending,
-		now,
-		now,
-		o.MaxRetries,
-		batchSize,
-	)
 	if err != nil {
 		return nil, err
 	}
@@ -211,6 +224,11 @@ func (s *Storage) failExhausted(ctx context.Context, tx *xsql.Tx, table, statusT
 	return err
 }
 
+func (s *Storage) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table, statusType string, now time.Time, group string) error {
+	_, err := tx.ExecContext(ctx, failExhaustedReceivedSQL(table, statusType), enum.StatusFailed, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries, group)
+	return err
+}
+
 func claimPublishedSQL(table, statusType string) string {
 	return fmt.Sprintf(`
 SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at"
@@ -232,7 +250,8 @@ AND "status" = $2::%s
 AND "next_attempt_at" <= $3
 AND ("lease_until" IS NULL OR "lease_until" <= $4)
 AND "retries" < $5
-LIMIT $6 FOR UPDATE SKIP LOCKED`, table, statusType)
+AND "group" = $6
+LIMIT $7 FOR UPDATE SKIP LOCKED`, table, statusType)
 }
 
 func failExhaustedSQL(table, statusType string) string {
@@ -244,6 +263,18 @@ AND "status" = $3::%s
 AND "next_attempt_at" <= $4
 AND ("lease_until" IS NULL OR "lease_until" <= $5)
 AND "retries" >= $6`, table, statusType, statusType)
+}
+
+func failExhaustedReceivedSQL(table, statusType string) string {
+	return fmt.Sprintf(`
+UPDATE %s
+SET "status" = $1::%s, "lease_token" = NULL, "lease_until" = NULL
+WHERE "version" = $2
+AND "status" = $3::%s
+AND "next_attempt_at" <= $4
+AND ("lease_until" IS NULL OR "lease_until" <= $5)
+AND "retries" >= $6
+AND "group" = $7`, table, statusType, statusType)
 }
 
 // CreatePublished implements [storage.Storage].

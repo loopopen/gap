@@ -3,6 +3,7 @@ package pump
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -142,6 +143,59 @@ func TestPumpRejectsSameBrokerNameWithDifferentConfigs(t *testing.T) {
 	}
 	if err := p.SetSender("events", "kafka-config", new(senderStub)); err == nil {
 		t.Fatal("expected duplicate broker name configuration error")
+	}
+}
+
+func TestNextClaimGroupRotatesRegisteredNames(t *testing.T) {
+	p := &Pump{handlers: new(sync.Map)}
+	p.handlers.Store(handlerKey("rabbit", "shipping"), new(handlerStub))
+	p.handlers.Store(handlerKey("rabbit", "billing"), new(handlerStub))
+	p.handlers.Store(handlerKey("kafka", "billing"), new(handlerStub))
+	p.handlers.Store(handlerKey("rabbit", ""), new(handlerStub))
+
+	var got []string
+	for i := 0; i < 4; i++ {
+		group, ok := p.nextClaimGroup()
+		if !ok {
+			t.Fatal("expected a group")
+		}
+		got = append(got, group)
+	}
+	if !reflect.DeepEqual(got, []string{"", "billing", "shipping", ""}) {
+		t.Fatalf("rotation = %#v", got)
+	}
+}
+
+func TestNextClaimGroupFollowsNameWhenSetChanges(t *testing.T) {
+	p := &Pump{handlers: new(sync.Map)}
+	p.handlers.Store(handlerKey("rabbit", "b"), new(handlerStub))
+	p.handlers.Store(handlerKey("rabbit", "d"), new(handlerStub))
+	if group, ok := p.nextClaimGroup(); !ok || group != "b" {
+		t.Fatalf("first group = %q ok=%v", group, ok)
+	}
+	p.handlers.Store(handlerKey("rabbit", "a"), new(handlerStub))
+	if group, _ := p.nextClaimGroup(); group != "d" {
+		t.Fatalf("next group = %q, want d", group)
+	}
+}
+
+func TestNextClaimGroupRestartsWhenCursorLeaves(t *testing.T) {
+	p := &Pump{
+		handlers:       new(sync.Map),
+		claimCursor:    "gone",
+		claimCursorSet: true,
+	}
+	p.handlers.Store(handlerKey("rabbit", "keep"), new(handlerStub))
+	group, ok := p.nextClaimGroup()
+	if !ok || group != "keep" {
+		t.Fatalf("group = %q ok=%v", group, ok)
+	}
+}
+
+func TestNextClaimGroupEmpty(t *testing.T) {
+	p := &Pump{handlers: new(sync.Map)}
+	if _, ok := p.nextClaimGroup(); ok {
+		t.Fatal("expected no group")
 	}
 }
 

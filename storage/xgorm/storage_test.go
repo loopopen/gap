@@ -76,7 +76,7 @@ func TestFailExhaustedWhere(t *testing.T) {
 	db, stor := openStorage(t)
 	stor.gapOpts.MaxRetries = 3
 	now := time.Now()
-	where := whereText(stor.exhaustedQuery(db, &Published{}, now))
+	where := whereText(stor.exhaustedQuery(db, &Published{}, now, ""))
 	assertPendingDueWhere(t, where)
 	if !strings.Contains(where, "retries >= ?") {
 		t.Fatalf("fail exhausted WHERE %q does not contain retries >= ?", where)
@@ -86,13 +86,23 @@ func TestFailExhaustedWhere(t *testing.T) {
 func TestClaimWhere(t *testing.T) {
 	db, stor := openStorage(t)
 	stor.gapOpts.MaxRetries = 3
-	where := whereText(stor.claimQuery(db, &Published{}, time.Now(), 10))
+	where := whereText(stor.claimQuery(db, &Published{}, time.Now(), 10, ""))
 	assertPendingDueWhere(t, where)
 	if !strings.Contains(where, "retries < ?") {
 		t.Fatalf("claim WHERE %q does not contain retries < ?", where)
 	}
-	if strings.Contains(where, "retries >= ?") {
-		t.Fatalf("claim WHERE %q also exhausts retries", where)
+	if strings.Contains(where, "retries >= ?") || strings.Contains(where, "`group`") {
+		t.Fatalf("published claim WHERE %q includes the wrong clause", where)
+	}
+
+	received := whereText(stor.claimQuery(db, &Received{}, time.Now(), 10, "billing"))
+	assertPendingDueWhere(t, received)
+	if !strings.Contains(received, "`group` = ?") {
+		t.Fatalf("received claim WHERE %q does not filter group", received)
+	}
+	exhausted := whereText(stor.exhaustedQuery(db, &Received{}, time.Now(), "billing"))
+	if !strings.Contains(exhausted, "`group` = ?") || !strings.Contains(exhausted, "retries >= ?") {
+		t.Fatalf("received exhausted WHERE %q does not filter group", exhausted)
 	}
 }
 

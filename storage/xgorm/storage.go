@@ -345,11 +345,11 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 	var pubs []*Published
 	var es []*entity.Envelope
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if result := s.failExhausted(tx, &Published{}, now); result.Error != nil {
+		if result := s.failExhausted(tx, &Published{}, now, ""); result.Error != nil {
 			return result.Error
 		}
 
-		err := s.claimQuery(tx, &Published{}, now, batchSize).Scan(&pubs).Error
+		err := s.claimQuery(tx, &Published{}, now, batchSize, "").Scan(&pubs).Error
 		if err != nil {
 			return err
 		}
@@ -387,17 +387,17 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 	return es, nil
 }
 
-func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*entity.Envelope, error) {
+func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group string) ([]*entity.Envelope, error) {
 	o := s.gapOpts
 	now := time.Now()
 
 	var recs []*Received
 	var es []*entity.Envelope
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if result := s.failExhausted(tx, &Received{}, now); result.Error != nil {
+		if result := s.failExhausted(tx, &Received{}, now, group); result.Error != nil {
 			return result.Error
 		}
-		err := s.claimQuery(tx, &Received{}, now, batchSize).Scan(&recs).Error
+		err := s.claimQuery(tx, &Received{}, now, batchSize, group).Scan(&recs).Error
 		if err != nil {
 			return err
 		}
@@ -435,8 +435,8 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*ent
 	return es, nil
 }
 
-func (s *Storage) failExhausted(tx *gorm.DB, model any, now time.Time) *gorm.DB {
-	return s.exhaustedQuery(tx, model, now).
+func (s *Storage) failExhausted(tx *gorm.DB, model any, now time.Time, group string) *gorm.DB {
+	return s.exhaustedQuery(tx, model, now, group).
 		Updates(map[string]any{
 			"status":      enum.StatusFailed,
 			"lease_token": nil,
@@ -452,16 +452,23 @@ func (s *Storage) pendingDueQuery(tx *gorm.DB, model any, now time.Time) *gorm.D
 		Where("status = ? AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until <= ?)", enum.StatusPending, now, now)
 }
 
-func (s *Storage) claimQuery(tx *gorm.DB, model any, now time.Time, batchSize int) *gorm.DB {
-	return s.pendingDueQuery(tx, model, now).
+func (s *Storage) claimQuery(tx *gorm.DB, model any, now time.Time, batchSize int, group string) *gorm.DB {
+	return s.withReceivedGroup(s.pendingDueQuery(tx, model, now), model, group).
 		Where("retries < ?", s.gapOpts.MaxRetries).
 		Limit(batchSize).
 		Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"})
 }
 
-func (s *Storage) exhaustedQuery(tx *gorm.DB, model any, now time.Time) *gorm.DB {
-	return s.pendingDueQuery(tx, model, now).
+func (s *Storage) exhaustedQuery(tx *gorm.DB, model any, now time.Time, group string) *gorm.DB {
+	return s.withReceivedGroup(s.pendingDueQuery(tx, model, now), model, group).
 		Where("retries >= ?", s.gapOpts.MaxRetries)
+}
+
+func (s *Storage) withReceivedGroup(tx *gorm.DB, model any, group string) *gorm.DB {
+	if _, ok := model.(*Received); !ok {
+		return tx
+	}
+	return tx.Where(clause.Eq{Column: clause.Column{Name: "group"}, Value: group})
 }
 
 func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {

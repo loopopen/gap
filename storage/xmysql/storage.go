@@ -155,7 +155,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 }
 
 // ClaimReceivedBatch implements [storage.Storage].
-func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*entity.Envelope, err error) {
+func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group string) (es []*entity.Envelope, err error) {
 	o := s.gapOpts
 	now := time.Now()
 
@@ -177,7 +177,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 			}
 		}()
 	}
-	if err = s.failExhausted(ctx, tx, table, now); err != nil {
+	if err = s.failExhaustedReceived(ctx, tx, table, now, group); err != nil {
 		return nil, err
 	}
 	rows, err := tx.QueryContext(ctx, claimReceivedSQL(table),
@@ -186,6 +186,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*
 		now,
 		now,
 		o.MaxRetries,
+		group,
 		batchSize,
 	)
 	if err != nil {
@@ -247,6 +248,11 @@ func (s *Storage) failExhausted(ctx context.Context, tx *xsql.Tx, table string, 
 	return err
 }
 
+func (s *Storage) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table string, now time.Time, group string) error {
+	_, err := tx.ExecContext(ctx, failExhaustedReceivedSQL(table), enum.StatusFailed, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries, group)
+	return err
+}
+
 func claimPublishedSQL(table string) string {
 	return fmt.Sprintf(
 		"SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` FROM %s "+
@@ -268,6 +274,7 @@ func claimReceivedSQL(table string) string {
 			"AND `next_attempt_at` <= ? "+
 			"AND (`lease_until` IS NULL OR `lease_until` <= ?) "+
 			"AND `retries` < ? "+
+			"AND `group` = ? "+
 			"LIMIT ? FOR UPDATE SKIP LOCKED",
 		table,
 	)
@@ -281,6 +288,19 @@ func failExhaustedSQL(table string) string {
 			"AND `next_attempt_at` <= ? "+
 			"AND (`lease_until` IS NULL OR `lease_until` <= ?) "+
 			"AND `retries` >= ?",
+		table,
+	)
+}
+
+func failExhaustedReceivedSQL(table string) string {
+	return fmt.Sprintf(
+		"UPDATE %s SET `status` = ?, `lease_token` = NULL, `lease_until` = NULL "+
+			"WHERE `version` = ? "+
+			"AND `status` = ? "+
+			"AND `next_attempt_at` <= ? "+
+			"AND (`lease_until` IS NULL OR `lease_until` <= ?) "+
+			"AND `retries` >= ? "+
+			"AND `group` = ?",
 		table,
 	)
 }

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +40,8 @@ type Pump struct {
 	dispatchMu     sync.RWMutex
 	sealOnce       sync.Once
 	sealed         bool
+	claimCursor    string
+	claimCursorSet bool
 	sourceWG       sync.WaitGroup
 	dispatcherWG   sync.WaitGroup
 	taskWG         sync.WaitGroup
@@ -356,7 +360,11 @@ func (p *Pump) pollingHandle(ctx context.Context) {
 			return
 
 		case <-ticker.C:
-			rs, err := p.storage.ClaimReceivedBatch(ctx, p.gapOpts.ClaimBatchSize)
+			group, ok := p.nextClaimGroup()
+			if !ok {
+				continue
+			}
+			rs, err := p.storage.ClaimReceivedBatch(ctx, p.gapOpts.ClaimBatchSize, group)
 			if err != nil {
 				slog.Error("failed to claim received messages", slog.Any("err", err))
 				wait(ctx, 10*time.Second)
@@ -420,6 +428,54 @@ func (p *Pump) hasSender() bool {
 	p.senderMu.RLock()
 	defer p.senderMu.RUnlock()
 	return len(p.senders) != 0
+}
+
+func (p *Pump) nextClaimGroup() (string, bool) {
+	groups := p.registeredGroups()
+	if len(groups) == 0 {
+		return "", false
+	}
+	next := groups[0]
+	if p.claimCursorSet {
+		for i, group := range groups {
+			if group == p.claimCursor {
+				next = groups[(i+1)%len(groups)]
+				break
+			}
+		}
+	}
+	p.claimCursor = next
+	p.claimCursorSet = true
+	return next, true
+}
+
+func (p *Pump) registeredGroups() []string {
+	if p.handlers == nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	p.handlers.Range(func(key, _ any) bool {
+		name, ok := key.(string)
+		if !ok {
+			return true
+		}
+		seen[groupFromHandlerKey(name)] = struct{}{}
+		return true
+	})
+	groups := make([]string, 0, len(seen))
+	for group := range seen {
+		groups = append(groups, group)
+	}
+	sort.Strings(groups)
+	return groups
+}
+
+func groupFromHandlerKey(key string) string {
+	_, group, ok := strings.Cut(key, "\x00")
+	if !ok {
+		return key
+	}
+	return group
 }
 
 func (p *Pump) handler(envelope *entity.Envelope) (any, bool) {
