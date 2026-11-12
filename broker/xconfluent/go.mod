@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/confluentinc/confluent-kafka-go/v2 v2.12.0
-	github.com/loopopen/gap v1.0.0-beta.4
+	github.com/loopopen/gap v1.0.0-beta.5
 	github.com/loopopen/shoot v1.0.0
 )
 
