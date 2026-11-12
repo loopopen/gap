@@ -27,7 +27,7 @@ func HandleTopicWithinGroup[T any](handler Handler[T], topic string, group strin
 		var t T
 		err := json.Unmarshal(msg, &t)
 		if err != nil {
-			return err
+			return errx.Permanent(err)
 		}
 		return handler(ctx, t, headers)
 	}

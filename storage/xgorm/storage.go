@@ -308,7 +308,7 @@ func retryUpdates(nextAttemptAt time.Time) map[string]any {
 
 func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
 	if status == enum.StatusPending {
-		return s.schedulePublishedRetry(ctx, id, leaseToken)
+		return s.scheduleRetry(ctx, &Published{}, "published", id, leaseToken)
 	}
 	if err := s.updateStatus(ctx, &Published{}, id, leaseToken, status); err != nil {
 		return err
@@ -320,10 +320,10 @@ func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken
 	return nil
 }
 
-func (s *Storage) schedulePublishedRetry(ctx context.Context, id uint, leaseToken string) error {
+func (s *Storage) scheduleRetry(ctx context.Context, model any, kind string, id uint, leaseToken string) error {
 	nextAttemptAt := time.Now().Add(s.gapOpts.RetryInterval())
 	result := s.db.WithContext(ctx).
-		Model(&Published{}).
+		Model(model).
 		Where("id = ? AND status = ? AND lease_token = ?", id, enum.StatusPending, leaseToken).
 		Updates(retryUpdates(nextAttemptAt))
 	if result.Error != nil {
@@ -333,7 +333,7 @@ func (s *Storage) schedulePublishedRetry(ctx context.Context, id uint, leaseToke
 		return storage.ErrLeaseLost
 	}
 	if id != 0 {
-		slog.Debug("scheduled published retry", slog.Any("id", id), slog.Time("next_attempt_at", nextAttemptAt))
+		slog.Debug("scheduled retry", slog.String("table", kind), slog.Any("id", id), slog.Time("next_attempt_at", nextAttemptAt))
 	}
 	return nil
 }
@@ -465,6 +465,9 @@ func (s *Storage) exhaustedQuery(tx *gorm.DB, model any, now time.Time) *gorm.DB
 }
 
 func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+	if status == enum.StatusPending {
+		return s.scheduleRetry(ctx, &Received{}, "received", id, leaseToken)
+	}
 	if err := s.updateStatus(ctx, &Received{}, id, leaseToken, status); err != nil {
 		return err
 	}

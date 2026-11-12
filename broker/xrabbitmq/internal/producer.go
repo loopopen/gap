@@ -59,12 +59,15 @@ func (p *Producer) init() error {
 // Produce implements [broker.Producer].
 func (p *Producer) Produce(ctx context.Context, envelope *entity.Envelope) error {
 	routingKey := envelope.Topic
+	if routingKey == "" {
+		return errx.Permanent(errx.ErrEmptyTopic)
+	}
 	body, err := envelope.PayloadBytes()
 	if err != nil {
-		return err
+		return errx.Permanent(err)
 	}
 	if len(body) == 0 {
-		return errx.ErrNilPayload
+		return errx.Permanent(errx.ErrNilPayload)
 	}
 	return p.send(ctx, routingKey, envelope.Headers, envelope.Payload)
 }

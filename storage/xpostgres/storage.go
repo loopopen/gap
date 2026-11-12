@@ -333,13 +333,16 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 // UpdateStatusPublished implements [storage.Storage].
 func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
 	if status == enum.StatusPending {
-		return s.schedulePublishedRetry(ctx, id, leaseToken)
+		return s.scheduleRetry(ctx, "published", id, leaseToken)
 	}
 	return s.updateStatus(ctx, "published", id, leaseToken, status)
 }
 
 // UpdateStatusReceived implements [storage.Storage].
 func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+	if status == enum.StatusPending {
+		return s.scheduleRetry(ctx, "received", id, leaseToken)
+	}
 	return s.updateStatus(ctx, "received", id, leaseToken, status)
 }
 
@@ -371,8 +374,8 @@ func updateStatusSQL(table, statusType string) string {
 	return "UPDATE " + table + ` SET "status" = $1::` + statusType + `, "lease_token" = NULL, "lease_until" = NULL WHERE "id" = $2 AND "status" = $3::` + statusType + ` AND "lease_token" = $4`
 }
 
-func (s *Storage) schedulePublishedRetry(ctx context.Context, id uint, leaseToken string) error {
-	table, err := s.quotedTable("published")
+func (s *Storage) scheduleRetry(ctx context.Context, base string, id uint, leaseToken string) error {
+	table, err := s.quotedTable(base)
 	if err != nil {
 		return err
 	}
@@ -381,7 +384,7 @@ func (s *Storage) schedulePublishedRetry(ctx context.Context, id uint, leaseToke
 		return err
 	}
 	nextAttemptAt := time.Now().Add(s.gapOpts.RetryInterval())
-	result, err := s.execer().ExecContext(ctx, retryPublishedSQL(table, statusType), nextAttemptAt, id, enum.StatusPending, leaseToken)
+	result, err := s.execer().ExecContext(ctx, retryAttemptSQL(table, statusType), nextAttemptAt, id, enum.StatusPending, leaseToken)
 	if err != nil {
 		return err
 	}
@@ -391,12 +394,12 @@ func (s *Storage) schedulePublishedRetry(ctx context.Context, id uint, leaseToke
 		return storage.ErrLeaseLost
 	}
 	if id != 0 {
-		slog.Debug("scheduled published retry", slog.Any("id", id), slog.Time("next_attempt_at", nextAttemptAt))
+		slog.Debug("scheduled retry", slog.String("table", base), slog.Any("id", id), slog.Time("next_attempt_at", nextAttemptAt))
 	}
 	return nil
 }
 
-func retryPublishedSQL(table, statusType string) string {
+func retryAttemptSQL(table, statusType string) string {
 	return "UPDATE " + table + ` SET "lease_token" = NULL, "lease_until" = NULL, "next_attempt_at" = $1 WHERE "id" = $2 AND "status" = $3::` + statusType + ` AND "lease_token" = $4`
 }
 

@@ -5,6 +5,26 @@ import (
 	"fmt"
 )
 
+// Permanent marks an error that another attempt cannot repair.
+// HandleAndUpdate records those messages as Failed instead of scheduling a retry.
+func Permanent(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &permanentError{err}
+}
+
+func IsPermanent(err error) bool {
+	var target *permanentError
+	return errors.As(err, &target)
+}
+
+type permanentError struct {
+	error
+}
+
+func (e *permanentError) Unwrap() error { return e.error }
+
 func ErrParamIsNil(param string) error {
 	return fmt.Errorf("param %s is nil", param)
 }

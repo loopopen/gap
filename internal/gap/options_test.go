@@ -1,11 +1,28 @@
 package gap
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loopopen/gap/internal/errx"
 )
+
+func TestTypedHandlerMarksInvalidPayloadPermanent(t *testing.T) {
+	opts := new(BrokerOptions)
+	HandleTopicWithinGroup(func(context.Context, string, map[string]string) error {
+		return nil
+	}, "events", "group")(opts)
+	if len(opts.HandlerOptsLst) != 1 {
+		t.Fatalf("handlers = %d, want 1", len(opts.HandlerOptsLst))
+	}
+	err := opts.HandlerOptsLst[0].Handler(context.Background(), []byte("{"), nil)
+	if !errx.IsPermanent(err) {
+		t.Fatalf("unmarshal error = %v, want permanent", err)
+	}
+}
 
 func TestLeaseAndRetryDefaults(t *testing.T) {
 	opts := new(Options).With()

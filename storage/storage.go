@@ -35,7 +35,9 @@ type Storage interface {
 
 	ClaimReceivedBatch(ctx context.Context, batchSize int) ([]*entity.Envelope, error)
 
-	// UpdateStatusReceived writes status verbatim for the current lease and releases it.
+	// UpdateStatusReceived releases the current lease.
+	// Succeeded and Failed are written as given. Pending keeps that status and
+	// schedules the next attempt after RetryInterval.
 	UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error
 
 	StorageX

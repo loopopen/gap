@@ -315,16 +315,17 @@ func (s *Sub) handle(ctx context.Context, envelope *entity.Envelope) (err error)
 				envelope.Log().Error("recovered from panic when handling", slog.Any("err", r))
 				err = fmt.Errorf("%v", r)
 			}
+			err = errx.Permanent(err)
 		}
 	}()
 
 	handler, ok := s.handlers[envelope.Topic]
 	if !ok {
-		return errx.ErrHandlerNotFound(envelope.Topic, s.groupOpts.Group)
+		return errx.Permanent(errx.ErrHandlerNotFound(envelope.Topic, s.groupOpts.Group))
 	}
 	payload, err := envelope.PayloadBytes()
 	if err != nil {
-		return err
+		return errx.Permanent(err)
 	}
 	err = handler(ctx, payload, envelope.Headers)
 	if err != nil {
@@ -337,12 +338,7 @@ func (s *Sub) HandleAndUpdate(ctx context.Context, envelope *entity.Envelope) er
 	err := s.handle(ctx, envelope)
 	if err != nil {
 		envelope.Log().Error("failed to handle received message", slog.Any("err", err))
-
-		if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, envelope.LeaseToken, enum.StatusFailed); err != nil {
-			envelope.Log().Error("failed to set received status to Failed", slog.Any("err", err))
-			return err
-		}
-		return err
+		return s.failOrRetryReceived(ctx, envelope, err)
 	}
 
 	if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, envelope.LeaseToken, enum.StatusSucceeded); err != nil {
@@ -350,6 +346,21 @@ func (s *Sub) HandleAndUpdate(ctx context.Context, envelope *entity.Envelope) er
 		return err
 	}
 	return nil
+}
+
+func (s *Sub) failOrRetryReceived(ctx context.Context, envelope *entity.Envelope, cause error) error {
+	status := enum.StatusPending
+	if envelope.Retries >= s.opts.MaxRetries || errx.IsPermanent(cause) {
+		status = enum.StatusFailed
+	}
+	if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, envelope.LeaseToken, status); err != nil {
+		envelope.Log().Error("failed to update received status", slog.String("status", status.String()), slog.Any("err", err))
+		return err
+	}
+	if status == enum.StatusPending {
+		envelope.Log().Debug("scheduled received retry", slog.Int("retries", envelope.Retries))
+	}
+	return cause
 }
 
 func (s *Sub) dispatch(ctx context.Context, envelope *entity.Envelope) {

@@ -4,6 +4,7 @@ import (
 	"github.com/loopopen/gap/internal"
 	"github.com/loopopen/gap/internal/dashboard"
 	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/errx"
 	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/internal/txer"
 )
@@ -41,4 +42,10 @@ type BrokerOptions = ingap.BrokerOptions
 
 func init() {
 	dashboard.AddMeta(enum.PluginKindGap, 0, version)
+}
+
+// Permanent marks a handler error that retrying the same message cannot repair.
+// Gap records that received message as Failed instead of scheduling another attempt.
+func Permanent(err error) error {
+	return errx.Permanent(err)
 }

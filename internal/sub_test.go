@@ -2,13 +2,17 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/errx"
 	ingap "github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/storage"
 )
 
 type consumerStub struct {
@@ -101,4 +105,94 @@ func TestSubStopsAcceptingMessagesDuringShutdown(t *testing.T) {
 		t.Fatalf("handled messages = %d, want 1", got)
 	}
 	opts.CancelWork()
+}
+
+type receivedStorageStub struct {
+	storage.Storage
+	id         uint
+	leaseToken string
+	status     enum.Status
+	statusSet  bool
+}
+
+func (s *receivedStorageStub) UpdateStatusReceived(_ context.Context, id uint, leaseToken string, status enum.Status) error {
+	s.id = id
+	s.leaseToken = leaseToken
+	s.status = status
+	s.statusSet = true
+	return nil
+}
+
+func TestHandleAndUpdateRetriesHandlerFailure(t *testing.T) {
+	stor := new(receivedStorageStub)
+	sub := receivedSub(stor, func(context.Context, []byte, map[string]string) error {
+		return errors.New("downstream timeout")
+	})
+	envelope := &entity.Envelope{ID: 7, Topic: "events", LeaseToken: "lease", Retries: 1}
+
+	if err := sub.HandleAndUpdate(context.Background(), envelope); err == nil {
+		t.Fatal("expected handler error")
+	}
+	if !stor.statusSet || stor.status != enum.StatusPending || stor.id != envelope.ID || stor.leaseToken != envelope.LeaseToken {
+		t.Fatalf("status update = %+v", stor)
+	}
+}
+
+func TestHandleAndUpdateFailsPermanentAndExhaustedErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		retries int
+		handler ingap.Handler[[]byte]
+		topic   string
+	}{
+		{
+			name:    "permanent",
+			retries: 0,
+			topic:   "events",
+			handler: func(context.Context, []byte, map[string]string) error {
+				return errx.Permanent(errors.New("invalid business payload"))
+			},
+		},
+		{
+			name:    "exhausted",
+			retries: 3,
+			topic:   "events",
+			handler: func(context.Context, []byte, map[string]string) error {
+				return errors.New("downstream timeout")
+			},
+		},
+		{
+			name:    "missing handler",
+			retries: 0,
+			topic:   "missing",
+			handler: func(context.Context, []byte, map[string]string) error {
+				return nil
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stor := new(receivedStorageStub)
+			sub := receivedSub(stor, test.handler)
+			envelope := &entity.Envelope{ID: 7, Topic: test.topic, LeaseToken: "lease", Retries: test.retries}
+			if err := sub.HandleAndUpdate(context.Background(), envelope); err == nil {
+				t.Fatal("expected handle error")
+			}
+			if !stor.statusSet || stor.status != enum.StatusFailed {
+				t.Fatalf("status update = %+v", stor)
+			}
+		})
+	}
+}
+
+func receivedSub(stor storage.Storage, handler ingap.Handler[[]byte]) *Sub {
+	return &Sub{
+		opts:      &ingap.Options{MaxRetries: 3},
+		groupOpts: &ingap.GroupOptions{Group: "billing"},
+		storage:   stor,
+		handlers: map[string]ingap.Handler[[]byte]{
+			"events": handler,
+		},
+	}
 }

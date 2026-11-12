@@ -126,7 +126,7 @@ func assertPendingDueWhere(t *testing.T, sql string, start int) {
 }
 
 func TestRetryPublishedSQLKeepsStatus(t *testing.T) {
-	sql := retryPublishedSQL(`"gap"."published"`, `"gap"."status_enum"`)
+	sql := retryAttemptSQL(`"gap"."published"`, `"gap"."status_enum"`)
 	if strings.Contains(sql, `SET "status"`) {
 		t.Fatalf("retry SQL changes status: %s", sql)
 	}

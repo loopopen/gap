@@ -8,6 +8,7 @@ import (
 	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/errx"
 	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/storage"
 )
@@ -85,6 +86,23 @@ func TestSendAndUpdateSchedulesRetryBeforeRetriesAreExhausted(t *testing.T) {
 		t.Fatal("expected produce error")
 	}
 	if !stor.statusSet || stor.status != enum.StatusPending || stor.id != envelope.ID || stor.leaseToken != envelope.LeaseToken {
+		t.Fatalf("status update = %+v", stor)
+	}
+}
+
+func TestSendAndUpdateMarksPermanentProduceErrorFailed(t *testing.T) {
+	stor := new(publishedStorageStub)
+	pub := &Pub[string]{
+		opts:     &ingap.Options{MaxRetries: 3},
+		storage:  stor,
+		producer: &producerStub{err: errx.Permanent(errx.ErrNilPayload)},
+	}
+	envelope := &entity.Envelope{ID: 7, LeaseToken: "lease", Retries: 0}
+
+	if err := pub.SendAndUpdate(context.Background(), envelope); err == nil {
+		t.Fatal("expected produce error")
+	}
+	if !stor.statusSet || stor.status != enum.StatusFailed || stor.id != envelope.ID || stor.leaseToken != envelope.LeaseToken {
 		t.Fatalf("status update = %+v", stor)
 	}
 }
