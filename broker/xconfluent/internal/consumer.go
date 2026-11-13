@@ -357,9 +357,9 @@ func (c *Consumer) commitWithRetry(ctx context.Context, client consumerClient, m
 	}
 }
 
-// reassign follows dotnet CAP's reject strategy: reapply the current
-// assignment without committing the rejected message. OffsetStored makes each
-// partition resume from its committed group offset.
+// reassign reapplies the current assignment without committing the rejected
+// message. OffsetStored makes each partition resume from its committed group
+// offset.
 func (c *Consumer) reassign(client consumerClient, message *kafka.Message) error {
 	assignment, err := client.Assignment()
 	if err != nil {

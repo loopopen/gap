@@ -95,8 +95,6 @@ func initSvc() (*gap.Gap, *service.SvcHub) {
 	)
 	pub := g.NewEventPublisher(
 		xconfluent.UseKafka(
-			xconfluent.UserName("kafka"),
-			xconfluent.Password("kafka"),
 			xconfluent.Brokers(brokers),
 			xconfluent.ConfigTopic(
 				xconfluent.NumPartitions(2),

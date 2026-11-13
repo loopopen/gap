@@ -6,8 +6,7 @@ import (
 	"sort"
 )
 
-// GenOnMAC generates a worker ID based on the MAC address,
-// following the same logic used in CAP's SnowflakeId implementation.
+// GenOnMAC generates a worker ID based on the MAC address.
 // It selects the first valid network interface and derives a 10‑bit worker ID
 // from the last two bytes of its MAC address.
 func GenOnMAC() (int64, error) {
@@ -16,9 +15,8 @@ func GenOnMAC() (int64, error) {
 		return 0, err
 	}
 
-	// Sort interfaces by index (Go does not expose NIC speed like .NET does).
-	// CAP sorts by NIC speed, but since Go lacks that field, index ordering is
-	// the closest stable heuristic.
+	// Sort interfaces by index. Go does not expose NIC speed, so index ordering
+	// is the stable heuristic.
 	sort.Slice(interfaces, func(i, j int) bool {
 		return interfaces[i].Index < interfaces[j].Index
 	})

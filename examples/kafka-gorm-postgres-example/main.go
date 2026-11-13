@@ -17,7 +17,7 @@ import (
 )
 
 func main() {
-	// slog.SetLogLoggerLevel(slog.LevelDebug)
+	slog.SetLogLoggerLevel(slog.LevelDebug)
 
 	dsn := "postgres://postgres:postgres@localhost/example?sslmode=disable"
 	brokers := []string{

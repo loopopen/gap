@@ -5,8 +5,10 @@ use (
 	./broker/xconfluent
 	./broker/xkafka
 	./broker/xrabbitmq
+	./broker/xredisstreams
 	./examples/rabbitmq-kafka-mysql-example-fiber
 	./examples/rabbitmq-mysql-example-fiber
+	./examples/redis-mysql-example-fiber
 	./examples/rabbitmq-mysql-example-worker
 	./examples/gin-kafka-mysql-example
 	./examples/gin-kafka2-postgres-example

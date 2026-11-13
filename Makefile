@@ -4,6 +4,7 @@ PLUGIN_MODULES := \
 	broker/xconfluent \
 	broker/xkafka \
 	broker/xrabbitmq \
+	broker/xredisstreams \
 	storage/xgorm \
 	storage/xmysql \
 	storage/xpostgres
@@ -15,6 +16,7 @@ EXAMPLE_MODULES := \
 	examples/kafka-gorm-postgres-example \
 	examples/rabbitmq-gorm-mysql-example \
 	examples/rabbitmq-mysql-example-fiber \
+	examples/redis-mysql-example-fiber \
 	examples/rabbitmq-mysql-example-worker
 
 MODULES := . $(PLUGIN_MODULES) $(EXAMPLE_MODULES)

@@ -33,4 +33,5 @@ const (
 	PluginRabbitMQ
 	PluginKafka
 	PluginPostgres
+	PluginRedisStreams
 )
