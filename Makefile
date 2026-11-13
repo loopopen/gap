@@ -11,8 +11,8 @@ PLUGIN_MODULES := \
 
 EXAMPLE_MODULES := \
 	examples/rabbitmq-kafka-mysql-example-fiber \
-	examples/gin-kafka-mysql-example \
-	examples/gin-kafka2-postgres-example \
+	examples/kafka-mysql-example-gin \
+	examples/kafka2-postgres-example-gin \
 	examples/kafka-gorm-postgres-example \
 	examples/rabbitmq-gorm-mysql-example \
 	examples/rabbitmq-mysql-example-fiber \

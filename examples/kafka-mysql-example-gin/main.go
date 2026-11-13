@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"examples/kafka-mysql-example-gin/handlers"
+	"examples/kafka-mysql-example-gin/service"
 	"log/slog"
 	"net/http"
 	"os"
@@ -9,14 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	"examples/gin-kafka2-postgres-example/handlers"
-	"examples/gin-kafka2-postgres-example/service"
-
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/gin-gonic/gin"
 	"github.com/loopopen/gap"
-	"github.com/loopopen/gap/broker/xconfluent"
-	"github.com/loopopen/gap/storage/xpostgres"
+	"github.com/loopopen/gap/broker/xkafka"
+	"github.com/loopopen/gap/dashboard"
+	"github.com/loopopen/gap/storage/xmysql"
+	"github.com/segmentio/kafka-go"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -29,9 +29,9 @@ func main() {
 	defer stop()
 
 	g, svcHub := initSvc()
-	dashboard := g.DashboardHandler()
-	r.Any("/dashboard/*any", func(c *gin.Context) {
-		dashboard.ServeHTTP(c.Writer, c.Request)
+	dashboardHandler := g.DashboardHandler()
+	r.Any("/gap/*any", func(c *gin.Context) {
+		dashboardHandler.ServeHTTP(c.Writer, c.Request)
 	})
 	r.GET("/api/say", handlers.Say(svcHub.SaySvc))
 
@@ -84,22 +84,24 @@ func main() {
 }
 
 func initSvc() (*gap.Gap, *service.SvcHub) {
-	dsn := "postgres://postgres:postgres@127.0.0.1:5432/example?sslmode=disable"
+	dsn := "root:root@tcp(127.0.0.1:3306)/example?charset=utf8mb4&parseTime=True&loc=Local"
 	brokers := []string{"127.0.0.1:9092"}
 
 	g := gap.New(
-		gap.UseDashboard(),
-		xpostgres.UsePostgres(
-			xpostgres.DSN(dsn),
+		gap.UseDashboard(
+			dashboard.PathPrefix("/gap"),
+		),
+		xmysql.UseMySQL(
+			xmysql.DSN(dsn),
 		),
 	)
 	pub := g.NewEventPublisher(
-		xconfluent.UseKafka(
-			xconfluent.Brokers(brokers),
-			xconfluent.ConfigTopic(
-				xconfluent.NumPartitions(2),
-			),
-			xconfluent.StartOffset(kafka.OffsetEnd),
+		xkafka.UseKafka(
+			xkafka.Brokers(brokers),
+			// xkafka.ConfigTopic(
+			// 	xkafka.NumPartitions(2),
+			// ),
+			xkafka.StartOffset(kafka.FirstOffset),
 		),
 	)
 

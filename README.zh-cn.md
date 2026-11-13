@@ -2,7 +2,7 @@
 
 [![Language](https://img.shields.io/badge/language-英文-blue.svg)](https://github.com/loopopen/gap/blob/main/README.md) [![CI](https://github.com/loopopen/gap/actions/workflows/ci.yml/badge.svg)](https://github.com/loopopen/gap/actions/workflows/ci.yml)
 
-GAP 是一个轻量、事件驱动的 Go 消息库。它采用 Outbox 模式，将消息与业务数据写入同一个数据库事务，并在事务提交后投递消息。目前支持 RabbitMQ 和 Kafka，也可以将消息存储在 MySQL 或 GORM 支持的任意数据库中。未来还会支持更多消息代理和数据库；GAP 的扩展机制让你无需大幅改动现有代码即可接入它们。
+GAP 是一个轻量、事件驱动的 Go 消息库。它采用 Outbox 模式，将消息与业务数据写入同一个数据库事务，并在事务提交后投递消息。目前支持 RabbitMQ、Kafka 和 Redis Streams，也可以将消息存储在 MySQL 或 GORM 支持的任意数据库中。未来还会支持更多消息代理和数据库；GAP 的扩展机制让你无需大幅改动现有代码即可接入它们。
 
 ## 运行看板
 
@@ -13,7 +13,7 @@ GAP 是一个轻量、事件驱动的 Go 消息库。它采用 Outbox 模式，�
 ## 功能
 
 - **Outbox Pattern**：通过数据库事务保证可靠的消息发布
-- **Multiple Brokers**：支持 RabbitMQ、Kafka，且可扩展到其他 broker
+- **Multiple Brokers**：支持 RabbitMQ、Kafka 和 Redis Streams，且可扩展到其他 broker
 - **Storage Backends**：与 GORM 集成，支持 MySQL、PostgreSQL 等
 - **Code Generation**：使用 `gapc` 自动生成处理器代码
 - **Type Safety**：基于泛型的 API 提供类型安全的消息处理
@@ -29,7 +29,9 @@ go get github.com/loopopen/gap/broker/xrabbitmq
 go get github.com/loopopen/gap/storage/xgorm
 ```
 
-其他可用适配器包括 `broker/xkafka`、`broker/xconfluent`、`storage/xmysql` 和 `storage/xpostgres`。
+其他可用适配器包括 `broker/xkafka`、`broker/xconfluent`、`broker/xredisstreams`、`storage/xmysql` 和 `storage/xpostgres`。
+
+Redis Streams 使用同一套发布与订阅 API。GAP topic 对应 Redis stream key，订阅组对应 Redis consumer group。通过 `xredisstreams.UseRedisStreams` 配合 `xredisstreams.Addrs` 或 `xredisstreams.URL` 连接。示例见 [`./examples/redis-mysql-example-fiber`](./examples/redis-mysql-example-fiber)。
 
 内置 broker 和 storage 模块通过核心模块的内部契约协作。应用代码只需导入核心模块及实际使用的适配器。
 

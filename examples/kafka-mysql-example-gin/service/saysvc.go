@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"errors"
-	"examples/gin-kafka-mysql-example/event"
+	"examples/kafka-mysql-example-gin/event"
 	"fmt"
 	"log/slog"
 	"strings"

@@ -2,7 +2,7 @@
 
 [![Language](https://img.shields.io/badge/language-中文-blue.svg)](https://github.com/loopopen/gap/blob/main/README.zh-cn.md) [![CI](https://github.com/loopopen/gap/actions/workflows/ci.yml/badge.svg)](https://github.com/loopopen/gap/actions/workflows/ci.yml)
 
-GAP is a lightweight, event-driven messaging library for Go. It uses the outbox pattern, so a message is written in the same database transaction as your data, then delivered once that transaction commits. It speaks RabbitMQ and Kafka today, and it can store messages in MySQL or in any database GORM already supports. More brokers and databases are part of the plan. The library is shaped so those can be added without tearing up what you already have.
+GAP is a lightweight, event-driven messaging library for Go. It uses the outbox pattern, so a message is written in the same database transaction as your data, then delivered once that transaction commits. It speaks RabbitMQ, Kafka, and Redis Streams today, and it can store messages in MySQL or in any database GORM already supports. More brokers and databases are part of the plan. The library is shaped so those can be added without tearing up what you already have.
 
 ## Operational Dashboard
 
@@ -13,7 +13,7 @@ Monitor message delivery at a glance with the built-in operational dashboard. Se
 ## Features
 
 - **Outbox Pattern**: Reliable message publishing with database transactions
-- **Multiple Brokers**: Support for RabbitMQ, Kafka (and extensible for others)
+- **Multiple Brokers**: Support for RabbitMQ, Kafka, and Redis Streams (and extensible for others)
 - **Storage Backends**: GORM integration for MySQL, PostgreSQL, etc.
 - **Code Generation**: Automatic handler generation with `gapc`
 - **Type Safety**: Generic-based API for type-safe message handling
@@ -29,7 +29,9 @@ go get github.com/loopopen/gap/broker/xrabbitmq
 go get github.com/loopopen/gap/storage/xgorm
 ```
 
-Other available integrations include `broker/xkafka`, `broker/xconfluent`, `storage/xmysql`, and `storage/xpostgres`.
+Other available integrations include `broker/xkafka`, `broker/xconfluent`, `broker/xredisstreams`, `storage/xmysql`, and `storage/xpostgres`.
+
+Redis Streams uses the same publisher and subscriber API. A GAP topic is the Redis stream key, and a subscription group is a Redis consumer group. Connect with `xredisstreams.UseRedisStreams` and either `xredisstreams.Addrs` or `xredisstreams.URL`. See [`./examples/redis-mysql-example-fiber`](./examples/redis-mysql-example-fiber).
 
 The bundled broker and storage modules share internal contracts with the core module. Application code should import only the core module and the integrations it uses.
 
