@@ -327,6 +327,7 @@ func (c *Consumer) closeReader(reader kafkaReader) error {
 	return c.closeErr
 }
 
+// Close releases resources held by the receiver.
 func (c *Consumer) Close() error {
 	c.mu.Lock()
 	reader := c.reader

@@ -11,18 +11,28 @@ const version = "v1.0.0-beta.5"
 type Options = internal.Options
 
 var (
-	UseKafka    = internal.UseKafka
-	Password    = internal.Password
-	UserName    = internal.UserName
-	Brokers     = internal.Brokers
-	TopicOpts   = internal.TopicOpts
+	// UseKafka configures GAP to use segmentio/kafka-go.
+	UseKafka = internal.UseKafka
+	// Password sets the broker authentication password.
+	Password = internal.Password
+	// UserName sets the broker authentication username.
+	UserName = internal.UserName
+	// Brokers sets the Kafka bootstrap broker addresses.
+	Brokers = internal.Brokers
+	// TopicOpts configures topic provisioning.
+	TopicOpts = internal.TopicOpts
+	// StartOffset sets the initial consumer offset.
 	StartOffset = internal.StartOffset
-	TLSConfig   = internal.TLSConfig
+	// TLSConfig sets the TLS configuration used by broker connections.
+	TLSConfig = internal.TLSConfig
 )
 
 var (
-	ConfigTopic       = internal.ConfigTopic
-	NumPartitions     = internal.NumPartitions
+	// ConfigTopic configures topic provisioning options.
+	ConfigTopic = internal.ConfigTopic
+	// NumPartitions sets the number of partitions created for a topic.
+	NumPartitions = internal.NumPartitions
+	// ReplicationFactor sets the replication factor created for a topic.
 	ReplicationFactor = internal.ReplicationFactor
 )
 

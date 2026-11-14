@@ -22,12 +22,23 @@ func TestClaimIndexSQL(t *testing.T) {
 	}
 }
 
+func TestCleanupIndexSQL(t *testing.T) {
+	sql, err := cleanupIndexSQL("gap_published", "idx_published_cleanup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sql != "CREATE INDEX `idx_published_cleanup` ON `gap_published` (`expired_at`, `id`)" {
+		t.Fatal(sql)
+	}
+}
+
 func TestFailExhaustedSQL(t *testing.T) {
 	sql := failExhaustedSQL("`gap_published`")
 	assertPendingDueWhere(t, sql)
 	for _, condition := range []string{
 		"UPDATE `gap_published`",
 		"SET `status` = ?",
+		"`expired_at` = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3))",
 		"`lease_token` = NULL",
 		"`lease_until` = NULL",
 		"`retries` >= ?",
@@ -121,6 +132,23 @@ func TestUpdateStatusSQLWritesStatusDirectly(t *testing.T) {
 	}
 	if !strings.Contains(sql, "SET `status` = ?") {
 		t.Fatalf("update status does not write the supplied status directly: %s", sql)
+	}
+	if !strings.Contains(sql, "`expired_at` = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3))") {
+		t.Fatalf("update status does not set expiration: %s", sql)
+	}
+}
+
+func TestDeleteExpiredSQLOnlyDeletesTerminalRowsInBatches(t *testing.T) {
+	sql := deleteExpiredSQL("`gap_published`")
+	for _, condition := range []string{
+		"`expired_at` <= CURRENT_TIMESTAMP(3)",
+		"`status` IN (?, ?)",
+		"ORDER BY `expired_at`, `id`",
+		"LIMIT ? FOR UPDATE SKIP LOCKED",
+	} {
+		if !strings.Contains(sql, condition) {
+			t.Fatalf("cleanup SQL %q does not contain %q", sql, condition)
+		}
 	}
 }
 

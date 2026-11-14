@@ -29,6 +29,7 @@ type Pub[T any] struct {
 	configID   string
 }
 
+// NewPub creates a publisher backed by the supplied broker and storage.
 func NewPub[T any](opts *ingap.Options, brokerOpts *ingap.BrokerOptions, producer broker.Producer, storage storage.Storage, messagePump *pump.Pump) *Pub[T] {
 	if producer == nil {
 		panic(errx.ErrNoBroker)
@@ -156,6 +157,7 @@ func (p *Pub[T]) dispatch(ctx context.Context, envelope *entity.Envelope) {
 	}
 }
 
+// SendAndUpdate delivers an envelope and persists the resulting state.
 func (p *Pub[T]) SendAndUpdate(ctx context.Context, envelope *entity.Envelope) error {
 	err := p.producer.Produce(ctx, envelope)
 	if err != nil {
@@ -184,10 +186,12 @@ func (p *Pub[T]) failOrRetryPublished(ctx context.Context, envelope *entity.Enve
 	return cause
 }
 
+// Options returns the publisher's runtime options.
 func (p *Pub[T]) Options() *ingap.Options {
 	return p.opts
 }
 
+// BrokerOptions returns the publisher's broker options.
 func (p *Pub[T]) BrokerOptions() *ingap.BrokerOptions {
 	return p.brokerOpts
 }
@@ -196,6 +200,7 @@ type EventPub struct {
 	*Pub[Event]
 }
 
+// Bind binds the publisher or storage to the supplied transaction.
 func (e *EventPub) Bind(txer txer.Txer) (EventPublisher, error) {
 	p, err := e.Pub.bind(txer)
 	if err != nil {
@@ -204,6 +209,7 @@ func (e *EventPub) Bind(txer txer.Txer) (EventPublisher, error) {
 	return &EventPub{Pub: p}, nil
 }
 
+// Publish persists and dispatches a message for delivery.
 func (p *EventPub) Publish(ctx context.Context, event Event, args ...any) error {
 	return p.Pub.Publish(ctx, event.Topic(), event, args...)
 }

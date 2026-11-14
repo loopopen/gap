@@ -15,6 +15,7 @@ const (
 	DefPageSize int = 20
 )
 
+// DashboardStats returns aggregate delivery statistics for the dashboard.
 func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, error) {
 	published, err := messageStats(s.db.WithContext(ctx).Model(&Published{}))
 	if err != nil {
@@ -122,6 +123,7 @@ func quotedGroupColumn(dialect string) string {
 	return "`group`"
 }
 
+// GetPublishedByID returns a published message by ID.
 func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
 	var pub *Published
 	err := s.db.WithContext(ctx).Take(&pub, id).Error
@@ -138,6 +140,7 @@ func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelo
 	return en, nil
 }
 
+// QueryPublished returns one filtered page of published messages.
 func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
 	var pubs []*Published
 	db := s.db.WithContext(ctx).Model(&Published{})
@@ -165,6 +168,7 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 	return es, &pg, nil
 }
 
+// QueryReceived returns one filtered page of received messages.
 func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
 	var recs []*Received
 	db := s.db.WithContext(ctx).Model(&Received{})

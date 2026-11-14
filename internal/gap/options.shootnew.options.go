@@ -9,20 +9,26 @@ import (
 )
 
 // NewOptions constructs a new instance of type Options
-func NewOptions(serviceName string, version string, defaultGroup string, claimBatchSize int, maxRetries int, leaseTtlSeconds int, retryIntervalSeconds int, pumpIntervalSeconds int, maxPublishConcurrency int, workerId int64, publishBufferSize int, workConcurrencyFactor int) *Options {
+func NewOptions(serviceName string, version string, defaultGroup string, claimBatchSize int, maxRetries int, leaseTtlSeconds int, retryIntervalSeconds int, pumpIntervalSeconds int, cleanupEnabled bool, succeededRetentionSeconds int, failedRetentionSeconds int, cleanupIntervalSeconds int, cleanupBatchSize int, cleanupTimeoutSeconds int, maxPublishConcurrency int, workerId int64, publishBufferSize int, workConcurrencyFactor int) *Options {
 	return &Options{
-		ServiceName:           serviceName,
-		Version:               version,
-		DefaultGroup:          defaultGroup,
-		ClaimBatchSize:        claimBatchSize,
-		MaxRetries:            maxRetries,
-		LeaseTTLSeconds:       leaseTtlSeconds,
-		RetryIntervalSeconds:  retryIntervalSeconds,
-		PumpIntervalSeconds:   pumpIntervalSeconds,
-		MaxPublishConcurrency: maxPublishConcurrency,
-		WorkerID:              workerId,
-		PublishBufferSize:     publishBufferSize,
-		WorkConcurrencyFactor: workConcurrencyFactor,
+		ServiceName:               serviceName,
+		Version:                   version,
+		DefaultGroup:              defaultGroup,
+		ClaimBatchSize:            claimBatchSize,
+		MaxRetries:                maxRetries,
+		LeaseTTLSeconds:           leaseTtlSeconds,
+		RetryIntervalSeconds:      retryIntervalSeconds,
+		PumpIntervalSeconds:       pumpIntervalSeconds,
+		CleanupEnabled:            cleanupEnabled,
+		SucceededRetentionSeconds: succeededRetentionSeconds,
+		FailedRetentionSeconds:    failedRetentionSeconds,
+		CleanupIntervalSeconds:    cleanupIntervalSeconds,
+		CleanupBatchSize:          cleanupBatchSize,
+		CleanupTimeoutSeconds:     cleanupTimeoutSeconds,
+		MaxPublishConcurrency:     maxPublishConcurrency,
+		WorkerID:                  workerId,
+		PublishBufferSize:         publishBufferSize,
+		WorkConcurrencyFactor:     workConcurrencyFactor,
 	}
 }
 
@@ -91,6 +97,48 @@ func PumpIntervalSeconds(pumpIntervalSeconds_ int) shoot.Option[Options, *Option
 	}
 }
 
+// CleanupEnabled is a configuration for the filed CleanupEnabled
+func CleanupEnabled(cleanupEnabled_ bool) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.CleanupEnabled = cleanupEnabled_
+	}
+}
+
+// SucceededRetentionSeconds is a configuration for the filed SucceededRetentionSeconds
+func SucceededRetentionSeconds(succeededRetentionSeconds_ int) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.SucceededRetentionSeconds = succeededRetentionSeconds_
+	}
+}
+
+// FailedRetentionSeconds is a configuration for the filed FailedRetentionSeconds
+func FailedRetentionSeconds(failedRetentionSeconds_ int) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.FailedRetentionSeconds = failedRetentionSeconds_
+	}
+}
+
+// CleanupIntervalSeconds is a configuration for the filed CleanupIntervalSeconds
+func CleanupIntervalSeconds(cleanupIntervalSeconds_ int) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.CleanupIntervalSeconds = cleanupIntervalSeconds_
+	}
+}
+
+// CleanupBatchSize is a configuration for the filed CleanupBatchSize
+func CleanupBatchSize(cleanupBatchSize_ int) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.CleanupBatchSize = cleanupBatchSize_
+	}
+}
+
+// CleanupTimeoutSeconds is a configuration for the filed CleanupTimeoutSeconds
+func CleanupTimeoutSeconds(cleanupTimeoutSeconds_ int) shoot.Option[Options, *Options] {
+	return func(o *Options) {
+		o.CleanupTimeoutSeconds = cleanupTimeoutSeconds_
+	}
+}
+
 // MaxPublishConcurrency is a configuration for the filed MaxPublishConcurrency
 func MaxPublishConcurrency(maxPublishConcurrency_ int) shoot.Option[Options, *Options] {
 	return func(o *Options) {
@@ -128,6 +176,12 @@ func (o *Options) SetDefault() {
 	o.LeaseTTLSeconds = 180
 	o.RetryIntervalSeconds = 10
 	o.PumpIntervalSeconds = 1
+	o.CleanupEnabled = true
+	o.SucceededRetentionSeconds = 86400
+	o.FailedRetentionSeconds = 1296000
+	o.CleanupIntervalSeconds = 300
+	o.CleanupBatchSize = 1000
+	o.CleanupTimeoutSeconds = 30
 	o.WorkerID = -1
 	o.PublishBufferSize = runtime.GOMAXPROCS(0) * 512
 	o.WorkConcurrencyFactor = 1

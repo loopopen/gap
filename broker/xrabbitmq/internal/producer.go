@@ -26,6 +26,7 @@ type Producer struct {
 	ctag    string
 }
 
+// NewProducer creates a broker producer.
 func NewProducer(gapOpts *ingap.Options, opts *Options) *Producer {
 	resources, release := opts.acquireRuntime(gapOpts)
 	producer := &Producer{
@@ -148,10 +149,12 @@ func (p *Producer) exchange() string {
 	return p.x
 }
 
+// Close releases resources held by the receiver.
 func (p *Producer) Close() error {
 	return p.CloseContext(context.Background())
 }
 
+// CloseContext releases resources held by the receiver, bounded by ctx.
 func (p *Producer) CloseContext(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()

@@ -63,6 +63,7 @@ func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
 	return &newS, nil
 }
 
+// InTx reports whether the storage is bound to a transaction.
 func (s *Storage) InTx() bool {
 	return s.tx != nil
 }
@@ -244,12 +245,14 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group s
 }
 
 func (s *Storage) failExhausted(ctx context.Context, tx *xsql.Tx, table string, now time.Time) error {
-	_, err := tx.ExecContext(ctx, failExhaustedSQL(table), enum.StatusFailed, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries)
+	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
+	_, err := tx.ExecContext(ctx, failExhaustedSQL(table), enum.StatusFailed, retentionSeconds, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries)
 	return err
 }
 
 func (s *Storage) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table string, now time.Time, group string) error {
-	_, err := tx.ExecContext(ctx, failExhaustedReceivedSQL(table), enum.StatusFailed, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries, group)
+	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
+	_, err := tx.ExecContext(ctx, failExhaustedReceivedSQL(table), enum.StatusFailed, retentionSeconds, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries, group)
 	return err
 }
 
@@ -282,7 +285,7 @@ func claimReceivedSQL(table string) string {
 
 func failExhaustedSQL(table string) string {
 	return fmt.Sprintf(
-		"UPDATE %s SET `status` = ?, `lease_token` = NULL, `lease_until` = NULL "+
+		"UPDATE %s SET `status` = ?, `expired_at` = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3)), `lease_token` = NULL, `lease_until` = NULL "+
 			"WHERE `version` = ? "+
 			"AND `status` = ? "+
 			"AND `next_attempt_at` <= ? "+
@@ -294,7 +297,7 @@ func failExhaustedSQL(table string) string {
 
 func failExhaustedReceivedSQL(table string) string {
 	return fmt.Sprintf(
-		"UPDATE %s SET `status` = ?, `lease_token` = NULL, `lease_until` = NULL "+
+		"UPDATE %s SET `status` = ?, `expired_at` = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3)), `lease_token` = NULL, `lease_until` = NULL "+
 			"WHERE `version` = ? "+
 			"AND `status` = ? "+
 			"AND `next_attempt_at` <= ? "+
@@ -436,7 +439,8 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken 
 }
 
 func (s *Storage) updateStatus(ctx context.Context, table string, id uint, leaseToken string, status enum.Status) (sql.Result, error) {
-	return s.execer().ExecContext(ctx, updateStatusSQL(table), status, id, enum.StatusPending, leaseToken)
+	retentionSeconds := int64(s.gapOpts.Retention(status) / time.Second)
+	return s.execer().ExecContext(ctx, updateStatusSQL(table), status, retentionSeconds, id, enum.StatusPending, leaseToken)
 }
 
 func (s *Storage) scheduleRetry(ctx context.Context, base string, id uint, leaseToken string) error {
@@ -465,13 +469,43 @@ func retryAttemptSQL(table string) string {
 }
 
 func updateStatusSQL(table string) string {
-	return "UPDATE " + table + " SET `status` = ?, `lease_token` = NULL, `lease_until` = NULL WHERE `id` = ? AND `status` = ? AND `lease_token` = ?"
+	return "UPDATE " + table + " SET `status` = ?, `expired_at` = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3)), `lease_token` = NULL, `lease_until` = NULL WHERE `id` = ? AND `status` = ? AND `lease_token` = ?"
+}
+
+// DeleteExpiredPublishedBatch deletes one batch of expired terminal published messages.
+func (s *Storage) DeleteExpiredPublishedBatch(ctx context.Context, batchSize int) (int64, error) {
+	return s.deleteExpiredBatch(ctx, "published", batchSize)
+}
+
+// DeleteExpiredReceivedBatch deletes one batch of expired terminal received messages.
+func (s *Storage) DeleteExpiredReceivedBatch(ctx context.Context, batchSize int) (int64, error) {
+	return s.deleteExpiredBatch(ctx, "received", batchSize)
+}
+
+func (s *Storage) deleteExpiredBatch(ctx context.Context, base string, batchSize int) (int64, error) {
+	table, err := s.quotedTable(base)
+	if err != nil {
+		return 0, err
+	}
+	result, err := s.execer().ExecContext(ctx, deleteExpiredSQL(table), enum.StatusSucceeded, enum.StatusFailed, batchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+func deleteExpiredSQL(table string) string {
+	return "DELETE target FROM " + table + " AS target JOIN (" +
+		"SELECT `id` FROM " + table + " WHERE `expired_at` <= CURRENT_TIMESTAMP(3) " +
+		"AND `status` IN (?, ?) ORDER BY `expired_at`, `id` LIMIT ? FOR UPDATE SKIP LOCKED" +
+		") AS expired ON target.`id` = expired.`id`"
 }
 
 func logSQL(opts *Options) bool {
 	return opts != nil && opts.Log
 }
 
+// NewStorage creates a storage adapter.
 func NewStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *Storage {
 	s := &Storage{
 		gapOpts: gapOpts,
@@ -515,7 +549,13 @@ func (s *Storage) init() error {
 	if err := s.ensureClaimIndex(publishedName, "idx_published_claim"); err != nil {
 		return err
 	}
-	return s.ensureClaimIndex(receivedName, "idx_received_claim")
+	if err := s.ensureClaimIndex(receivedName, "idx_received_claim"); err != nil {
+		return err
+	}
+	if err := s.ensureCleanupIndex(publishedName, "idx_published_cleanup"); err != nil {
+		return err
+	}
+	return s.ensureCleanupIndex(receivedName, "idx_received_cleanup")
 }
 
 func (s *Storage) ensureStatusColumn(ctx context.Context, tableName, quotedTable string) error {
@@ -576,6 +616,41 @@ func claimIndexSQL(table, index string) (string, error) {
 		"CREATE INDEX %s ON %s (`version`, `status`, `next_attempt_at`, `lease_until`, `retries`)",
 		quotedIndex, quotedTable,
 	), nil
+}
+
+func (s *Storage) ensureCleanupIndex(table, index string) error {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
+		table, index,
+	).Scan(&n)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	sql, err := cleanupIndexSQL(table, index)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(sql)
+	if isDuplicateIndex(err) {
+		return nil
+	}
+	return err
+}
+
+func cleanupIndexSQL(table, index string) (string, error) {
+	quotedTable, err := quoteMySQLIdent(table)
+	if err != nil {
+		return "", err
+	}
+	quotedIndex, err := quoteMySQLIdent(index)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("CREATE INDEX %s ON %s (`expired_at`, `id`)", quotedIndex, quotedTable), nil
 }
 
 func (s *Storage) tableName(base string) (string, error) {

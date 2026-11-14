@@ -8,6 +8,7 @@ import (
 	"github.com/loopopen/gap/storage"
 )
 
+// BrokerConfigID returns the stable identity of a broker configuration.
 func BrokerConfigID(brokerOpts *ingap.BrokerOptions) string {
 	if brokerOpts == nil {
 		return ""
@@ -35,6 +36,7 @@ func BrokerName(brokerOpts *ingap.BrokerOptions) string {
 	return brokerOpts.Plugin.PluginType().String()
 }
 
+// BrokerType returns the broker plugin type recorded in the envelope.
 func BrokerType(brokerOpts *ingap.BrokerOptions) string {
 	if brokerOpts == nil || brokerOpts.Plugin == nil {
 		return ""
@@ -42,6 +44,7 @@ func BrokerType(brokerOpts *ingap.BrokerOptions) string {
 	return brokerOpts.Plugin.PluginType().String()
 }
 
+// MustGetProducer opens a broker producer or panics on failure.
 func MustGetProducer(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions) broker.Producer {
 	if brokerOpts == nil {
 		return nil
@@ -58,6 +61,7 @@ func MustGetProducer(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions) br
 	return producer
 }
 
+// MustGetConsumer opens a broker consumer or panics on failure.
 func MustGetConsumer(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions, group string) broker.Consumer {
 	if brokerOpts == nil {
 		return nil
@@ -74,6 +78,7 @@ func MustGetConsumer(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions, gr
 	return consumer
 }
 
+// MustGetStorage opens the configured storage or panics on failure.
 func MustGetStorage(gapOpts *ingap.Options) storage.Storage {
 	return mustStorage(gapOpts, storage.RoleData)
 }

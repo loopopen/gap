@@ -11,19 +11,30 @@ const version = "v1.0.0-beta.5"
 type Options = internal.Options
 
 var (
-	UseKafka     = internal.UseKafka
+	// UseKafka configures GAP to use the Confluent Kafka client.
+	UseKafka = internal.UseKafka
+	// UseConfluent configures GAP to use the Confluent Kafka client.
 	UseConfluent = internal.UseKafka
-	Password     = internal.Password
-	UserName     = internal.UserName
-	Brokers      = internal.Brokers
-	TopicOpts    = internal.TopicOpts
-	StartOffset  = internal.StartOffset
-	ConfigMap    = internal.ClientConfig
+	// Password sets the broker authentication password.
+	Password = internal.Password
+	// UserName sets the broker authentication username.
+	UserName = internal.UserName
+	// Brokers sets the Kafka bootstrap broker addresses.
+	Brokers = internal.Brokers
+	// TopicOpts configures topic provisioning.
+	TopicOpts = internal.TopicOpts
+	// StartOffset sets the initial consumer offset.
+	StartOffset = internal.StartOffset
+	// ConfigMap applies a Confluent client configuration map.
+	ConfigMap = internal.ClientConfig
 )
 
 var (
-	ConfigTopic       = internal.ConfigTopic
-	NumPartitions     = internal.NumPartitions
+	// ConfigTopic configures topic provisioning options.
+	ConfigTopic = internal.ConfigTopic
+	// NumPartitions sets the number of partitions created for a topic.
+	NumPartitions = internal.NumPartitions
+	// ReplicationFactor sets the replication factor created for a topic.
 	ReplicationFactor = internal.ReplicationFactor
 )
 

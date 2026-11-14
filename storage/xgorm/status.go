@@ -10,14 +10,17 @@ import (
 
 const mysqlStatusType = "ENUM('Pending','Succeeded','Failed')"
 
+// String returns the string representation of the receiver.
 func (s Status) String() string {
 	return enum.Status(s).String()
 }
 
+// Value returns the value represented by the receiver.
 func (s Status) Value() (driver.Value, error) {
 	return enum.Status(s).Value()
 }
 
+// Scan decodes a database value into the receiver.
 func (s *Status) Scan(value any) error {
 	var status enum.Status
 	if err := status.Scan(value); err != nil {

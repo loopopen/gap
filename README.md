@@ -176,6 +176,19 @@ GAP uses **at-least-once** message processing and does not guarantee exactly-onc
 
 Handlers must therefore be idempotent. Use a stable business key such as an order ID or event ID, and enforce idempotency in the same transaction as the handler's business changes—for example with a unique constraint or a processed-message record. Do not rely on message payload equality for deduplication, because publishing the same payload again may be intentional.
 
+## Message Retention
+
+GAP automatically removes terminal message records in bounded batches. Pending
+messages are never deleted. Successful messages are retained for 24 hours by
+default, failed messages for 15 days, and cleanup runs every 5 minutes with a
+30-second time budget. Multiple instances coordinate cleanup with row locking
+where supported by the storage provider.
+
+Use `gap.SucceededRetentionSeconds`, `gap.FailedRetentionSeconds`,
+`gap.CleanupIntervalSeconds`, `gap.CleanupBatchSize`, and
+`gap.CleanupTimeoutSeconds` to tune retention and cleanup. Pass
+`gap.CleanupEnabled(false)` when cleanup is managed externally.
+
 ## Usage Examples
 
 For a complete working example, see [`./examples/rabbitmq-gorm-mysql-example`](./examples/rabbitmq-gorm-mysql-example).
@@ -209,7 +222,7 @@ go run .
 
 ### Options
 
-- Runtime `Options` are passed to `gap.New`: `gap.UseDashboard` and storage options such as `xmysql.UseMySQL`
+- Runtime `Options` are passed to `gap.New`: dashboard, retention, cleanup, and storage options such as `gap.UseDashboard`, `gap.CleanupBatchSize`, and `xmysql.UseMySQL`
 - `BrokerOptions` are passed to publisher constructors: `gap.BrokerName` and broker options such as `xrabbitmq.UseRabbitMQ`
 - Subscriber options are passed to `g.Subscribe`: `gap.ServiceName` and `gap.Inject`
 

@@ -22,6 +22,7 @@ const (
 var sfNode *snowflake.Node
 var initOnce sync.Once
 
+// MustInitSnowflake initializes the process-wide Snowflake ID generator or panics.
 func MustInitSnowflake(node int64) {
 	initOnce.Do(func() {
 		slog.Debug(fmt.Sprintf("snowflake picks node %d", node))
@@ -51,6 +52,7 @@ type Envelope struct {
 	Logger        *slog.Logger      // Envelope-scoped logger.
 }
 
+// NewEnvelope creates a message envelope with a new ID.
 func NewEnvelope(version string, topic string, msg any) *Envelope {
 	id := sfNode.Generate().Int64()
 	return &Envelope{
@@ -72,21 +74,25 @@ func (e *Envelope) WithLease(ttl time.Duration) *Envelope {
 	return e
 }
 
+// WithGroup sets the envelope consumer group.
 func (e *Envelope) WithGroup(group string) *Envelope {
 	e.Group = group
 	return e
 }
 
+// WithPayload sets the serialized envelope payload.
 func (e *Envelope) WithPayload(payload []byte) *Envelope {
 	e.Payload = payload
 	return e
 }
 
+// WithTag attaches broker-specific delivery metadata to the envelope.
 func (e *Envelope) WithTag(tag any) *Envelope {
 	e.Tag = tag
 	return e
 }
 
+// AddHeader adds a metadata header to the envelope.
 func (e *Envelope) AddHeader(key string, value string) {
 	if e.Headers == nil {
 		e.Headers = make(map[string]string)
@@ -94,6 +100,7 @@ func (e *Envelope) AddHeader(key string, value string) {
 	e.Headers[key] = value
 }
 
+// PayloadBytes serializes the envelope payload.
 func (e *Envelope) PayloadBytes() ([]byte, error) {
 	if len(e.Payload) != 0 {
 		return e.Payload, nil
@@ -109,6 +116,7 @@ func (e *Envelope) PayloadBytes() ([]byte, error) {
 	return e.Payload, nil
 }
 
+// HeadersBytes serializes the envelope headers.
 func (e *Envelope) HeadersBytes() ([]byte, error) {
 	if len(e.Headers) == 0 {
 		return nil, nil
@@ -116,10 +124,12 @@ func (e *Envelope) HeadersBytes() ([]byte, error) {
 	return json.Marshal(e.Headers)
 }
 
+// IDString returns the envelope ID as a decimal string.
 func (e *Envelope) IDString() string {
 	return strconv.FormatInt(int64(e.ID), 10)
 }
 
+// Verify validates the envelope and initializes missing metadata.
 func (e *Envelope) Verify() error {
 	if e.Topic == "" {
 		return errx.ErrEmptyTopic
@@ -127,6 +137,7 @@ func (e *Envelope) Verify() error {
 	return nil
 }
 
+// Log returns the logger associated with the envelope.
 func (e *Envelope) Log() *slog.Logger {
 	if e == nil || e.Logger == nil {
 		return slog.Default()

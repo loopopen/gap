@@ -10,6 +10,7 @@ import (
 	"github.com/loopopen/gap/storage/xsql"
 )
 
+// OpenStorage opens and initializes the configured storage.
 func (o *Options) OpenStorage(gapOpts *ingap.Options, role storage.Role) (storage.Storage, error) {
 	pool, err := registry.Open(gapOpts.IntakeContext(), o.DSN, role, xsql.DataPlaneMaxOpen(gapOpts))
 	if err != nil {

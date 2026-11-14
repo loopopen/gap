@@ -22,6 +22,7 @@ func newTxer(db *gorm.DB) *Txer {
 	return txer
 }
 
+// Tx returns the underlying database transaction.
 func (tx *Txer) Tx() any {
 	return tx.db
 }
@@ -31,6 +32,7 @@ type wappter struct {
 	opt *sql.TxOptions
 }
 
+// With wraps db with optional SQL transaction settings.
 func With(db *gorm.DB, opts ...*sql.TxOptions) *wappter {
 	var opt *sql.TxOptions
 	if len(opts) > 0 {
@@ -42,10 +44,12 @@ func With(db *gorm.DB, opts ...*sql.TxOptions) *wappter {
 	}
 }
 
+// DoInTx runs a callback inside a database transaction.
 func (w wappter) DoInTx(ctx context.Context, action func(context.Context, gap.Txer) error) error {
 	return DoInTx(ctx, action, w.db, w.opt)
 }
 
+// DoInTx runs a callback inside a database transaction.
 func DoInTx(ctx context.Context, action func(context.Context, gap.Txer) error, db *gorm.DB, opts ...*sql.TxOptions) error {
 	var txer gap.Txer
 	err := db.WithContext(ctx).

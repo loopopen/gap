@@ -13,6 +13,7 @@ import (
 
 var _ storage.StorageX = (*Storage)(nil)
 
+// DashboardStats returns aggregate delivery statistics for the dashboard.
 func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, error) {
 	published, err := s.messageStats(ctx, "published")
 	if err != nil {
@@ -124,6 +125,7 @@ func (s *Storage) receivedGroupStats(ctx context.Context) ([]entity.GroupMessage
 	return groups, nil
 }
 
+// GetPublishedByID returns a published message by ID.
 func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
 	table, err := s.quotedTable("published")
 	if err != nil {

@@ -5,6 +5,7 @@ type pair struct {
 	Value string
 }
 
+// Pair returns a two-value tuple.
 func Pair(key string, value string) pair {
 	return pair{
 		Key:   key,

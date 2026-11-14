@@ -176,6 +176,12 @@ GAP 采用 **at-least-once（至少一次）** 的消息处理语义，不保证
 
 因此，Handler 必须保证幂等。建议使用订单 ID、事件 ID 等稳定的业务键，并在 Handler 的业务事务中同时完成幂等校验，例如使用唯一约束或记录已处理的消息。不要根据消息内容是否相同来去重，因为业务可能有意再次发布相同内容。
 
+## 消息保留与清理
+
+GAP 会分批自动删除终态消息记录，`Pending` 消息永远不会被自动删除。默认情况下，成功消息保留 24 小时，失败消息保留 15 天；清理器每 5 分钟运行一次，每轮最多运行 30 秒。存储支持时，多实例通过行锁协调清理。
+
+可以使用 `gap.SucceededRetentionSeconds`、`gap.FailedRetentionSeconds`、`gap.CleanupIntervalSeconds`、`gap.CleanupBatchSize` 和 `gap.CleanupTimeoutSeconds` 调整保留及清理策略。如果清理由外部任务负责，可传入 `gap.CleanupEnabled(false)`。
+
 ## 使用示例
 
 完整可运行示例请参见 [`./examples/rabbitmq-gorm-mysql-example`](./examples/rabbitmq-gorm-mysql-example)。
@@ -209,7 +215,7 @@ go run .
 
 ### 选项
 
-- 传给 `gap.New` 的运行时 `Options`：`gap.UseDashboard`，以及 `xmysql.UseMySQL` 等 storage 配置
+- 传给 `gap.New` 的运行时 `Options`：Dashboard、消息保留、清理，以及 storage 配置，例如 `gap.UseDashboard`、`gap.CleanupBatchSize` 和 `xmysql.UseMySQL`
 - 传给 publisher 构造函数的 `BrokerOptions`：`gap.BrokerName`，以及 `xrabbitmq.UseRabbitMQ` 等 broker 配置
 - 传给 `g.Subscribe` 的订阅配置：`gap.ServiceName` 和 `gap.Inject`
 

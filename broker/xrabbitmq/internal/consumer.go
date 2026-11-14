@@ -36,6 +36,7 @@ type Consumer struct {
 	ctag    string
 }
 
+// NewConsumer creates a broker consumer.
 func NewConsumer(gapOpts *ingap.Options, opts *Options, group string) *Consumer {
 	if group == "" {
 		panic("group should not be empty")
@@ -61,6 +62,7 @@ func (c *Consumer) init() error {
 	return err
 }
 
+// Subscribe subscribes the consumer to a topic.
 func (c *Consumer) Subscribe(_ context.Context, topic string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -88,6 +90,7 @@ func (c *Consumer) Subscribe(_ context.Context, topic string) error {
 	return nil
 }
 
+// Consume starts consuming broker messages.
 func (c *Consumer) Consume(ctx context.Context) (<-chan *entity.Envelope, error) {
 	enCh := make(chan *entity.Envelope, c.opts.PrefetchCount)
 
@@ -176,11 +179,13 @@ func waitRetry(ctx context.Context) bool {
 	}
 }
 
+// Commit acknowledges successful processing of a consumed message.
 func (c *Consumer) Commit(tag any) error {
 	deli, _ := tag.(amqp.Delivery)
 	return deli.Ack(false)
 }
 
+// Reject negatively acknowledges a consumed message.
 func (c *Consumer) Reject(tag any) error {
 	deli, _ := tag.(amqp.Delivery)
 	return deli.Nack(false, true)
@@ -273,6 +278,7 @@ func (c *Consumer) discardChannelLocked(ch *amqp.Channel) {
 	}
 }
 
+// Close releases resources held by the receiver.
 func (c *Consumer) Close() error {
 	return c.CloseContext(context.Background())
 }

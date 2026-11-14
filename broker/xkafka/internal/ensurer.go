@@ -46,6 +46,7 @@ func newEnsurer(opts *Options, client *kafka.Client) *Ensurer {
 	}
 }
 
+// SingleEnsurer returns the shared topic-ensurer instance.
 func SingleEnsurer(opts *Options) *Ensurer {
 	key := opts.connectionKey()
 	ensurerMu.Lock()

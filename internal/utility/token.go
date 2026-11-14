@@ -6,6 +6,7 @@ import (
 	"math/rand/v2"
 )
 
+// GenFastToken returns a random hexadecimal token of the requested byte length.
 func GenFastToken(length int) string {
 	b := make([]byte, length)
 	i := 0

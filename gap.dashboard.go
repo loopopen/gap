@@ -6,6 +6,7 @@ import (
 	"github.com/loopopen/gap/internal/dashboard"
 )
 
+// DashboardHandler returns the operational dashboard HTTP handler.
 func (g *Gap) DashboardHandler() http.Handler {
 	gapOpts := g.opts
 	dashOpts := gapOpts.DashboardOptions

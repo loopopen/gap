@@ -19,12 +19,14 @@ type Options struct {
 	Log bool
 }
 
+// PluginType returns the plugin type implemented by the receiver.
 func (o *Options) PluginType() enum.Plugin {
 	return enum.PluginMySQL
 }
 
 var _ ingap.StoragePlugin = (*Options)(nil)
 
+// UseMySQL configures GAP to use MySQL storage.
 func UseMySQL(opts ...shoot.Option[Options, *Options]) shoot.Option[ingap.Options, *ingap.Options] {
 	return func(o *ingap.Options) {
 		o.StorageOptions = new(Options).With(opts...)

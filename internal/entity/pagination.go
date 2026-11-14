@@ -16,11 +16,13 @@ type Pagination struct {
 	TotalPage int
 }
 
+// SetTotal sets the result count and recalculates pagination metadata.
 func (p *Pagination) SetTotal(total int) {
 	p.Total = total
 	p.TotalPage = (total + p.PerPage - 1) / p.PerPage
 }
 
+// Normalize applies pagination defaults and limits.
 func (p *Pagination) Normalize() Pagination {
 	var page int
 	var perPage int

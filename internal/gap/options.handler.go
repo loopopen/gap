@@ -18,6 +18,7 @@ func checkType[T any]() {
 	}
 }
 
+// HandleTopicWithinGroup registers a typed topic handler in a consumer group.
 func HandleTopicWithinGroup[T any](handler Handler[T], topic string, group string) shoot.Option[BrokerOptions, *BrokerOptions] {
 	checkType[T]()
 	if handler == nil {
@@ -34,6 +35,7 @@ func HandleTopicWithinGroup[T any](handler Handler[T], topic string, group strin
 	return HandleTopicWithinGroupRaw(h, topic, group)
 }
 
+// HandleTopicWithinGroupRaw registers a raw topic handler in a consumer group.
 func HandleTopicWithinGroupRaw(handler Handler[[]byte], topic string, group string) shoot.Option[BrokerOptions, *BrokerOptions] {
 	if handler == nil {
 		panic(errx.ErrParamIsNil("handler"))

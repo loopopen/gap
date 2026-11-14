@@ -21,10 +21,12 @@ func newTxer(tx *sql.Tx) *SqlTx {
 	return txer
 }
 
+// Tx returns the underlying database transaction.
 func (tx *SqlTx) Tx() any {
 	return tx.tx
 }
 
+// DoInTx runs a callback inside a database transaction.
 func DoInTx(ctx context.Context, action func(context.Context, gap.Txer) error, db *sql.DB, opts ...*sql.TxOptions) (err error) {
 	var sqlOpts *sql.TxOptions
 	if len(opts) > 0 {

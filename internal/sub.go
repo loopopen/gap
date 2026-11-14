@@ -22,18 +22,22 @@ type GroupedSubs struct {
 	DependencyOtpsLst []ingap.DependencyOptions
 }
 
+// NewGroupedSubs creates an empty grouped subscription registry.
 func NewGroupedSubs() *GroupedSubs {
 	return &GroupedSubs{subs: make(map[string]*Sub)}
 }
 
+// AddDependencyOtps adds dependency options to the grouped subscriptions.
 func (g *GroupedSubs) AddDependencyOtps(lst []ingap.DependencyOptions) {
 	g.DependencyOtpsLst = append(g.DependencyOtpsLst, lst...)
 }
 
+// AddHandlerOtps adds handler options to the grouped subscriptions.
 func (g *GroupedSubs) AddHandlerOtps(lst []ingap.HandlerOptions) {
 	g.HandlerOtpsLst = append(g.HandlerOtpsLst, lst...)
 }
 
+// SubscribeAll builds all configured subscriptions.
 func (g *GroupedSubs) SubscribeAll(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions, stor storage.Storage, messagePump *pump.Pump) error {
 	//todo: IngestConcurrency
 	for _, o := range g.HandlerOtpsLst {
@@ -73,6 +77,7 @@ func (g *GroupedSubs) subscribeOne(gapOpts *ingap.Options, brokerOpts *ingap.Bro
 	return nil
 }
 
+// ListeningAll starts all configured subscribers.
 func (g *GroupedSubs) ListeningAll() error {
 	for _, sub := range g.subs {
 		err := sub.Listening()
@@ -83,6 +88,7 @@ func (g *GroupedSubs) ListeningAll() error {
 	return nil
 }
 
+// Stop stops the receiver and waits for owned work to finish.
 func (g *GroupedSubs) Stop(ctx context.Context) error {
 	for _, sub := range g.subs {
 		if err := sub.Stop(ctx); err != nil {
@@ -126,6 +132,7 @@ func (s *Sub) Subscribe(topic string, handler ingap.Handler[[]byte]) error {
 	return nil
 }
 
+// NewSub creates a broker subscription.
 func NewSub(opts *ingap.Options, brokerOpts *ingap.BrokerOptions, groupOpts *ingap.GroupOptions, consumer broker.Consumer, storage storage.Storage, messagePump *pump.Pump) *Sub {
 	if consumer == nil {
 		panic(errx.ErrNoBroker)
@@ -156,6 +163,7 @@ func NewSub(opts *ingap.Options, brokerOpts *ingap.BrokerOptions, groupOpts *ing
 	return sub
 }
 
+// Listening starts forwarding consumed messages to the subscriber.
 func (s *Sub) Listening() error {
 	s.listenOnce.Do(func() {
 		s.listenErr = s.startListening()
@@ -286,6 +294,7 @@ func (s *Sub) ingestSerial(ctx context.Context, envelope *entity.Envelope) {
 	s.dispatch(ctx, envelope)
 }
 
+// Stop stops the receiver and waits for owned work to finish.
 func (s *Sub) Stop(ctx context.Context) error {
 	if err := waitGroupContext(ctx, &s.listenWG); err != nil {
 		return err
@@ -334,6 +343,7 @@ func (s *Sub) handle(ctx context.Context, envelope *entity.Envelope) (err error)
 	return nil
 }
 
+// HandleAndUpdate executes a handler and persists the resulting message state.
 func (s *Sub) HandleAndUpdate(ctx context.Context, envelope *entity.Envelope) error {
 	err := s.handle(ctx, envelope)
 	if err != nil {

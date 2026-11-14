@@ -14,10 +14,12 @@ import (
 	"github.com/loopopen/gap/internal/pkgs/logx"
 )
 
+// CmdLine returns the generator command line recorded in generated output.
 func (g *Generator) CmdLine() string {
 	return g.data.CmdLine
 }
 
+// MakeData builds template data from a parsed handler function.
 func (g *Generator) MakeData(funcName string) any {
 	args := []string{gapc}
 	args = append(args, os.Args[1:]...)

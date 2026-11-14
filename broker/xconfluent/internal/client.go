@@ -71,6 +71,7 @@ func (o *Options) producerKey() string {
 	return o.connectionKey()
 }
 
+// ConfigID returns the stable identity of the configuration.
 func (o *Options) ConfigID() string {
 	return broker.ConfigID("xconfluent", o.producerKey())
 }
@@ -80,6 +81,7 @@ var (
 	adminMap = map[string]*kafka.AdminClient{}
 )
 
+// SingleAdmin returns the shared Confluent admin client.
 func SingleAdmin(opts *Options) (*kafka.AdminClient, error) {
 	key := opts.connectionKey()
 	adminMu.Lock()

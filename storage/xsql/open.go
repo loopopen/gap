@@ -67,6 +67,7 @@ type SetupConnector struct {
 	SQL string
 }
 
+// Connect opens and verifies a SQL database connection.
 func (c SetupConnector) Connect(ctx context.Context) (driver.Conn, error) {
 	conn, err := c.Connector.Connect(ctx)
 	if err != nil {

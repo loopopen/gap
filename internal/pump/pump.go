@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"runtime"
 	"sort"
 	"strings"
@@ -47,6 +48,7 @@ type Pump struct {
 	taskWG         sync.WaitGroup
 }
 
+// New creates and starts a message pump.
 func New(gapOpts *ingap.Options, stor storage.Storage) *Pump {
 	if stor == nil {
 		panic(errx.ErrNoStorage)
@@ -61,13 +63,103 @@ func New(gapOpts *ingap.Options, stor storage.Storage) *Pump {
 		handlerConfigs: &sync.Map{},
 	}
 	p.startSender()
+	p.startCleaner()
 	return p
+}
+
+func (p *Pump) startCleaner() {
+	if !p.gapOpts.CleanupEnabled {
+		return
+	}
+	p.sourceWG.Add(1)
+	go func() {
+		defer p.sourceWG.Done()
+		p.cleanExpired(p.gapOpts.IntakeContext())
+	}()
+}
+
+func (p *Pump) cleanExpired(ctx context.Context) {
+	interval := p.gapOpts.CleanupInterval()
+	timer := time.NewTimer(cleanupDelay(interval))
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			cycleCtx, cancel := context.WithTimeout(ctx, p.gapOpts.CleanupTimeout())
+			deleted, err := p.cleanupCycle(cycleCtx)
+			cancel()
+			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
+				return
+			}
+			switch {
+			case errors.Is(err, context.DeadlineExceeded):
+				slog.Info("message cleanup reached its time budget", slog.Int64("deleted", deleted))
+			case err != nil:
+				slog.Error("failed to clean expired messages", slog.Any("err", err))
+			case deleted > 0:
+				slog.Info("cleaned expired messages", slog.Int64("deleted", deleted))
+			}
+			timer.Reset(cleanupDelay(interval))
+		}
+	}
+}
+
+func cleanupDelay(interval time.Duration) time.Duration {
+	jitter := interval / 10
+	if jitter <= 0 {
+		return interval
+	}
+	return interval - jitter + time.Duration(rand.Int64N(int64(2*jitter)+1))
+}
+
+func (p *Pump) cleanupCycle(ctx context.Context) (int64, error) {
+	type cleanupStream struct {
+		name   string
+		active bool
+		delete func(context.Context, int) (int64, error)
+	}
+	streams := []cleanupStream{
+		{name: "published", active: true, delete: p.storage.DeleteExpiredPublishedBatch},
+		{name: "received", active: true, delete: p.storage.DeleteExpiredReceivedBatch},
+	}
+
+	var total int64
+	var cleanupErr error
+	for streams[0].active || streams[1].active {
+		for i := range streams {
+			stream := &streams[i]
+			if !stream.active {
+				continue
+			}
+			if ctx.Err() != nil {
+				return total, errors.Join(cleanupErr, ctx.Err())
+			}
+			deleted, err := stream.delete(ctx, p.gapOpts.CleanupBatchSize)
+			if err != nil {
+				if ctx.Err() != nil {
+					return total, errors.Join(cleanupErr, ctx.Err())
+				}
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("clean expired %s messages: %w", stream.name, err))
+				stream.active = false
+				continue
+			}
+			total += deleted
+			if deleted < int64(p.gapOpts.CleanupBatchSize) {
+				stream.active = false
+			}
+		}
+	}
+	return total, cleanupErr
 }
 
 func routeKey(brokerName string) string {
 	return brokerName
 }
 
+// SetSender registers a broker sender route with the pump.
 func (p *Pump) SetSender(brokerName, configID string, sender Sender) error {
 	p.senderMu.Lock()
 	defer p.senderMu.Unlock()
@@ -92,6 +184,7 @@ func handlerKey(brokerName, group string) string {
 	return routeKey(brokerName) + "\x00" + group
 }
 
+// SetHandler registers a handler route with the pump.
 func (p *Pump) SetHandler(brokerName, configID, group string, handler Handler) error {
 	if p.handlers == nil {
 		p.handlers = &sync.Map{}
@@ -156,6 +249,7 @@ func (p *Pump) startHandlerOnce() {
 	}()
 }
 
+// DispatchToSend queues an envelope for broker delivery.
 func (p *Pump) DispatchToSend(ctx context.Context, envelope *entity.Envelope) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -176,6 +270,7 @@ func (p *Pump) DispatchToSend(ctx context.Context, envelope *entity.Envelope) er
 	}
 }
 
+// DispatchToHandle queues an envelope for handler execution.
 func (p *Pump) DispatchToHandle(ctx context.Context, envelope *entity.Envelope) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -490,6 +585,7 @@ func wait(ctx context.Context, duration time.Duration) {
 	}
 }
 
+// StopSources waits for pump input sources to stop.
 func (p *Pump) StopSources(ctx context.Context) error {
 	return waitGroup(ctx, &p.sourceWG)
 }
@@ -536,6 +632,7 @@ func waitGroup(ctx context.Context, wg *sync.WaitGroup) error {
 	}
 }
 
+// StartHandler starts handler polling and dispatch.
 func (p *Pump) StartHandler() {
 	p.startHandler()
 }

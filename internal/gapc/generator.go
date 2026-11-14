@@ -36,6 +36,7 @@ type Generator struct {
 	fileNameMap     map[string]string
 }
 
+// NewGenerator creates a source generator.
 func NewGenerator() *Generator {
 	return &Generator{
 		fileNameMap: make(map[string]string),
@@ -49,6 +50,7 @@ func (g *Generator) tmpl() *template.Template {
 	return g.tmp
 }
 
+// ParseFlags parses generator command-line flags.
 func (g *Generator) ParseFlags() {
 	// flag.Usage = func() {
 	// 	log.Println("Usage: gapc [command] [options]")
@@ -103,6 +105,7 @@ func (g *Generator) ParseFlags() {
 	}
 }
 
+// LoadPackage loads and analyzes the package containing the source file.
 func (g *Generator) LoadPackage(patterns ...string) map[string]*packages.Package {
 	patterns = append(patterns, dot)
 
@@ -202,6 +205,7 @@ func hasMultiPkgs(pkg *packages.Package) bool {
 	return false
 }
 
+// Generate generates subscription registration source.
 func (g *Generator) Generate() map[string][]byte {
 	g.confirmFuncs()
 
@@ -349,6 +353,7 @@ func (g *Generator) fileName(funcName string, pkgScope bool) string {
 	return fmt.Sprintf("%s.%s.%s.go", gofile, cmd, strings.ToLower(funcName))
 }
 
+// FormatSrc formats generated Go source.
 func FormatSrc(src []byte) ([]byte, error) {
 	// format imports
 	src, err := imports.Process("_.go", src, nil)
@@ -365,6 +370,7 @@ func FormatSrc(src []byte) ([]byte, error) {
 	return src, nil
 }
 
+// MergeSources merges generated declarations with an existing Go source file.
 func MergeSources(sources ...[]byte) ([]byte, error) {
 	if len(sources) == 0 {
 		return nil, nil

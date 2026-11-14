@@ -58,6 +58,7 @@ func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
 	return &newS, nil
 }
 
+// InTx reports whether the storage is bound to a transaction.
 func (s *Storage) InTx() bool {
 	return s.tx != nil
 }
@@ -220,12 +221,14 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group str
 }
 
 func (s *Storage) failExhausted(ctx context.Context, tx *xsql.Tx, table, statusType string, now time.Time) error {
-	_, err := tx.ExecContext(ctx, failExhaustedSQL(table, statusType), enum.StatusFailed, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries)
+	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
+	_, err := tx.ExecContext(ctx, failExhaustedSQL(table, statusType), enum.StatusFailed, retentionSeconds, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries)
 	return err
 }
 
 func (s *Storage) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table, statusType string, now time.Time, group string) error {
-	_, err := tx.ExecContext(ctx, failExhaustedReceivedSQL(table, statusType), enum.StatusFailed, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries, group)
+	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
+	_, err := tx.ExecContext(ctx, failExhaustedReceivedSQL(table, statusType), enum.StatusFailed, retentionSeconds, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries, group)
 	return err
 }
 
@@ -257,24 +260,24 @@ LIMIT $7 FOR UPDATE SKIP LOCKED`, table, statusType)
 func failExhaustedSQL(table, statusType string) string {
 	return fmt.Sprintf(`
 UPDATE %s
-SET "status" = $1::%s, "lease_token" = NULL, "lease_until" = NULL
-WHERE "version" = $2
-AND "status" = $3::%s
-AND "next_attempt_at" <= $4
-AND ("lease_until" IS NULL OR "lease_until" <= $5)
-AND "retries" >= $6`, table, statusType, statusType)
+SET "status" = $1::%s, "expired_at" = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second'), "lease_token" = NULL, "lease_until" = NULL
+WHERE "version" = $3
+AND "status" = $4::%s
+AND "next_attempt_at" <= $5
+AND ("lease_until" IS NULL OR "lease_until" <= $6)
+AND "retries" >= $7`, table, statusType, statusType)
 }
 
 func failExhaustedReceivedSQL(table, statusType string) string {
 	return fmt.Sprintf(`
 UPDATE %s
-SET "status" = $1::%s, "lease_token" = NULL, "lease_until" = NULL
-WHERE "version" = $2
-AND "status" = $3::%s
-AND "next_attempt_at" <= $4
-AND ("lease_until" IS NULL OR "lease_until" <= $5)
-AND "retries" >= $6
-AND "group" = $7`, table, statusType, statusType)
+SET "status" = $1::%s, "expired_at" = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second'), "lease_token" = NULL, "lease_until" = NULL
+WHERE "version" = $3
+AND "status" = $4::%s
+AND "next_attempt_at" <= $5
+AND ("lease_until" IS NULL OR "lease_until" <= $6)
+AND "retries" >= $7
+AND "group" = $8`, table, statusType, statusType)
 }
 
 // CreatePublished implements [storage.Storage].
@@ -387,7 +390,8 @@ func (s *Storage) updateStatus(ctx context.Context, base string, id uint, leaseT
 	if err != nil {
 		return err
 	}
-	result, err := s.execer().ExecContext(ctx, updateStatusSQL(table, statusType), status, id, enum.StatusPending, leaseToken)
+	retentionSeconds := int64(s.gapOpts.Retention(status) / time.Second)
+	result, err := s.execer().ExecContext(ctx, updateStatusSQL(table, statusType), status, retentionSeconds, id, enum.StatusPending, leaseToken)
 	if err != nil {
 		return err
 	}
@@ -403,7 +407,41 @@ func (s *Storage) updateStatus(ctx context.Context, base string, id uint, leaseT
 }
 
 func updateStatusSQL(table, statusType string) string {
-	return "UPDATE " + table + ` SET "status" = $1::` + statusType + `, "lease_token" = NULL, "lease_until" = NULL WHERE "id" = $2 AND "status" = $3::` + statusType + ` AND "lease_token" = $4`
+	return "UPDATE " + table + ` SET "status" = $1::` + statusType + `, "expired_at" = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second'), "lease_token" = NULL, "lease_until" = NULL WHERE "id" = $3 AND "status" = $4::` + statusType + ` AND "lease_token" = $5`
+}
+
+// DeleteExpiredPublishedBatch deletes one batch of expired terminal published messages.
+func (s *Storage) DeleteExpiredPublishedBatch(ctx context.Context, batchSize int) (int64, error) {
+	return s.deleteExpiredBatch(ctx, "published", batchSize)
+}
+
+// DeleteExpiredReceivedBatch deletes one batch of expired terminal received messages.
+func (s *Storage) DeleteExpiredReceivedBatch(ctx context.Context, batchSize int) (int64, error) {
+	return s.deleteExpiredBatch(ctx, "received", batchSize)
+}
+
+func (s *Storage) deleteExpiredBatch(ctx context.Context, base string, batchSize int) (int64, error) {
+	table, err := s.quotedTable(base)
+	if err != nil {
+		return 0, err
+	}
+	statusType, err := s.statusType()
+	if err != nil {
+		return 0, err
+	}
+	result, err := s.execer().ExecContext(ctx, deleteExpiredSQL(table, statusType), enum.StatusSucceeded, enum.StatusFailed, batchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+func deleteExpiredSQL(table, statusType string) string {
+	return `WITH expired AS (` +
+		`SELECT "id" FROM ` + table + ` WHERE "expired_at" <= CURRENT_TIMESTAMP ` +
+		`AND "status" IN ($1::` + statusType + `, $2::` + statusType + `) ` +
+		`ORDER BY "expired_at", "id" LIMIT $3 FOR UPDATE SKIP LOCKED` +
+		`) DELETE FROM ` + table + ` AS target USING expired WHERE target."id" = expired."id"`
 }
 
 func (s *Storage) scheduleRetry(ctx context.Context, base string, id uint, leaseToken string) error {
@@ -439,6 +477,7 @@ func logSQL(opts *Options) bool {
 	return opts != nil && opts.Log
 }
 
+// NewStorage creates a storage adapter.
 func NewStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *Storage {
 	s := &Storage{
 		gapOpts: gapOpts,
@@ -494,7 +533,21 @@ func (s *Storage) init() error {
 	if _, err = s.db.Exec(publishedIndex); err != nil {
 		return err
 	}
-	_, err = s.db.Exec(receivedIndex)
+	if _, err = s.db.Exec(receivedIndex); err != nil {
+		return err
+	}
+	publishedCleanupIndex, err := cleanupIndexSQL(published, "idx_published_cleanup")
+	if err != nil {
+		return err
+	}
+	receivedCleanupIndex, err := cleanupIndexSQL(received, "idx_received_cleanup")
+	if err != nil {
+		return err
+	}
+	if _, err = s.db.Exec(publishedCleanupIndex); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(receivedCleanupIndex)
 	return err
 }
 

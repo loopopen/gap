@@ -49,6 +49,7 @@ type Mapper struct{}
 // 	return dt.Time
 // }
 
+// TimeToDateTime formats a time for dashboard responses.
 func (Mapper) TimeToDateTime(t time.Time) timex.DateTime {
 	return timex.DateTime{Time: t}
 }

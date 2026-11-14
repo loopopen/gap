@@ -29,6 +29,39 @@ type statusStorageStub struct {
 	receivedStatus     enum.Status
 }
 
+type cleanupResult struct {
+	deleted int64
+	err     error
+}
+
+type cleanupStorageStub struct {
+	storage.Storage
+	published []cleanupResult
+	received  []cleanupResult
+	pubCalls  int
+	recCalls  int
+}
+
+func (s *cleanupStorageStub) DeleteExpiredPublishedBatch(context.Context, int) (int64, error) {
+	s.pubCalls++
+	if len(s.published) == 0 {
+		return 0, nil
+	}
+	result := s.published[0]
+	s.published = s.published[1:]
+	return result.deleted, result.err
+}
+
+func (s *cleanupStorageStub) DeleteExpiredReceivedBatch(context.Context, int) (int64, error) {
+	s.recCalls++
+	if len(s.received) == 0 {
+		return 0, nil
+	}
+	result := s.received[0]
+	s.received = s.received[1:]
+	return result.deleted, result.err
+}
+
 func (s *statusStorageStub) UpdateStatusReceived(_ context.Context, id uint, leaseToken string, status enum.Status) error {
 	s.receivedID = id
 	s.receivedLeaseToken = leaseToken
@@ -117,6 +150,79 @@ func TestPumpMarksReceivedFailedWhenHandlerRouteIsMissing(t *testing.T) {
 	}
 	if stor.receivedStatus != enum.StatusFailed {
 		t.Fatalf("updated status = %v, want %v", stor.receivedStatus, enum.StatusFailed)
+	}
+}
+
+func TestCleanupCycleAlternatesTablesUntilBothAreDrained(t *testing.T) {
+	stor := &cleanupStorageStub{
+		published: []cleanupResult{{deleted: 2}, {deleted: 2}, {deleted: 0}},
+		received:  []cleanupResult{{deleted: 2}, {deleted: 1}},
+	}
+	p := &Pump{
+		gapOpts: &ingap.Options{CleanupBatchSize: 2},
+		storage: stor,
+	}
+
+	deleted, err := p.cleanupCycle(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != 7 {
+		t.Fatalf("deleted = %d, want 7", deleted)
+	}
+	if stor.pubCalls != 3 || stor.recCalls != 2 {
+		t.Fatalf("cleanup calls = published:%d received:%d, want 3 and 2", stor.pubCalls, stor.recCalls)
+	}
+}
+
+func TestCleanupCycleContinuesOtherTableAfterError(t *testing.T) {
+	boom := errors.New("cleanup failed")
+	stor := &cleanupStorageStub{
+		published: []cleanupResult{{err: boom}},
+		received:  []cleanupResult{{deleted: 1}},
+	}
+	p := &Pump{
+		gapOpts: &ingap.Options{CleanupBatchSize: 2},
+		storage: stor,
+	}
+
+	deleted, err := p.cleanupCycle(context.Background())
+	if deleted != 1 {
+		t.Fatalf("deleted = %d, want 1", deleted)
+	}
+	if !errors.Is(err, boom) {
+		t.Fatalf("cleanup error = %v, want %v", err, boom)
+	}
+	if stor.recCalls != 1 {
+		t.Fatalf("received cleanup calls = %d, want 1", stor.recCalls)
+	}
+}
+
+func TestCleanupCycleStopsOnContextCancellation(t *testing.T) {
+	stor := new(cleanupStorageStub)
+	p := &Pump{
+		gapOpts: &ingap.Options{CleanupBatchSize: 2},
+		storage: stor,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	deleted, err := p.cleanupCycle(ctx)
+	if deleted != 0 || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cleanup = deleted:%d err:%v, want 0 and context canceled", deleted, err)
+	}
+	if stor.pubCalls != 0 || stor.recCalls != 0 {
+		t.Fatalf("cleanup called storage after cancellation: published:%d received:%d", stor.pubCalls, stor.recCalls)
+	}
+}
+
+func TestCleanupDelayStaysWithinTenPercent(t *testing.T) {
+	interval := 5 * time.Minute
+	for range 100 {
+		delay := cleanupDelay(interval)
+		if delay < 9*interval/10 || delay > 11*interval/10 {
+			t.Fatalf("cleanup delay = %v, want within 10%% of %v", delay, interval)
+		}
 	}
 }
 

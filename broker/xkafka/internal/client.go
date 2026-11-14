@@ -44,6 +44,7 @@ func (o *Options) producerKey() string {
 	return o.connectionKey()
 }
 
+// ConfigID returns the stable identity of the configuration.
 func (o *Options) ConfigID() string {
 	return broker.ConfigID("xkafka", o.producerKey())
 }
@@ -97,14 +98,17 @@ func singleKafkaConnections(opts *Options) *kafkaConnections {
 	return created
 }
 
+// SingleClient returns the shared Kafka client.
 func SingleClient(opts *Options) *kafka.Client {
 	return singleKafkaConnections(opts).client
 }
 
+// SingleDialer returns the shared Kafka dialer.
 func SingleDialer(opts *Options) *kafka.Dialer {
 	return singleKafkaConnections(opts).dialer
 }
 
+// SingleTransport returns the shared Kafka transport.
 func SingleTransport(opts *Options) *kafka.Transport {
 	return singleKafkaConnections(opts).transport
 }

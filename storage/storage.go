@@ -50,6 +50,14 @@ type Storage interface {
 	// schedules the next attempt after RetryInterval.
 	UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error
 
+	// DeleteExpiredPublishedBatch removes at most batchSize terminal published
+	// messages whose retention period has elapsed.
+	DeleteExpiredPublishedBatch(ctx context.Context, batchSize int) (int64, error)
+
+	// DeleteExpiredReceivedBatch removes at most batchSize terminal received
+	// messages whose retention period has elapsed.
+	DeleteExpiredReceivedBatch(ctx context.Context, batchSize int) (int64, error)
+
 	StorageX
 }
 

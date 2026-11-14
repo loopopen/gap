@@ -67,15 +67,27 @@ func TestClaimIndexSQL(t *testing.T) {
 	}
 }
 
+func TestCleanupIndexSQL(t *testing.T) {
+	sql, err := cleanupIndexSQL(`"gap"."published"`, "idx_published_cleanup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `CREATE INDEX IF NOT EXISTS "idx_published_cleanup" ON "gap"."published" ("expired_at", "id") WHERE "expired_at" IS NOT NULL`
+	if sql != want {
+		t.Fatal(sql)
+	}
+}
+
 func TestFailExhaustedSQL(t *testing.T) {
 	sql := failExhaustedSQL(`"gap"."published"`, `"gap"."status_enum"`)
-	assertPendingDueWhere(t, sql, 2)
+	assertPendingDueWhere(t, sql, 3)
 	for _, condition := range []string{
 		`UPDATE "gap"."published"`,
 		`"status" = $1::"gap"."status_enum"`,
+		`"expired_at" = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second')`,
 		`"lease_token" = NULL`,
 		`"lease_until" = NULL`,
-		`"retries" >= $6`,
+		`"retries" >= $7`,
 	} {
 		if !strings.Contains(sql, condition) {
 			t.Fatalf("fail exhausted SQL %q does not contain %q", sql, condition)
@@ -117,10 +129,10 @@ func TestClaimSelectSQL(t *testing.T) {
 	}
 
 	exhausted := failExhaustedReceivedSQL(`"gap"."received"`, `"gap"."status_enum"`)
-	assertPendingDueWhere(t, exhausted, 2)
+	assertPendingDueWhere(t, exhausted, 3)
 	for _, condition := range []string{
-		`"retries" >= $6`,
-		`"group" = $7`,
+		`"retries" >= $7`,
+		`"group" = $8`,
 	} {
 		if !strings.Contains(exhausted, condition) {
 			t.Fatalf("received exhausted SQL %q does not contain %q", exhausted, condition)
@@ -170,6 +182,23 @@ func TestUpdateStatusSQLWritesStatusDirectly(t *testing.T) {
 	}
 	if !strings.Contains(sql, `SET "status" = $1::"gap"."status_enum"`) {
 		t.Fatalf("update status does not write the supplied status directly: %s", sql)
+	}
+	if !strings.Contains(sql, `"expired_at" = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second')`) {
+		t.Fatalf("update status does not set expiration: %s", sql)
+	}
+}
+
+func TestDeleteExpiredSQLOnlyDeletesTerminalRowsInBatches(t *testing.T) {
+	sql := deleteExpiredSQL(`"gap"."published"`, `"gap"."status_enum"`)
+	for _, condition := range []string{
+		`"expired_at" <= CURRENT_TIMESTAMP`,
+		`"status" IN ($1::"gap"."status_enum", $2::"gap"."status_enum")`,
+		`ORDER BY "expired_at", "id"`,
+		`LIMIT $3 FOR UPDATE SKIP LOCKED`,
+	} {
+		if !strings.Contains(sql, condition) {
+			t.Fatalf("cleanup SQL %q does not contain %q", sql, condition)
+		}
 	}
 }
 

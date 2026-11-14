@@ -11,6 +11,7 @@ type Handler struct {
 	*http.ServeMux
 }
 
+// NewHandler creates the dashboard HTTP handler.
 func NewHandler(gapOpts *ingap.Options, opts *dashboard.Options) http.Handler {
 	h := &Handler{http.NewServeMux()}
 	svc := NewBoardSvc(gapOpts, opts)

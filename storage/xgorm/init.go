@@ -32,6 +32,7 @@ type gormPoolKey struct {
 	db  *gorm.DB
 }
 
+// OpenStorage opens and initializes the configured storage.
 func (o *Options) OpenStorage(gapOpts *ingap.Options, role storage.Role) (storage.Storage, error) {
 	if err := o.validate(); err != nil {
 		return nil, err

@@ -86,3 +86,14 @@ func claimIndexSQL(quotedTable, index string) (string, error) {
 		quotedIndex, quotedTable,
 	), nil
 }
+
+func cleanupIndexSQL(quotedTable, index string) (string, error) {
+	quotedIndex, err := quoteIdent(index)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(
+		`CREATE INDEX IF NOT EXISTS %s ON %s ("expired_at", "id") WHERE "expired_at" IS NOT NULL`,
+		quotedIndex, quotedTable,
+	), nil
+}

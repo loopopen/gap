@@ -135,13 +135,45 @@ func TestRetryUpdatesKeepStatus(t *testing.T) {
 }
 
 func TestStatusUpdatesWriteStatusDirectly(t *testing.T) {
-	updates := statusUpdates(enum.StatusFailed)
+	expiredAt := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	updates := statusUpdates(enum.StatusFailed, expiredAt)
 	if updates["status"] != enum.StatusFailed {
 		t.Fatalf("status update = %v, want %v", updates["status"], enum.StatusFailed)
+	}
+	if updates["expired_at"] != expiredAt {
+		t.Fatalf("expiration = %v, want %v", updates["expired_at"], expiredAt)
 	}
 	for _, field := range []string{"retries", "next_attempt_at"} {
 		if _, ok := updates[field]; ok {
 			t.Fatalf("status update unexpectedly changes %s", field)
+		}
+	}
+}
+
+func TestTerminalExpirationUsesDatabaseClock(t *testing.T) {
+	_, stor := openStorage(t)
+	stor.gapOpts.SucceededRetentionSeconds = 3600
+	expr, ok := stor.terminalExpiration(enum.StatusSucceeded).(clause.Expr)
+	if !ok {
+		t.Fatalf("expiration = %T, want clause.Expr", stor.terminalExpiration(enum.StatusSucceeded))
+	}
+	if expr.SQL != "TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3))" {
+		t.Fatalf("expiration SQL = %q", expr.SQL)
+	}
+	if len(expr.Vars) != 1 || expr.Vars[0] != int64(3600) {
+		t.Fatalf("expiration vars = %#v", expr.Vars)
+	}
+}
+
+func TestCleanupSQLUsesTerminalStatusExpiryAndSkipLocked(t *testing.T) {
+	for _, sql := range []string{
+		mysqlDeleteExpiredSQL("`gap_published`"),
+		postgresDeleteExpiredSQL(`"gap"."published"`, `"gap"."status_enum"`),
+	} {
+		for _, condition := range []string{"expired_at", "status", "SKIP LOCKED"} {
+			if !strings.Contains(sql, condition) {
+				t.Fatalf("cleanup SQL %q does not contain %q", sql, condition)
+			}
 		}
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/loopopen/shoot"
 )
 
+// NewPublisher creates a typed publisher owned by g using the supplied broker options.
 func NewPublisher[T any](g *Gap, opts ...shoot.Option[BrokerOptions, *BrokerOptions]) Publisher[T] {
 	done, err := g.opts.BeginOperation()
 	if err != nil {
@@ -29,6 +30,7 @@ func NewPublisher[T any](g *Gap, opts ...shoot.Option[BrokerOptions, *BrokerOpti
 	return pub
 }
 
+// NewEventPublisher creates an event publisher owned by g using the supplied broker options.
 func NewEventPublisher(g *Gap, opts ...shoot.Option[BrokerOptions, *BrokerOptions]) EventPublisher {
 	pub := &internal.EventPub{
 		Pub: NewPublisher[Event](g, opts...).(*internal.Pub[Event]),
@@ -36,6 +38,7 @@ func NewEventPublisher(g *Gap, opts ...shoot.Option[BrokerOptions, *BrokerOption
 	return pub
 }
 
+// NewEventPublisher creates an event publisher owned by g using the supplied broker options.
 func (g *Gap) NewEventPublisher(opts ...shoot.Option[BrokerOptions, *BrokerOptions]) EventPublisher {
 	return NewEventPublisher(g, opts...)
 }

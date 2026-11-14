@@ -20,6 +20,7 @@ const (
 	KeysBrokerType    = internal.KeysBrokerType
 )
 
+// Pair returns a two-value tuple for APIs that accept paired values.
 var Pair = internal.Pair
 
 type Txer = txer.Txer

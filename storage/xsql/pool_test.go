@@ -21,7 +21,7 @@ func TestDataPlaneMaxOpen(t *testing.T) {
 		MaxPublishConcurrency: 4,
 		WorkConcurrencyFactor: 2,
 	}
-	want := dataPlaneClaims + 4 + procs*2 + dataPlaneHeadroom
+	want := dataPlaneWorkers + 4 + procs*2 + dataPlaneHeadroom
 	if got := DataPlaneMaxOpen(opts); got != want {
 		t.Fatalf("max open = %d, want %d", got, want)
 	}
@@ -31,7 +31,7 @@ func TestDataPlaneMaxOpen(t *testing.T) {
 
 	opts.MaxPublishConcurrency = 0
 	opts.WorkConcurrencyFactor = 0
-	want = dataPlaneClaims + 1 + 1 + dataPlaneHeadroom
+	want = dataPlaneWorkers + 1 + 1 + dataPlaneHeadroom
 	if got := DataPlaneMaxOpen(opts); got != want {
 		t.Fatalf("serial max open = %d, want %d", got, want)
 	}

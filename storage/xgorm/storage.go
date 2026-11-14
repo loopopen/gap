@@ -55,6 +55,7 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 	return nil
 }
 
+// CreateReceived persists a newly received message.
 func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope) error {
 	if envelope == nil {
 		return errx.ErrParamIsNil("envelope")
@@ -74,6 +75,7 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 	return nil
 }
 
+// NewStorage creates a storage adapter.
 func NewStorage(gapOpts *ingap.Options, opts *Options, db *gorm.DB) *Storage {
 	stor := &Storage{
 		gapOpts: gapOpts,
@@ -181,6 +183,9 @@ func (s *Storage) autoMigrate(models ...any) error {
 		if err := s.ensureClaimIndex(dname, tableName, claimIndexName(model)); err != nil {
 			return err
 		}
+		if err := s.ensureCleanupIndex(dname, tableName, cleanupIndexName(model)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -277,6 +282,7 @@ func (s *Storage) ensureMySQLStatusColumn(tableName string) error {
 	return s.db.Exec("ALTER TABLE " + quotedTable + " MODIFY COLUMN `status` " + mysqlStatusType + " NOT NULL").Error
 }
 
+// Bind binds the publisher or storage to the supplied transaction.
 func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
 	db, ok := txer.Tx().(*gorm.DB)
 	if !ok {
@@ -290,6 +296,7 @@ func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
 	return &newStor, nil
 }
 
+// InTx reports whether the storage is bound to a transaction.
 func (s *Storage) InTx() bool {
 	if s.db == nil {
 		return false
@@ -306,6 +313,7 @@ func retryUpdates(nextAttemptAt time.Time) map[string]any {
 	}
 }
 
+// UpdateStatusPublished updates the state of a leased published message.
 func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
 	if status == enum.StatusPending {
 		return s.scheduleRetry(ctx, &Published{}, "published", id, leaseToken)
@@ -338,6 +346,7 @@ func (s *Storage) scheduleRetry(ctx context.Context, model any, kind string, id 
 	return nil
 }
 
+// ClaimPublishedBatch claims a batch of due published messages.
 func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*entity.Envelope, error) {
 	o := s.gapOpts
 	now := time.Now()
@@ -387,6 +396,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) ([]*en
 	return es, nil
 }
 
+// ClaimReceivedBatch claims a batch of due received messages for a consumer group.
 func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group string) ([]*entity.Envelope, error) {
 	o := s.gapOpts
 	now := time.Now()
@@ -439,6 +449,7 @@ func (s *Storage) failExhausted(tx *gorm.DB, model any, now time.Time, group str
 	return s.exhaustedQuery(tx, model, now, group).
 		Updates(map[string]any{
 			"status":      enum.StatusFailed,
+			"expired_at":  s.terminalExpiration(enum.StatusFailed),
 			"lease_token": nil,
 			"lease_until": nil,
 		})
@@ -471,6 +482,7 @@ func (s *Storage) withReceivedGroup(tx *gorm.DB, model any, group string) *gorm.
 	return tx.Where(clause.Eq{Column: clause.Column{Name: "group"}, Value: group})
 }
 
+// UpdateStatusReceived updates the state of a leased received message.
 func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
 	if status == enum.StatusPending {
 		return s.scheduleRetry(ctx, &Received{}, "received", id, leaseToken)
@@ -489,7 +501,7 @@ func (s *Storage) updateStatus(ctx context.Context, model any, id uint, leaseTok
 	result := s.db.WithContext(ctx).
 		Model(model).
 		Where("id = ? AND status = ? AND lease_token = ?", id, enum.StatusPending, leaseToken).
-		Updates(statusUpdates(status))
+		Updates(statusUpdates(status, s.terminalExpiration(status)))
 	if result.Error != nil {
 		return result.Error
 	}
@@ -499,12 +511,103 @@ func (s *Storage) updateStatus(ctx context.Context, model any, id uint, leaseTok
 	return nil
 }
 
-func statusUpdates(status enum.Status) map[string]any {
+func statusUpdates(status enum.Status, expiredAt any) map[string]any {
 	return map[string]any{
 		"status":      status,
+		"expired_at":  expiredAt,
 		"lease_token": nil,
 		"lease_until": nil,
 	}
+}
+
+func (s *Storage) terminalExpiration(status enum.Status) any {
+	seconds := int64(s.gapOpts.Retention(status) / time.Second)
+	switch s.db.Dialector.Name() {
+	case "mysql":
+		return clause.Expr{SQL: "TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3))", Vars: []any{seconds}}
+	case "postgres":
+		return clause.Expr{SQL: "CURRENT_TIMESTAMP + (? * INTERVAL '1 second')", Vars: []any{seconds}}
+	default:
+		return time.Now().Add(time.Duration(seconds) * time.Second)
+	}
+}
+
+// DeleteExpiredPublishedBatch deletes one batch of expired terminal published messages.
+func (s *Storage) DeleteExpiredPublishedBatch(ctx context.Context, batchSize int) (int64, error) {
+	return s.deleteExpiredBatch(ctx, &Published{}, batchSize)
+}
+
+// DeleteExpiredReceivedBatch deletes one batch of expired terminal received messages.
+func (s *Storage) DeleteExpiredReceivedBatch(ctx context.Context, batchSize int) (int64, error) {
+	return s.deleteExpiredBatch(ctx, &Received{}, batchSize)
+}
+
+func (s *Storage) deleteExpiredBatch(ctx context.Context, model any, batchSize int) (int64, error) {
+	stmt := &gorm.Statement{DB: s.db}
+	if err := stmt.Parse(model); err != nil {
+		return 0, err
+	}
+	table := stmt.Schema.Table
+	statuses := []any{enum.StatusSucceeded, enum.StatusFailed}
+
+	switch s.db.Dialector.Name() {
+	case "mysql":
+		quoted, err := quoteMySQLIdent(table)
+		if err != nil {
+			return 0, err
+		}
+		result := s.db.WithContext(ctx).Exec(mysqlDeleteExpiredSQL(quoted), statuses[0], statuses[1], batchSize)
+		return result.RowsAffected, result.Error
+	case "postgres":
+		quoted, err := quoteQualified(table)
+		if err != nil {
+			return 0, err
+		}
+		statusType, err := quoteIdent(s.opts.Schema)
+		if err != nil {
+			return 0, err
+		}
+		result := s.db.WithContext(ctx).Exec(postgresDeleteExpiredSQL(quoted, statusType+`."status_enum"`), statuses[0], statuses[1], batchSize)
+		return result.RowsAffected, result.Error
+	default:
+		var ids []uint
+		var deleted int64
+		err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(model).
+				Select("id").
+				Where("expired_at <= ? AND status IN ?", time.Now(), statuses).
+				Order("expired_at, id").
+				Limit(batchSize).
+				Find(&ids).Error; err != nil {
+				return err
+			}
+			if len(ids) == 0 {
+				return nil
+			}
+			result := tx.Where("id IN ? AND expired_at <= ? AND status IN ?", ids, time.Now(), statuses).Delete(model)
+			if result.Error != nil {
+				return result.Error
+			}
+			deleted = result.RowsAffected
+			return nil
+		})
+		return deleted, err
+	}
+}
+
+func mysqlDeleteExpiredSQL(table string) string {
+	return "DELETE target FROM " + table + " AS target JOIN (" +
+		"SELECT `id` FROM " + table + " WHERE `expired_at` <= CURRENT_TIMESTAMP(3) " +
+		"AND `status` IN (?, ?) ORDER BY `expired_at`, `id` LIMIT ? FOR UPDATE SKIP LOCKED" +
+		") AS expired ON target.`id` = expired.`id`"
+}
+
+func postgresDeleteExpiredSQL(table, statusType string) string {
+	return `WITH expired AS (` +
+		`SELECT "id" FROM ` + table + ` WHERE "expired_at" <= CURRENT_TIMESTAMP ` +
+		`AND "status" IN (?::` + statusType + `, ?::` + statusType + `) ` +
+		`ORDER BY "expired_at", "id" LIMIT ? FOR UPDATE SKIP LOCKED` +
+		`) DELETE FROM ` + table + ` AS target USING expired WHERE target."id" = expired."id"`
 }
 
 func claimIndexName(model any) string {
@@ -516,6 +619,78 @@ func claimIndexName(model any) string {
 	default:
 		return ""
 	}
+}
+
+func cleanupIndexName(model any) string {
+	switch model.(type) {
+	case *Published:
+		return "idx_published_cleanup"
+	case *Received:
+		return "idx_received_cleanup"
+	default:
+		return ""
+	}
+}
+
+func (s *Storage) ensureCleanupIndex(dialect, table, index string) error {
+	if index == "" {
+		return fmt.Errorf("cleanup index name is empty")
+	}
+	switch dialect {
+	case "mysql":
+		var n int
+		err := s.db.Raw(
+			`SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
+			table, index,
+		).Scan(&n).Error
+		if err != nil || n > 0 {
+			return err
+		}
+		sql, err := mysqlCleanupIndexSQL(table, index)
+		if err != nil {
+			return err
+		}
+		err = s.db.Exec(sql).Error
+		if err != nil && strings.Contains(err.Error(), "Duplicate key name") {
+			return nil
+		}
+		return err
+	case "postgres":
+		sql, err := postgresCleanupIndexSQL(table, index)
+		if err != nil {
+			return err
+		}
+		return s.db.Exec(sql).Error
+	default:
+		return fmt.Errorf("cleanup index is not implemented for %s", dialect)
+	}
+}
+
+func mysqlCleanupIndexSQL(table, index string) (string, error) {
+	quotedTable, err := quoteMySQLIdent(table)
+	if err != nil {
+		return "", err
+	}
+	quotedIndex, err := quoteMySQLIdent(index)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("CREATE INDEX %s ON %s (`expired_at`, `id`)", quotedIndex, quotedTable), nil
+}
+
+func postgresCleanupIndexSQL(table, index string) (string, error) {
+	quotedTable, err := quoteQualified(table)
+	if err != nil {
+		return "", err
+	}
+	quotedIndex, err := quoteIdent(index)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(
+		`CREATE INDEX IF NOT EXISTS %s ON %s ("expired_at", "id") WHERE "expired_at" IS NOT NULL`,
+		quotedIndex, quotedTable,
+	), nil
 }
 
 func (s *Storage) ensureClaimIndex(dialect, table, index string) error {
