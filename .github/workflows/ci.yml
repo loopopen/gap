@@ -30,6 +30,16 @@ jobs:
       - name: Install C compiler
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential
 
+      - name: Verify generated code
+        run: |
+          make generate
+          git diff --exit-code
+          if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "Code generation created untracked files:" >&2
+            git status --short --untracked-files=all >&2
+            exit 1
+          fi
+
       - name: Test modules independently
         run: make test-isolated
 

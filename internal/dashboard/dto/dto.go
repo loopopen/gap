@@ -26,15 +26,15 @@ type Meta struct {
 
 type Message struct {
 	Mapper
-	ID        string
-	CreatedAt timex.DateTime
-	Version   string
-	Topic     string
-	Group     string
-	Status    enum.Status
-	Headers   string
-	Payload   string
-	Retries   int
+	ID        string         // Unique envelope ID.
+	CreatedAt timex.DateTime // Creation time.
+	Version   string         // Message version.
+	Topic     string         // Routing topic.
+	Group     string         // Consumer group.
+	Status    enum.Status    // Message status.
+	Headers   string         // Message metadata.
+	Payload   string         // Serialized payload.
+	Retries   int            // Retry count.
 }
 
 func (m *Message) readEntity(e *entity.Envelope) {

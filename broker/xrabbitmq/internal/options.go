@@ -51,7 +51,7 @@ type Options struct {
 	//@def=new(QueueOptions).With()
 	QueueOpts *QueueOptions
 
-	runtimeRegistry *runtimeRegistry
+	runtimeRegistry *runtimeRegistry `new:"-"`
 }
 
 type runtimeResourceRef struct {
