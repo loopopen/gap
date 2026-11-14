@@ -9,7 +9,7 @@ import (
 	"github.com/loopopen/gap/internal/txer"
 )
 
-const version = "v1.0.0-beta.5"
+const version = "v1.0.0-beta.6"
 
 const (
 	KeysMessageID     = internal.KeysMessageID
