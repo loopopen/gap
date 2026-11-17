@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strings"
 	"time"
 
@@ -20,8 +19,6 @@ import (
 	"github.com/loopopen/gap/storage"
 	"github.com/loopopen/gap/storage/xsql"
 )
-
-var mysqlIdentRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type Storage struct {
 	gapOpts *ingap.Options
@@ -544,12 +541,6 @@ func (s *Storage) init() error {
 	if err != nil {
 		return err
 	}
-	if err := s.ensureStatusColumn(context.Background(), publishedName, published); err != nil {
-		return err
-	}
-	if err := s.ensureStatusColumn(context.Background(), receivedName, received); err != nil {
-		return err
-	}
 	if err := s.ensureClaimIndex(publishedName, "idx_published_claim"); err != nil {
 		return err
 	}
@@ -560,28 +551,6 @@ func (s *Storage) init() error {
 		return err
 	}
 	return s.ensureCleanupIndex(receivedName, "idx_received_cleanup")
-}
-
-func (s *Storage) ensureStatusColumn(ctx context.Context, tableName, quotedTable string) error {
-	var columnType string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT COLUMN_TYPE FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = 'status'`,
-		tableName,
-	).Scan(&columnType)
-	if err != nil {
-		return err
-	}
-	if strings.EqualFold(columnType, statusColumnType) {
-		return nil
-	}
-	if _, err := s.db.ExecContext(ctx,
-		"UPDATE "+quotedTable+" SET `status` = ? WHERE `status` NOT IN (?, ?, ?)",
-		enum.StatusPending, enum.StatusPending, enum.StatusSucceeded, enum.StatusFailed,
-	); err != nil {
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, "ALTER TABLE "+quotedTable+" MODIFY COLUMN `status` "+statusColumnType+" NOT NULL")
-	return err
 }
 
 func (s *Storage) ensureClaimIndex(table, index string) error {
@@ -608,11 +577,11 @@ func (s *Storage) ensureClaimIndex(table, index string) error {
 }
 
 func claimIndexSQL(table, index string) (string, error) {
-	quotedTable, err := quoteMySQLIdent(table)
+	quotedTable, err := xsql.Quote(xsql.MySQL, table)
 	if err != nil {
 		return "", err
 	}
-	quotedIndex, err := quoteMySQLIdent(index)
+	quotedIndex, err := xsql.Quote(xsql.MySQL, index)
 	if err != nil {
 		return "", err
 	}
@@ -646,11 +615,11 @@ func (s *Storage) ensureCleanupIndex(table, index string) error {
 }
 
 func cleanupIndexSQL(table, index string) (string, error) {
-	quotedTable, err := quoteMySQLIdent(table)
+	quotedTable, err := xsql.Quote(xsql.MySQL, table)
 	if err != nil {
 		return "", err
 	}
-	quotedIndex, err := quoteMySQLIdent(index)
+	quotedIndex, err := xsql.Quote(xsql.MySQL, index)
 	if err != nil {
 		return "", err
 	}
@@ -659,7 +628,7 @@ func cleanupIndexSQL(table, index string) (string, error) {
 
 func (s *Storage) tableName(base string) (string, error) {
 	name := s.opts.Schema + "_" + base
-	if _, err := quoteMySQLIdent(name); err != nil {
+	if _, err := xsql.Quote(xsql.MySQL, name); err != nil {
 		return "", fmt.Errorf("schema: %w", err)
 	}
 	return name, nil
@@ -670,14 +639,7 @@ func (s *Storage) quotedTable(base string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return "`" + name + "`", nil
-}
-
-func quoteMySQLIdent(name string) (string, error) {
-	if len(name) == 0 || len(name) > 64 || !mysqlIdentRE.MatchString(name) {
-		return "", fmt.Errorf("invalid identifier %q", name)
-	}
-	return "`" + name + "`", nil
+	return xsql.Quote(xsql.MySQL, name)
 }
 
 func isDuplicateIndex(err error) bool {

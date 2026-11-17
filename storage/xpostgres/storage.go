@@ -493,7 +493,7 @@ func NewStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *Storage {
 }
 
 func (s *Storage) init() error {
-	quotedSchema, err := quoteIdent(s.opts.Schema)
+	quotedSchema, err := xsql.Quote(xsql.Postgres, s.opts.Schema)
 	if err != nil {
 		return fmt.Errorf("schema: %w", err)
 	}
@@ -520,9 +520,6 @@ func (s *Storage) init() error {
 		return err
 	}
 	if _, err = s.db.Exec(receivedCreateSQL(received, statusType)); err != nil {
-		return err
-	}
-	if err = s.migrateStatusType(context.Background(), []string{published, received}, statusType); err != nil {
 		return err
 	}
 
@@ -555,67 +552,8 @@ func (s *Storage) init() error {
 	return err
 }
 
-func (s *Storage) migrateStatusType(ctx context.Context, tables []string, statusType string) (err error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
-
-	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, s.opts.Schema+".status_enum"); err != nil {
-		return err
-	}
-	var unexpected int
-	err = tx.QueryRowContext(ctx, `
-SELECT COUNT(*)
-FROM pg_enum e
-JOIN pg_type t ON t.oid = e.enumtypid
-JOIN pg_namespace n ON n.oid = t.typnamespace
-WHERE n.nspname = $1
-  AND t.typname = 'status_enum'
-  AND e.enumlabel NOT IN ('Pending', 'Succeeded', 'Failed')`, s.opts.Schema).Scan(&unexpected)
-	if err != nil {
-		return err
-	}
-	if unexpected == 0 {
-		return tx.Commit()
-	}
-
-	for _, table := range tables {
-		if _, err = tx.ExecContext(ctx,
-			"UPDATE "+table+` SET "status" = $1::`+statusType+` WHERE "status"::text NOT IN ($2, $3, $4)`,
-			enum.StatusPending, enum.StatusPending, enum.StatusSucceeded, enum.StatusFailed,
-		); err != nil {
-			return err
-		}
-		if _, err = tx.ExecContext(ctx,
-			"ALTER TABLE "+table+` ALTER COLUMN "status" TYPE text USING "status"::text`,
-		); err != nil {
-			return err
-		}
-	}
-	if _, err = tx.ExecContext(ctx, "DROP TYPE "+statusType); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, "CREATE TYPE "+statusType+" AS ENUM ('Pending', 'Succeeded', 'Failed')"); err != nil {
-		return err
-	}
-	for _, table := range tables {
-		if _, err = tx.ExecContext(ctx,
-			"ALTER TABLE "+table+` ALTER COLUMN "status" TYPE `+statusType+` USING "status"::`+statusType,
-		); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
 func (s *Storage) statusType() (string, error) {
-	schema, err := quoteIdent(s.opts.Schema)
+	schema, err := xsql.Quote(xsql.Postgres, s.opts.Schema)
 	if err != nil {
 		return "", fmt.Errorf("schema: %w", err)
 	}
@@ -623,11 +561,11 @@ func (s *Storage) statusType() (string, error) {
 }
 
 func (s *Storage) quotedTable(base string) (string, error) {
-	schema, err := quoteIdent(s.opts.Schema)
+	schema, err := xsql.Quote(xsql.Postgres, s.opts.Schema)
 	if err != nil {
 		return "", fmt.Errorf("schema: %w", err)
 	}
-	table, err := quoteIdent(base)
+	table, err := xsql.Quote(xsql.Postgres, base)
 	if err != nil {
 		return "", err
 	}

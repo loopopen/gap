@@ -188,7 +188,7 @@ func TestConcurrentPoolOpen(t *testing.T) {
 }
 
 func TestOpenEmptyDSN(t *testing.T) {
-	db, err := Open(context.Background(), "mysql", " ")
+	db, err := Open(context.Background(), MySQL, " ")
 	if err == nil || db != nil {
 		t.Fatalf("db=%v err=%v", db, err)
 	}

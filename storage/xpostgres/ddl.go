@@ -2,19 +2,9 @@ package xpostgres
 
 import (
 	"fmt"
-	"regexp"
+
+	"github.com/loopopen/gap/storage/xsql"
 )
-
-const maxIdentLen = 63
-
-var identRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-
-func quoteIdent(name string) (string, error) {
-	if len(name) == 0 || len(name) > maxIdentLen || !identRE.MatchString(name) {
-		return "", fmt.Errorf("invalid identifier %q", name)
-	}
-	return `"` + name + `"`, nil
-}
 
 func statusTypeSQL(schema, quotedSchema string) string {
 	return fmt.Sprintf(`
@@ -79,7 +69,7 @@ func receivedCreateSQL(table, statusType string) string {
 }
 
 func claimIndexSQL(quotedTable, index string) (string, error) {
-	quotedIndex, err := quoteIdent(index)
+	quotedIndex, err := xsql.Quote(xsql.Postgres, index)
 	if err != nil {
 		return "", err
 	}
@@ -90,7 +80,7 @@ func claimIndexSQL(quotedTable, index string) (string, error) {
 }
 
 func cleanupIndexSQL(quotedTable, index string) (string, error) {
-	quotedIndex, err := quoteIdent(index)
+	quotedIndex, err := xsql.Quote(xsql.Postgres, index)
 	if err != nil {
 		return "", err
 	}

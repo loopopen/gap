@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/storage/xsql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -68,7 +69,11 @@ func messageStats(db *gorm.DB) (entity.MessageStats, error) {
 
 func (s *Storage) receivedGroupStats(ctx context.Context) ([]entity.GroupMessageStats, error) {
 	var rows []groupMessageStatsRow
-	err := receivedGroupStatsQuery(s.db.WithContext(ctx)).Scan(&rows).Error
+	query, err := receivedGroupStatsQuery(s.db.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	err = query.Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -101,8 +106,11 @@ type groupMessageStatsRow struct {
 	OldestBacklog *time.Time
 }
 
-func receivedGroupStatsQuery(db *gorm.DB) *gorm.DB {
-	col := quotedGroupColumn(db.Dialector.Name())
+func receivedGroupStatsQuery(db *gorm.DB) (*gorm.DB, error) {
+	col, err := quotedGroupColumn(db.Dialector.Name())
+	if err != nil {
+		return nil, err
+	}
 	return db.Model(&Received{}).
 		Select(col + ` AS grp,
 		COUNT(*) AS total,
@@ -113,14 +121,11 @@ func receivedGroupStatsQuery(db *gorm.DB) *gorm.DB {
 		MAX(created_at) AS last_activity,
 		MIN(CASE WHEN status = 'Pending' THEN created_at END) AS oldest_backlog`).
 		Group("group").
-		Order(clause.OrderByColumn{Column: clause.Column{Name: "group"}})
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "group"}}), nil
 }
 
-func quotedGroupColumn(dialect string) string {
-	if dialect == "postgres" {
-		return `"group"`
-	}
-	return "`group`"
+func quotedGroupColumn(d xsql.Dialector) (string, error) {
+	return xsql.Quote(d, "group")
 }
 
 // GetPublishedByID returns a published message by ID.

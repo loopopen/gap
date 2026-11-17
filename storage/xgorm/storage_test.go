@@ -11,6 +11,7 @@ import (
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
 	ingap "github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/storage/xsql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
@@ -52,11 +53,19 @@ func TestApplyMessageFilters(t *testing.T) {
 }
 
 func TestQuotedGroupColumn(t *testing.T) {
-	if got := quotedGroupColumn("mysql"); got != "`group`" {
-		t.Fatalf("mysql group column = %q", got)
+	mysql, err := quotedGroupColumn(xsql.MySQL)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := quotedGroupColumn("postgres"); got != `"group"` {
-		t.Fatalf("postgres group column = %q", got)
+	if mysql != "`group`" {
+		t.Fatalf("mysql group column = %q", mysql)
+	}
+	postgres, err := quotedGroupColumn(xsql.Postgres)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if postgres != `"group"` {
+		t.Fatalf("postgres group column = %q", postgres)
 	}
 }
 
@@ -274,7 +283,7 @@ func openStorage(t *testing.T) (*gorm.DB, *Storage) {
 
 type nopDialector struct{}
 
-func (nopDialector) Name() string                    { return "mysql" }
+func (nopDialector) Name() string                    { return xsql.MySQL }
 func (nopDialector) Initialize(*gorm.DB) error       { return nil }
 func (nopDialector) Migrator(*gorm.DB) gorm.Migrator { return nil }
 func (nopDialector) DataTypeOf(*schema.Field) string { return "" }

@@ -58,7 +58,7 @@ func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
 	var opened *sql.DB
 	openPoolDB = func(context.Context, string, xsql.Role) (*sql.DB, error) {
 		opens.Add(1)
-		db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:1)/gap?timeout=1s")
+		db, err := sql.Open(xsql.MySQL, "root:@tcp(127.0.0.1:1)/gap?timeout=1s")
 		opened = db
 		return db, err
 	}
