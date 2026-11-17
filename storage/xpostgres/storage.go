@@ -64,16 +64,16 @@ func (s *Storage) InTx() bool {
 }
 
 // ClaimPublishedBatch implements [storage.Storage].
-func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []*entity.Envelope, err error) {
-	return s.claimBatch(ctx, batchSize, "published", "")
+func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, brokerName string) (es []*entity.Envelope, err error) {
+	return s.claimBatch(ctx, batchSize, "published", "", brokerName)
 }
 
 // ClaimReceivedBatch implements [storage.Storage].
-func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group string) (es []*entity.Envelope, err error) {
-	return s.claimBatch(ctx, batchSize, "received", group)
+func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, brokerName string) (es []*entity.Envelope, err error) {
+	return s.claimBatch(ctx, batchSize, "received", group, brokerName)
 }
 
-func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group string) (es []*entity.Envelope, err error) {
+func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group, brokerName string) (es []*entity.Envelope, err error) {
 	o := s.gapOpts
 	now := time.Now()
 	table, err := s.quotedTable(base)
@@ -102,29 +102,18 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group str
 	}
 	var rows *sql.Rows
 	if received {
-		if err = s.failExhaustedReceived(ctx, tx, table, statusType, now, group); err != nil {
+		if err = s.failExhaustedReceived(ctx, tx, table, statusType, now, group, brokerName); err != nil {
 			return nil, err
 		}
 		rows, err = tx.QueryContext(ctx, claimReceivedSQL(table, statusType),
-			o.Version,
-			enum.StatusPending,
-			now,
-			now,
-			o.MaxRetries,
-			group,
-			batchSize,
+			claimFilterArgs(o.Version, enum.StatusPending, brokerName, now, o.MaxRetries, batchSize, group)...,
 		)
 	} else {
-		if err = s.failExhausted(ctx, tx, table, statusType, now); err != nil {
+		if err = s.failExhausted(ctx, tx, table, statusType, now, brokerName); err != nil {
 			return nil, err
 		}
 		rows, err = tx.QueryContext(ctx, claimPublishedSQL(table, statusType),
-			o.Version,
-			enum.StatusPending,
-			now,
-			now,
-			o.MaxRetries,
-			batchSize,
+			claimFilterArgs(o.Version, enum.StatusPending, brokerName, now, o.MaxRetries, batchSize)...,
 		)
 	}
 	if err != nil {
@@ -222,15 +211,17 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group str
 	return pubsToEntities(pubs)
 }
 
-func (s *Storage) failExhausted(ctx context.Context, tx *xsql.Tx, table, statusType string, now time.Time) error {
+func (s *Storage) failExhausted(ctx context.Context, tx *xsql.Tx, table, statusType string, now time.Time, brokerName string) error {
 	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
-	_, err := tx.ExecContext(ctx, failExhaustedSQL(table, statusType), enum.StatusFailed, retentionSeconds, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries)
+	_, err := tx.ExecContext(ctx, failExhaustedSQL(table, statusType),
+		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, now, s.gapOpts.MaxRetries)...)
 	return err
 }
 
-func (s *Storage) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table, statusType string, now time.Time, group string) error {
+func (s *Storage) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table, statusType string, now time.Time, group, brokerName string) error {
 	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
-	_, err := tx.ExecContext(ctx, failExhaustedReceivedSQL(table, statusType), enum.StatusFailed, retentionSeconds, s.gapOpts.Version, enum.StatusPending, now, now, s.gapOpts.MaxRetries, group)
+	_, err := tx.ExecContext(ctx, failExhaustedReceivedSQL(table, statusType),
+		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, now, s.gapOpts.MaxRetries, group)...)
 	return err
 }
 
@@ -240,10 +231,11 @@ SELECT "id","created_at","version","topic","broker_name","status","headers","pay
 FROM %s
 WHERE "version" = $1
 AND "status" = $2::%s
-AND "next_attempt_at" <= $3
-AND ("lease_until" IS NULL OR "lease_until" <= $4)
-AND "retries" < $5
-LIMIT $6 FOR UPDATE SKIP LOCKED`, table, statusType)
+AND "broker_name" = $3
+AND "next_attempt_at" <= $4
+AND ("lease_until" IS NULL OR "lease_until" <= $5)
+AND "retries" < $6
+LIMIT $7 FOR UPDATE SKIP LOCKED`, table, statusType)
 }
 
 func claimReceivedSQL(table, statusType string) string {
@@ -252,11 +244,12 @@ SELECT "id","created_at","version","topic","broker_name","status","headers","pay
 FROM %s
 WHERE "version" = $1
 AND "status" = $2::%s
-AND "next_attempt_at" <= $3
-AND ("lease_until" IS NULL OR "lease_until" <= $4)
-AND "retries" < $5
-AND "group" = $6
-LIMIT $7 FOR UPDATE SKIP LOCKED`, table, statusType)
+AND "broker_name" = $3
+AND "next_attempt_at" <= $4
+AND ("lease_until" IS NULL OR "lease_until" <= $5)
+AND "retries" < $6
+AND "group" = $7
+LIMIT $8 FOR UPDATE SKIP LOCKED`, table, statusType)
 }
 
 func failExhaustedSQL(table, statusType string) string {
@@ -265,9 +258,10 @@ UPDATE %s
 SET "status" = $1::%s, "expired_at" = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second'), "lease_token" = NULL, "lease_until" = NULL
 WHERE "version" = $3
 AND "status" = $4::%s
-AND "next_attempt_at" <= $5
-AND ("lease_until" IS NULL OR "lease_until" <= $6)
-AND "retries" >= $7`, table, statusType, statusType)
+AND "broker_name" = $5
+AND "next_attempt_at" <= $6
+AND ("lease_until" IS NULL OR "lease_until" <= $7)
+AND "retries" >= $8`, table, statusType, statusType)
 }
 
 func failExhaustedReceivedSQL(table, statusType string) string {
@@ -276,10 +270,25 @@ UPDATE %s
 SET "status" = $1::%s, "expired_at" = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second'), "lease_token" = NULL, "lease_until" = NULL
 WHERE "version" = $3
 AND "status" = $4::%s
-AND "next_attempt_at" <= $5
-AND ("lease_until" IS NULL OR "lease_until" <= $6)
-AND "retries" >= $7
-AND "group" = $8`, table, statusType, statusType)
+AND "broker_name" = $5
+AND "next_attempt_at" <= $6
+AND ("lease_until" IS NULL OR "lease_until" <= $7)
+AND "retries" >= $8
+AND "group" = $9`, table, statusType, statusType)
+}
+
+func claimFilterArgs(version string, status enum.Status, brokerName string, now time.Time, maxRetries, batchSize int, extra ...any) []any {
+	args := make([]any, 0, 6+len(extra))
+	args = append(args, version, status, brokerName, now, now, maxRetries)
+	args = append(args, extra...)
+	args = append(args, batchSize)
+	return args
+}
+
+func exhaustedArgs(failed enum.Status, retention int64, version, brokerName string, now time.Time, maxRetries int, extra ...any) []any {
+	args := make([]any, 0, 7+len(extra))
+	args = append(args, failed, retention, version, enum.StatusPending, brokerName, now, now, maxRetries)
+	return append(args, extra...)
 }
 
 // CreatePublished implements [storage.Storage].

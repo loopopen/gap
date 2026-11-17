@@ -114,7 +114,7 @@ func TestPumpRejectsUnknownBrokerIdentity(t *testing.T) {
 	}
 }
 
-func TestPumpMarksReceivedFailedWhenHandlerRouteIsMissing(t *testing.T) {
+func TestPumpReleasesReceivedWhenHandlerRouteIsMissing(t *testing.T) {
 	stor := new(statusStorageStub)
 	p := &Pump{
 		storage:  stor,
@@ -136,8 +136,61 @@ func TestPumpMarksReceivedFailedWhenHandlerRouteIsMissing(t *testing.T) {
 	if stor.receivedLeaseToken != envelope.LeaseToken {
 		t.Fatalf("updated lease token = %q, want %q", stor.receivedLeaseToken, envelope.LeaseToken)
 	}
-	if stor.receivedStatus != enum.StatusFailed {
-		t.Fatalf("updated status = %v, want %v", stor.receivedStatus, enum.StatusFailed)
+	if stor.receivedStatus != enum.StatusPending {
+		t.Fatalf("updated status = %v, want %v", stor.receivedStatus, enum.StatusPending)
+	}
+}
+
+func TestClaimRoutesUseRegisteredBrokerNames(t *testing.T) {
+	p := &Pump{handlers: new(sync.Map)}
+	if err := p.SetSender("kafka", "kafka-config", new(senderStub)); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetSender("rabbit", "rabbit-config", new(senderStub)); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetHandler("rabbit", "rabbit-config", "billing", &handlerStub{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetHandler("kafka", "kafka-config", "billing", &handlerStub{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetHandler("kafka", "kafka-config", "shipping", &handlerStub{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := p.senderBrokerNames(), []string{"kafka", "rabbit"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("sender brokers = %v, want %v", got, want)
+	}
+	if got, want := p.handlerBrokerNames("billing"), []string{"kafka", "rabbit"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("billing brokers = %v, want %v", got, want)
+	}
+	if got, want := p.handlerBrokerNames("shipping"), []string{"kafka"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("shipping brokers = %v, want %v", got, want)
+	}
+
+	var published []string
+	var billing []string
+	for i := 0; i < 4; i++ {
+		name, ok := p.nextSenderBroker()
+		if !ok {
+			t.Fatal("expected a sender broker")
+		}
+		published = append(published, name)
+		name, ok = p.nextHandlerBroker("billing")
+		if !ok {
+			t.Fatal("expected a billing broker")
+		}
+		billing = append(billing, name)
+	}
+	if !reflect.DeepEqual(published, []string{"kafka", "rabbit", "kafka", "rabbit"}) {
+		t.Fatalf("published rotation = %v", published)
+	}
+	if !reflect.DeepEqual(billing, []string{"kafka", "rabbit", "kafka", "rabbit"}) {
+		t.Fatalf("billing rotation = %v", billing)
+	}
+	if name, ok := p.nextHandlerBroker("shipping"); !ok || name != "kafka" {
+		t.Fatalf("shipping broker = %q ok=%v", name, ok)
 	}
 }
 

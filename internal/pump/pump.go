@@ -28,24 +28,27 @@ type Handler interface {
 }
 
 type Pump struct {
-	gapOpts        *ingap.Options
-	storage        storage.Storage
-	sendCh         chan *entity.Envelope
-	handleCh       chan *entity.Envelope
-	senderMu       sync.RWMutex
-	senders        map[string]Sender
-	senderConfigs  map[string]string
-	handlers       *sync.Map
-	handlerConfigs *sync.Map
-	handlerOnce    sync.Once
-	dispatchMu     sync.RWMutex
-	sealOnce       sync.Once
-	sealed         bool
-	claimCursor    string
-	claimCursorSet bool
-	sourceWG       sync.WaitGroup
-	dispatcherWG   sync.WaitGroup
-	taskWG         sync.WaitGroup
+	gapOpts               *ingap.Options
+	storage               storage.Storage
+	sendCh                chan *entity.Envelope
+	handleCh              chan *entity.Envelope
+	senderMu              sync.RWMutex
+	senders               map[string]Sender
+	senderConfigs         map[string]string
+	handlers              *sync.Map
+	handlerConfigs        *sync.Map
+	handlerOnce           sync.Once
+	dispatchMu            sync.RWMutex
+	sealOnce              sync.Once
+	sealed                bool
+	claimCursor           string
+	claimCursorSet        bool
+	publishedBrokerCursor string
+	publishedBrokerSet    bool
+	receivedBrokerCursors map[string]nameCursor
+	sourceWG              sync.WaitGroup
+	dispatcherWG          sync.WaitGroup
+	taskWG                sync.WaitGroup
 }
 
 // New creates and starts a message pump.
@@ -312,11 +315,12 @@ func (p *Pump) pollingSend(ctx context.Context) {
 			return
 
 		case <-ticker.C:
-			if !p.hasSender() {
+			brokerName, ok := p.nextSenderBroker()
+			if !ok {
 				continue
 			}
 
-			ps, err := p.storage.ClaimPublishedBatch(ctx, p.gapOpts.ClaimBatchSize)
+			ps, err := p.storage.ClaimPublishedBatch(ctx, p.gapOpts.ClaimBatchSize, brokerName)
 			if err != nil {
 				slog.Error("failed to claim published messages", slog.Any("err", err))
 				wait(ctx, 10*time.Second)
@@ -459,7 +463,11 @@ func (p *Pump) pollingHandle(ctx context.Context) {
 			if !ok {
 				continue
 			}
-			rs, err := p.storage.ClaimReceivedBatch(ctx, p.gapOpts.ClaimBatchSize, group)
+			brokerName, ok := p.nextHandlerBroker(group)
+			if !ok {
+				continue
+			}
+			rs, err := p.storage.ClaimReceivedBatch(ctx, p.gapOpts.ClaimBatchSize, group, brokerName)
 			if err != nil {
 				slog.Error("failed to claim received messages", slog.Any("err", err))
 				wait(ctx, 10*time.Second)
@@ -483,15 +491,15 @@ func (p *Pump) send(ctx context.Context, envelope *entity.Envelope) error {
 		return sender.SendAndUpdate(ctx, envelope)
 	}
 	p.senderMu.RUnlock()
-	return p.failPublished(ctx, envelope, fmt.Errorf("sender not found for broker %q", brokerName))
+	return p.releasePublished(ctx, envelope, fmt.Errorf("sender not found for broker %q", brokerName))
 }
 
-func (p *Pump) failPublished(ctx context.Context, envelope *entity.Envelope, cause error) error {
+func (p *Pump) releasePublished(ctx context.Context, envelope *entity.Envelope, cause error) error {
 	if p.storage == nil {
 		return cause
 	}
-	if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, envelope.LeaseToken, enum.StatusFailed); err != nil {
-		return fmt.Errorf("%w; mark published message failed: %v", cause, err)
+	if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, envelope.LeaseToken, enum.StatusPending); err != nil {
+		return fmt.Errorf("%w; release published message: %v", cause, err)
 	}
 	return cause
 }
@@ -503,41 +511,90 @@ func (p *Pump) handle(ctx context.Context, envelope *entity.Envelope) error {
 	}
 
 	cause := fmt.Errorf("handler not found for broker %q, group %q", envelope.BrokerName, envelope.Group)
-	return p.failReceived(ctx, envelope, cause)
+	return p.releaseReceived(ctx, envelope, cause)
 }
 
-func (p *Pump) failReceived(ctx context.Context, envelope *entity.Envelope, cause error) error {
+func (p *Pump) releaseReceived(ctx context.Context, envelope *entity.Envelope, cause error) error {
 	if p.storage == nil {
 		return cause
 	}
-	if err := p.storage.UpdateStatusReceived(ctx, envelope.ID, envelope.LeaseToken, enum.StatusFailed); err != nil {
-		return fmt.Errorf("%w; mark received message failed: %v", cause, err)
+	if err := p.storage.UpdateStatusReceived(ctx, envelope.ID, envelope.LeaseToken, enum.StatusPending); err != nil {
+		return fmt.Errorf("%w; release received message: %v", cause, err)
 	}
 	return cause
 }
 
-func (p *Pump) hasSender() bool {
+func (p *Pump) senderBrokerNames() []string {
 	p.senderMu.RLock()
 	defer p.senderMu.RUnlock()
-	return len(p.senders) != 0
+	names := make([]string, 0, len(p.senders))
+	for name := range p.senders {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (p *Pump) handlerBrokerNames(group string) []string {
+	if p.handlers == nil {
+		return nil
+	}
+	var names []string
+	p.handlers.Range(func(key, _ any) bool {
+		name, ok := key.(string)
+		if !ok {
+			return true
+		}
+		broker, handlerGroup, ok := strings.Cut(name, "\x00")
+		if ok && handlerGroup == group {
+			names = append(names, broker)
+		}
+		return true
+	})
+	sort.Strings(names)
+	return names
+}
+
+type nameCursor struct {
+	name string
+	set  bool
+}
+
+func (p *Pump) nextSenderBroker() (string, bool) {
+	return nextName(p.senderBrokerNames(), &p.publishedBrokerCursor, &p.publishedBrokerSet)
+}
+
+func (p *Pump) nextHandlerBroker(group string) (string, bool) {
+	if p.receivedBrokerCursors == nil {
+		p.receivedBrokerCursors = map[string]nameCursor{}
+	}
+	cursor := p.receivedBrokerCursors[group]
+	next, ok := nextName(p.handlerBrokerNames(group), &cursor.name, &cursor.set)
+	if ok {
+		p.receivedBrokerCursors[group] = cursor
+	}
+	return next, ok
 }
 
 func (p *Pump) nextClaimGroup() (string, bool) {
-	groups := p.registeredGroups()
-	if len(groups) == 0 {
+	return nextName(p.registeredGroups(), &p.claimCursor, &p.claimCursorSet)
+}
+
+func nextName(names []string, cursor *string, set *bool) (string, bool) {
+	if len(names) == 0 {
 		return "", false
 	}
-	next := groups[0]
-	if p.claimCursorSet {
-		for i, group := range groups {
-			if group == p.claimCursor {
-				next = groups[(i+1)%len(groups)]
+	next := names[0]
+	if *set {
+		for i, name := range names {
+			if name == *cursor {
+				next = names[(i+1)%len(names)]
 				break
 			}
 		}
 	}
-	p.claimCursor = next
-	p.claimCursorSet = true
+	*cursor = next
+	*set = true
 	return next, true
 }
 

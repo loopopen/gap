@@ -21,7 +21,7 @@ func NewPublisher[T any](g *Gap, opts ...shoot.Option[BrokerOptions, *BrokerOpti
 	}
 	defer done()
 
-	brokerOpts := g.publisherOptions(opts...)
+	brokerOpts := new(BrokerOptions).With(opts...)
 	producer := plugin.MustGetProducer(g.opts, brokerOpts)
 	if producer == nil {
 		panic("producer broker must not be nil")

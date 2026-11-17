@@ -41,6 +41,7 @@ func TestFailExhaustedSQL(t *testing.T) {
 		"`expired_at` = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3))",
 		"`lease_token` = NULL",
 		"`lease_until` = NULL",
+		"`broker_name` = ?",
 		"`retries` >= ?",
 	} {
 		if !strings.Contains(sql, condition) {
@@ -57,6 +58,7 @@ func TestClaimSelectSQL(t *testing.T) {
 	assertPendingDueWhere(t, published)
 	for _, condition := range []string{
 		"SELECT `id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`expired_at` FROM `gap_published`",
+		"`broker_name` = ?",
 		"`retries` < ?",
 		"LIMIT ? FOR UPDATE SKIP LOCKED",
 	} {
@@ -72,6 +74,7 @@ func TestClaimSelectSQL(t *testing.T) {
 	assertPendingDueWhere(t, received)
 	for _, condition := range []string{
 		"`broker_name`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` FROM `gap_received`",
+		"`broker_name` = ?",
 		"`group` = ?",
 	} {
 		if !strings.Contains(received, condition) {
@@ -82,6 +85,7 @@ func TestClaimSelectSQL(t *testing.T) {
 	exhausted := failExhaustedReceivedSQL("`gap_received`")
 	assertPendingDueWhere(t, exhausted)
 	for _, condition := range []string{
+		"`broker_name` = ?",
 		"`retries` >= ?",
 		"`group` = ?",
 	} {
