@@ -276,7 +276,7 @@ func (s *Sub) ingestParallel(ctx context.Context, envelope *entity.Envelope, sem
 }
 
 func (s *Sub) ingestSerial(ctx context.Context, envelope *entity.Envelope) {
-	envelope.AddHeader(KeysBrokerName, s.brokerName)
+	envelope.BrokerName = s.brokerName
 	envelope.AddHeader(KeysBrokerType, s.brokerType)
 	err := s.storage.CreateReceived(ctx, envelope)
 	if err != nil {

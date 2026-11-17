@@ -14,7 +14,7 @@ func TestClaimIndexSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sql != "CREATE INDEX `idx_published_claim` ON `gap_published` (`version`, `status`, `next_attempt_at`, `lease_until`, `retries`)" {
+	if sql != "CREATE INDEX `idx_published_claim` ON `gap_published` (`version`, `status`, `broker_name`, `next_attempt_at`, `lease_until`, `retries`)" {
 		t.Fatal(sql)
 	}
 	if _, err := claimIndexSQL("gap`published", "idx_published_claim"); err == nil {
@@ -56,7 +56,7 @@ func TestClaimSelectSQL(t *testing.T) {
 	published := claimPublishedSQL("`gap_published`")
 	assertPendingDueWhere(t, published)
 	for _, condition := range []string{
-		"SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` FROM `gap_published`",
+		"SELECT `id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`expired_at` FROM `gap_published`",
 		"`retries` < ?",
 		"LIMIT ? FOR UPDATE SKIP LOCKED",
 	} {
@@ -71,7 +71,7 @@ func TestClaimSelectSQL(t *testing.T) {
 	received := claimReceivedSQL("`gap_received`")
 	assertPendingDueWhere(t, received)
 	for _, condition := range []string{
-		"`expired_at`,`group` FROM `gap_received`",
+		"`broker_name`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` FROM `gap_received`",
 		"`group` = ?",
 	} {
 		if !strings.Contains(received, condition) {
@@ -157,7 +157,7 @@ func TestPublishedCreateSQLIncludesLeaseColumns(t *testing.T) {
 	if !strings.Contains(sql, "`status` "+statusColumnType+" NOT NULL") {
 		t.Fatalf("unexpected status column in %s", sql)
 	}
-	for _, column := range []string{"`lease_token` char(32) NULL", "`lease_until` datetime(3) NULL", "`next_attempt_at` datetime(3) NOT NULL"} {
+	for _, column := range []string{"`broker_name` varchar(128) NOT NULL", "`lease_token` char(32) NULL", "`lease_until` datetime(3) NULL", "`next_attempt_at` datetime(3) NOT NULL"} {
 		if !strings.Contains(sql, column) {
 			t.Fatalf("missing %q in %s", column, sql)
 		}
@@ -237,6 +237,7 @@ func TestFromEntityPayloadAndHeaders(t *testing.T) {
 	en := &entity.Envelope{
 		ID:            4,
 		Topic:         "t",
+		BrokerName:    "orders",
 		Message:       map[string]string{"a": "b"},
 		Headers:       map[string]string{"h": "v"},
 		LeaseUntil:    now.Add(time.Minute),
@@ -251,6 +252,12 @@ func TestFromEntityPayloadAndHeaders(t *testing.T) {
 	}
 	if p.Headers != `{"h":"v"}` {
 		t.Fatalf("headers = %q", p.Headers)
+	}
+	if p.BrokerName != "orders" {
+		t.Fatalf("broker name = %q", p.BrokerName)
+	}
+	if got := p.ToEntity().BrokerName; got != "orders" {
+		t.Fatalf("broker name = %q", got)
 	}
 	if p.Status != enum.StatusPending {
 		t.Fatalf("status = %s", p.Status)

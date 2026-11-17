@@ -18,6 +18,7 @@ type Published struct {
 	CreatedAt     time.Time           // Creation time.
 	Version       string              // Message version.
 	Topic         string              // Routing topic.
+	BrokerName    string              // Logical broker name.
 	Status        enum.Status         // Message status.
 	Headers       string              // Message metadata.
 	Payload       string              // Serialized payload.
@@ -78,6 +79,7 @@ type Received struct {
 	CreatedAt     time.Time           // Creation time.
 	Version       string              // Message version.
 	Topic         string              // Routing topic.
+	BrokerName    string              // Logical broker name.
 	Status        enum.Status         // Message status.
 	Headers       string              // Message metadata.
 	Payload       string              // Serialized payload.

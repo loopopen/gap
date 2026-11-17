@@ -18,6 +18,7 @@ type Model struct {
 	CreatedAt     time.Time `gorm:"not null"`
 	Version       string    `gorm:"not null;size:16"`
 	Topic         string    `gorm:"not null;size:256"`
+	BrokerName    string    `gorm:"not null;size:128"`
 	Status        Status    `gorm:"not null"`
 	Headers       string    `gorm:"type:text"`
 	Payload       string

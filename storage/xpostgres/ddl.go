@@ -40,6 +40,7 @@ func publishedCreateSQL(table, statusType string) string {
 			`"created_at" timestamptz NOT NULL,`+
 			`"version" varchar(16) NOT NULL,`+
 			`"topic" varchar(256) NOT NULL,`+
+			`"broker_name" varchar(128) NOT NULL,`+
 			`"status" %s NOT NULL,`+
 			`"headers" text,`+
 			`"payload" text,`+
@@ -61,6 +62,7 @@ func receivedCreateSQL(table, statusType string) string {
 			`"created_at" timestamptz NOT NULL,`+
 			`"version" varchar(16) NOT NULL,`+
 			`"topic" varchar(256) NOT NULL,`+
+			`"broker_name" varchar(128) NOT NULL,`+
 			`"status" %s NOT NULL,`+
 			`"headers" text,`+
 			`"payload" text,`+
@@ -82,7 +84,7 @@ func claimIndexSQL(quotedTable, index string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf(
-		`CREATE INDEX IF NOT EXISTS %s ON %s ("version", "status", "next_attempt_at", "lease_until", "retries")`,
+		`CREATE INDEX IF NOT EXISTS %s ON %s ("version", "status", "broker_name", "next_attempt_at", "lease_until", "retries")`,
 		quotedIndex, quotedTable,
 	), nil
 }

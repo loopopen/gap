@@ -121,7 +121,7 @@ func (p *Pub[T]) Publish(ctx context.Context, topic string, msg T, args ...any) 
 	for k, v := range headers {
 		en.AddHeader(k, v)
 	}
-	en.AddHeader(KeysBrokerName, p.brokerName)
+	en.BrokerName = p.brokerName
 	en.AddHeader(KeysBrokerType, p.brokerType)
 	if err = en.Verify(); err != nil {
 		return err

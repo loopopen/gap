@@ -85,14 +85,8 @@ func TestPumpRoutesMessagesToConfiguredSender(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rabbitMessage := &entity.Envelope{ID: 1, Headers: map[string]string{
-		entity.BrokerNameHeader: "rabbit-events",
-		entity.BrokerTypeHeader: "RabbitMQ",
-	}}
-	kafkaMessage := &entity.Envelope{ID: 2, Headers: map[string]string{
-		entity.BrokerNameHeader: "kafka-events",
-		entity.BrokerTypeHeader: "Kafka",
-	}}
+	rabbitMessage := &entity.Envelope{ID: 1, BrokerName: "rabbit-events"}
+	kafkaMessage := &entity.Envelope{ID: 2, BrokerName: "kafka-events"}
 	if err := p.send(context.Background(), rabbitMessage); err != nil {
 		t.Fatal(err)
 	}
@@ -114,10 +108,7 @@ func TestPumpRejectsUnknownBrokerIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	message := &entity.Envelope{Headers: map[string]string{
-		entity.BrokerNameHeader: "missing",
-		entity.BrokerTypeHeader: "Kafka",
-	}}
+	message := &entity.Envelope{BrokerName: "missing"}
 	if err := p.send(context.Background(), message); err == nil {
 		t.Fatal("expected unknown broker identity error")
 	}
@@ -133,10 +124,7 @@ func TestPumpMarksReceivedFailedWhenHandlerRouteIsMissing(t *testing.T) {
 		ID:         42,
 		Group:      "billing",
 		LeaseToken: "lease-token",
-		Headers: map[string]string{
-			entity.BrokerNameHeader: "events",
-			entity.BrokerTypeHeader: "RabbitMQ",
-		},
+		BrokerName: "events",
 	}
 
 	if err := p.handle(context.Background(), envelope); err == nil {
@@ -354,10 +342,7 @@ func newDispatchTestPump(sender Sender, concurrency, queueSize int) *Pump {
 }
 
 func dispatchTestEnvelope(id uint) *entity.Envelope {
-	return &entity.Envelope{ID: id, Headers: map[string]string{
-		entity.BrokerNameHeader: "events",
-		entity.BrokerTypeHeader: "RabbitMQ",
-	}}
+	return &entity.Envelope{ID: id, BrokerName: "events"}
 }
 
 func TestDrainWaitsForQueuedAndLateStartedTasks(t *testing.T) {

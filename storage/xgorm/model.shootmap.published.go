@@ -17,6 +17,7 @@ func (p *Published) ToEntity() *entity.Envelope {
 	envelope_.CreatedAt = p.CreatedAt
 	envelope_.Version = p.Version
 	envelope_.Topic = p.Topic
+	envelope_.BrokerName = p.BrokerName
 	envelope_.Status = enum.Status(p.Status)
 	envelope_.Payload = []byte(p.Payload)
 	envelope_.Retries = p.Retries
@@ -38,6 +39,7 @@ func (p *Published) FromEntity(envelope_ *entity.Envelope) *Published {
 	p.ID = envelope_.ID
 	p.Version = envelope_.Version
 	p.Topic = envelope_.Topic
+	p.BrokerName = envelope_.BrokerName
 	p.Retries = envelope_.Retries
 	p.LeaseToken = envelope_.LeaseToken
 	p.readEntity(envelope_)

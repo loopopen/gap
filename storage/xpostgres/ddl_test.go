@@ -41,14 +41,14 @@ func TestCreateSQL(t *testing.T) {
 	if !strings.Contains(published, `"status" "gap"."status_enum" NOT NULL`) {
 		t.Fatal(published)
 	}
-	for _, column := range []string{`"lease_token" varchar(32)`, `"lease_until" timestamptz`, `"next_attempt_at" timestamptz NOT NULL`} {
+	for _, column := range []string{`"broker_name" varchar(128) NOT NULL`, `"lease_token" varchar(32)`, `"lease_until" timestamptz`, `"next_attempt_at" timestamptz NOT NULL`} {
 		if !strings.Contains(published, column) {
 			t.Fatalf("missing %q in %s", column, published)
 		}
 	}
 
 	received := receivedCreateSQL(`"gap"."received"`, `"gap"."status_enum"`)
-	if !strings.Contains(received, `"group" varchar(128) NOT NULL`) {
+	if !strings.Contains(received, `"group" varchar(128) NOT NULL`) || !strings.Contains(received, `"broker_name" varchar(128) NOT NULL`) {
 		t.Fatal(received)
 	}
 }
@@ -58,7 +58,7 @@ func TestClaimIndexSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `CREATE INDEX IF NOT EXISTS "idx_published_claim" ON "gap"."published" ("version", "status", "next_attempt_at", "lease_until", "retries")`
+	want := `CREATE INDEX IF NOT EXISTS "idx_published_claim" ON "gap"."published" ("version", "status", "broker_name", "next_attempt_at", "lease_until", "retries")`
 	if sql != want {
 		t.Fatal(sql)
 	}
@@ -102,7 +102,7 @@ func TestClaimSelectSQL(t *testing.T) {
 	published := claimPublishedSQL(`"gap"."published"`, `"gap"."status_enum"`)
 	assertPendingDueWhere(t, published, 1)
 	for _, condition := range []string{
-		`SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at"`,
+		`SELECT "id","created_at","version","topic","broker_name","status","headers","payload","retries","expired_at"`,
 		`FROM "gap"."published"`,
 		`"retries" < $5`,
 		"LIMIT $6 FOR UPDATE SKIP LOCKED",
@@ -118,7 +118,7 @@ func TestClaimSelectSQL(t *testing.T) {
 	received := claimReceivedSQL(`"gap"."received"`, `"gap"."status_enum"`)
 	assertPendingDueWhere(t, received, 1)
 	for _, condition := range []string{
-		`"expired_at","group"`,
+		`"broker_name","status","headers","payload","retries","expired_at","group"`,
 		`FROM "gap"."received"`,
 		`"group" = $6`,
 		"LIMIT $7 FOR UPDATE SKIP LOCKED",
@@ -343,6 +343,7 @@ func TestFromEntityPayloadAndHeaders(t *testing.T) {
 	en := &entity.Envelope{
 		ID:            4,
 		Topic:         "t",
+		BrokerName:    "orders",
 		Message:       map[string]string{"a": "b"},
 		Headers:       map[string]string{"h": "v"},
 		LeaseUntil:    now.Add(time.Minute),
@@ -357,6 +358,12 @@ func TestFromEntityPayloadAndHeaders(t *testing.T) {
 	}
 	if p.Headers != `{"h":"v"}` {
 		t.Fatalf("headers = %q", p.Headers)
+	}
+	if p.BrokerName != "orders" {
+		t.Fatalf("broker name = %q", p.BrokerName)
+	}
+	if got := p.ToEntity().BrokerName; got != "orders" {
+		t.Fatalf("broker name = %q", got)
 	}
 	if p.Status != enum.StatusPending {
 		t.Fatalf("status = %s", p.Status)

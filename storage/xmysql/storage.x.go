@@ -131,7 +131,7 @@ func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelo
 	if err != nil {
 		return nil, err
 	}
-	const script = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` " +
+	const script = "SELECT `id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`expired_at` " +
 		"FROM %s WHERE `id` = ?"
 	row := s.db.QueryRowContext(ctx, fmt.Sprintf(script, table), id)
 	if row == nil {
@@ -143,6 +143,7 @@ func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelo
 		&pub.CreatedAt,
 		&pub.Version,
 		&pub.Topic,
+		&pub.BrokerName,
 		&pub.Status,
 		&pub.Headers,
 		&pub.Payload,
@@ -181,7 +182,7 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 		return nil, nil, err
 	}
 
-	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` " +
+	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`expired_at` " +
 		"FROM %s %s ORDER BY `id` %s %s"
 
 	pg := page.Normalize()
@@ -198,6 +199,7 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 			&pub.CreatedAt,
 			&pub.Version,
 			&pub.Topic,
+			&pub.BrokerName,
 			&pub.Status,
 			&pub.Headers,
 			&pub.Payload,
@@ -241,7 +243,7 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 		return nil, nil, err
 	}
 
-	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` " +
+	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` " +
 		"FROM %s %s ORDER BY `id` %s %s"
 
 	pg := page.Normalize()
@@ -257,6 +259,7 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 			&rec.CreatedAt,
 			&rec.Version,
 			&rec.Topic,
+			&rec.BrokerName,
 			&rec.Status,
 			&rec.Headers,
 			&rec.Payload,

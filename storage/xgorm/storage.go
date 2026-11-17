@@ -748,7 +748,7 @@ func mysqlClaimIndexSQL(table, index string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf(
-		"CREATE INDEX %s ON %s (`version`, `status`, `next_attempt_at`, `lease_until`, `retries`)",
+		"CREATE INDEX %s ON %s (`version`, `status`, `broker_name`, `next_attempt_at`, `lease_until`, `retries`)",
 		quotedIndex, quotedTable,
 	), nil
 }
@@ -763,7 +763,7 @@ func postgresClaimIndexSQL(table, index string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf(
-		`CREATE INDEX IF NOT EXISTS %s ON %s ("version", "status", "next_attempt_at", "lease_until", "retries")`,
+		`CREATE INDEX IF NOT EXISTS %s ON %s ("version", "status", "broker_name", "next_attempt_at", "lease_until", "retries")`,
 		quotedIndex, quotedTable,
 	), nil
 }

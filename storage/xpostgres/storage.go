@@ -142,6 +142,7 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group str
 				&rec.CreatedAt,
 				&rec.Version,
 				&rec.Topic,
+				&rec.BrokerName,
 				&rec.Status,
 				&rec.Headers,
 				&rec.Payload,
@@ -161,6 +162,7 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group str
 			&pub.CreatedAt,
 			&pub.Version,
 			&pub.Topic,
+			&pub.BrokerName,
 			&pub.Status,
 			&pub.Headers,
 			&pub.Payload,
@@ -234,7 +236,7 @@ func (s *Storage) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table,
 
 func claimPublishedSQL(table, statusType string) string {
 	return fmt.Sprintf(`
-SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at"
+SELECT "id","created_at","version","topic","broker_name","status","headers","payload","retries","expired_at"
 FROM %s
 WHERE "version" = $1
 AND "status" = $2::%s
@@ -246,7 +248,7 @@ LIMIT $6 FOR UPDATE SKIP LOCKED`, table, statusType)
 
 func claimReceivedSQL(table, statusType string) string {
 	return fmt.Sprintf(`
-SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at","group"
+SELECT "id","created_at","version","topic","broker_name","status","headers","payload","retries","expired_at","group"
 FROM %s
 WHERE "version" = $1
 AND "status" = $2::%s
@@ -299,13 +301,14 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 		return err
 	}
 	script := "INSERT INTO " + table + " (" +
-		`"id","created_at","version","topic","status","headers","payload","retries","lease_token","lease_until","next_attempt_at","expired_at"` +
-		") VALUES($1, $2, $3, $4, $5::" + statusType + ", $6, $7, $8, $9, $10, $11, $12)"
+		`"id","created_at","version","topic","broker_name","status","headers","payload","retries","lease_token","lease_until","next_attempt_at","expired_at"` +
+		") VALUES($1, $2, $3, $4, $5, $6::" + statusType + ", $7, $8, $9, $10, $11, $12, $13)"
 	_, err = s.execer().ExecContext(ctx, script,
 		pub.ID,
 		pub.CreatedAt,
 		pub.Version,
 		pub.Topic,
+		pub.BrokerName,
 		pub.Status,
 		pub.Headers,
 		pub.Payload,
@@ -341,13 +344,14 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 		return err
 	}
 	script := "INSERT INTO " + table + " (" +
-		`"id","created_at","version","topic","status","headers","payload","retries","lease_token","lease_until","next_attempt_at","expired_at","group"` +
-		") VALUES($1, $2, $3, $4, $5::" + statusType + ", $6, $7, $8, $9, $10, $11, $12, $13)"
+		`"id","created_at","version","topic","broker_name","status","headers","payload","retries","lease_token","lease_until","next_attempt_at","expired_at","group"` +
+		") VALUES($1, $2, $3, $4, $5, $6::" + statusType + ", $7, $8, $9, $10, $11, $12, $13, $14)"
 	_, err = s.execer().ExecContext(ctx, script,
 		rec.ID,
 		rec.CreatedAt,
 		rec.Version,
 		rec.Topic,
+		rec.BrokerName,
 		rec.Status,
 		rec.Headers,
 		rec.Payload,

@@ -113,6 +113,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []
 			&pub.CreatedAt,
 			&pub.Version,
 			&pub.Topic,
+			&pub.BrokerName,
 			&pub.Status,
 			&pub.Headers,
 			&pub.Payload,
@@ -201,6 +202,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group s
 			&rec.CreatedAt,
 			&rec.Version,
 			&rec.Topic,
+			&rec.BrokerName,
 			&rec.Status,
 			&rec.Headers,
 			&rec.Payload,
@@ -258,7 +260,7 @@ func (s *Storage) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table 
 
 func claimPublishedSQL(table string) string {
 	return fmt.Sprintf(
-		"SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` FROM %s "+
+		"SELECT `id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`expired_at` FROM %s "+
 			"WHERE `version` = ? "+
 			"AND `status` = ? "+
 			"AND `next_attempt_at` <= ? "+
@@ -271,7 +273,7 @@ func claimPublishedSQL(table string) string {
 
 func claimReceivedSQL(table string) string {
 	return fmt.Sprintf(
-		"SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` FROM %s "+
+		"SELECT `id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` FROM %s "+
 			"WHERE `version` = ? "+
 			"AND `status` = ? "+
 			"AND `next_attempt_at` <= ? "+
@@ -324,14 +326,15 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 		return err
 	}
 	const script = "INSERT INTO %s (" +
-		"`id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`lease_token`,`lease_until`,`next_attempt_at`,`expired_at`" +
-		") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+		"`id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`lease_token`,`lease_until`,`next_attempt_at`,`expired_at`" +
+		") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	xer := s.execer()
 	_, err = xer.ExecContext(ctx, fmt.Sprintf(script, table),
 		pub.ID,
 		pub.CreatedAt,
 		pub.Version,
 		pub.Topic,
+		pub.BrokerName,
 		pub.Status,
 		string(pub.Headers),
 		string(pub.Payload),
@@ -365,13 +368,14 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 		return err
 	}
 	const script = "INSERT INTO %s (" +
-		"`id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`lease_token`,`lease_until`,`next_attempt_at`,`expired_at`,`group`" +
-		") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+		"`id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`lease_token`,`lease_until`,`next_attempt_at`,`expired_at`,`group`" +
+		") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	_, err = s.execer().ExecContext(ctx, fmt.Sprintf(script, table),
 		rec.ID,
 		rec.CreatedAt,
 		rec.Version,
 		rec.Topic,
+		rec.BrokerName,
 		rec.Status,
 		string(rec.Headers),
 		string(rec.Payload),
@@ -613,7 +617,7 @@ func claimIndexSQL(table, index string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf(
-		"CREATE INDEX %s ON %s (`version`, `status`, `next_attempt_at`, `lease_until`, `retries`)",
+		"CREATE INDEX %s ON %s (`version`, `status`, `broker_name`, `next_attempt_at`, `lease_until`, `retries`)",
 		quotedIndex, quotedTable,
 	), nil
 }

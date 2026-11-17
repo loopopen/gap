@@ -17,6 +17,7 @@ func (r *Received) ToEntity() *entity.Envelope {
 	envelope_.CreatedAt = r.CreatedAt
 	envelope_.Version = r.Version
 	envelope_.Topic = r.Topic
+	envelope_.BrokerName = r.BrokerName
 	envelope_.Status = enum.Status(r.Status)
 	envelope_.Payload = []byte(r.Payload)
 	envelope_.Retries = r.Retries
@@ -40,6 +41,7 @@ func (r *Received) FromEntity(envelope_ *entity.Envelope) *Received {
 	r.ID = envelope_.ID
 	r.Version = envelope_.Version
 	r.Topic = envelope_.Topic
+	r.BrokerName = envelope_.BrokerName
 	r.Group = envelope_.Group
 	r.Retries = envelope_.Retries
 	r.LeaseToken = envelope_.LeaseToken

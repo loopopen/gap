@@ -40,6 +40,7 @@ type Envelope struct {
 	Headers       map[string]string // Message metadata.
 	Version       string            // Message version.
 	Topic         string            // Routing topic.
+	BrokerName    string            // Logical broker name.
 	Group         string            // Consumer group.
 	Status        enum.Status       // Message status.
 	Message       any               // In-memory message.

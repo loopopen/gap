@@ -477,14 +477,13 @@ func (p *Pump) pollingHandle(ctx context.Context) {
 
 func (p *Pump) send(ctx context.Context, envelope *entity.Envelope) error {
 	p.senderMu.RLock()
-	brokerType := envelope.Headers[entity.BrokerTypeHeader]
-	brokerName := envelope.Headers[entity.BrokerNameHeader]
+	brokerName := envelope.BrokerName
 	if sender, ok := p.senders[routeKey(brokerName)]; ok {
 		p.senderMu.RUnlock()
 		return sender.SendAndUpdate(ctx, envelope)
 	}
 	p.senderMu.RUnlock()
-	return p.failPublished(ctx, envelope, fmt.Errorf("sender not found for broker %q (%s)", brokerName, brokerType))
+	return p.failPublished(ctx, envelope, fmt.Errorf("sender not found for broker %q", brokerName))
 }
 
 func (p *Pump) failPublished(ctx context.Context, envelope *entity.Envelope, cause error) error {
@@ -503,9 +502,7 @@ func (p *Pump) handle(ctx context.Context, envelope *entity.Envelope) error {
 		return h.(Handler).HandleAndUpdate(ctx, envelope)
 	}
 
-	brokerType := envelope.Headers[entity.BrokerTypeHeader]
-	brokerName := envelope.Headers[entity.BrokerNameHeader]
-	cause := fmt.Errorf("handler not found for broker %q (%s), group %q", brokerName, brokerType, envelope.Group)
+	cause := fmt.Errorf("handler not found for broker %q, group %q", envelope.BrokerName, envelope.Group)
 	return p.failReceived(ctx, envelope, cause)
 }
 
@@ -574,8 +571,7 @@ func groupFromHandlerKey(key string) string {
 }
 
 func (p *Pump) handler(envelope *entity.Envelope) (any, bool) {
-	brokerName := envelope.Headers[entity.BrokerNameHeader]
-	return p.handlers.Load(handlerKey(brokerName, envelope.Group))
+	return p.handlers.Load(handlerKey(envelope.BrokerName, envelope.Group))
 }
 
 func wait(ctx context.Context, duration time.Duration) {
