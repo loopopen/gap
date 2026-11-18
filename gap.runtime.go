@@ -92,6 +92,9 @@ func (g *Gap) shutdown(ctx context.Context) (err error) {
 			g.pump.Seal()
 		}
 		g.opts.CancelWork()
+		if g.pump != nil {
+			err = errors.Join(err, g.pump.StopRenewals(ctx))
+		}
 		err = errors.Join(err, g.opts.CloseResources(ctx))
 	}()
 

@@ -1,0 +1,78 @@
+package xpostgres
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/storage"
+)
+
+// RenewPublishedLeases implements [storage.Storage].
+func (s *Storage) RenewPublishedLeases(ctx context.Context, until time.Time, leases []storage.Lease) ([]uint, error) {
+	leases = ownedLeases(leases)
+	if len(leases) == 0 {
+		return nil, nil
+	}
+	table, err := s.quotedTable("published")
+	if err != nil {
+		return nil, err
+	}
+	statusType, err := s.statusType()
+	if err != nil {
+		return nil, err
+	}
+	query, args := renewPublishedSQL(table, statusType, until, enum.StatusPending, leases)
+	rows, err := s.queryer().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	renewed := make([]uint, 0, len(leases))
+	for rows.Next() {
+		var id uint
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		renewed = append(renewed, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return renewed, nil
+}
+
+func renewPublishedSQL(table, statusType string, until time.Time, status enum.Status, leases []storage.Lease) (string, []any) {
+	var b strings.Builder
+	b.WriteString("UPDATE ")
+	b.WriteString(table)
+	b.WriteString(` AS p SET "lease_until" = $1 FROM (VALUES `)
+	args := make([]any, 0, len(leases)*2+2)
+	args = append(args, until)
+	for i, lease := range leases {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		idPos := i*2 + 2
+		fmt.Fprintf(&b, "($%d::bigint, $%d::varchar)", idPos, idPos+1)
+		args = append(args, lease.ID, lease.LeaseToken)
+	}
+	statusPos := len(leases)*2 + 2
+	fmt.Fprintf(&b, `) AS v(id, token) WHERE p."id" = v.id AND p."lease_token" = v.token AND p."status" = $%d::%s RETURNING p."id"`, statusPos, statusType)
+	args = append(args, status)
+	return b.String(), args
+}
+
+func ownedLeases(leases []storage.Lease) []storage.Lease {
+	owned := make([]storage.Lease, 0, len(leases))
+	for _, lease := range leases {
+		if lease.ID == 0 || lease.LeaseToken == "" {
+			continue
+		}
+		owned = append(owned, lease)
+	}
+	return owned
+}

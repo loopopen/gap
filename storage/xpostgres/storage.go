@@ -32,6 +32,13 @@ func (s *Storage) execer() Execer {
 	return s.db
 }
 
+func (s *Storage) queryer() rowQueryer {
+	if s.tx != nil {
+		return s.tx
+	}
+	return s.db
+}
+
 func (s *Storage) beginClaim(ctx context.Context) (tx *xsql.Tx, own bool, err error) {
 	if s.tx != nil {
 		return s.tx, false, nil

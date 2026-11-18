@@ -49,6 +49,8 @@ type Pump struct {
 	sourceWG              sync.WaitGroup
 	dispatcherWG          sync.WaitGroup
 	taskWG                sync.WaitGroup
+	renewWG               sync.WaitGroup
+	renewals              *publishedRenewals
 }
 
 // New creates and starts a message pump.
@@ -210,6 +212,7 @@ func (p *Pump) startSender() {
 		size = 100
 	}
 	p.sendCh = make(chan *entity.Envelope, size)
+	p.startPublishedRenewals()
 
 	// Polling stops with the intake context; a batch claimed before shutdown is
 	// completed on the work context inside pollingSend.
@@ -263,12 +266,15 @@ func (p *Pump) DispatchToSend(ctx context.Context, envelope *entity.Envelope) er
 	if p.sealed {
 		return ingap.ErrRuntimeStopping
 	}
+	p.sendLease(envelope, true)
 	select {
 	case p.sendCh <- envelope:
 		return nil
 	case <-ctx.Done():
+		p.sendLease(envelope, false)
 		return ctx.Err()
 	default:
+		p.sendLease(envelope, false)
 		return errors.New("system backpressure: send buffer overflow")
 	}
 }
@@ -484,6 +490,7 @@ func (p *Pump) pollingHandle(ctx context.Context) {
 }
 
 func (p *Pump) send(ctx context.Context, envelope *entity.Envelope) error {
+	defer p.sendLease(envelope, false)
 	p.senderMu.RLock()
 	brokerName := envelope.BrokerName
 	if sender, ok := p.senders[routeKey(brokerName)]; ok {
@@ -641,6 +648,12 @@ func wait(ctx context.Context, duration time.Duration) {
 // StopSources waits for pump input sources to stop.
 func (p *Pump) StopSources(ctx context.Context) error {
 	return waitGroup(ctx, &p.sourceWG)
+}
+
+// StopRenewals waits for published lease renewal to stop. The work context must
+// already be canceled, because that is what makes the renewer return.
+func (p *Pump) StopRenewals(ctx context.Context) error {
+	return waitGroup(ctx, &p.renewWG)
 }
 
 // Seal rejects future dispatches and closes dispatcher inputs. Callers must

@@ -3,11 +3,18 @@ package storage
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/txer"
 )
+
+// Lease identifies one pending message row owned by a worker.
+type Lease struct {
+	ID         uint
+	LeaseToken string
+}
 
 var ErrLeaseLost = errors.New("gap: message lease lost")
 
@@ -30,6 +37,11 @@ type Storage interface {
 	// Succeeded and Failed are written as given. Pending keeps that status and
 	// schedules the next attempt after RetryInterval.
 	UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error
+
+	// RenewPublishedLeases extends lease_until to until for pending published rows
+	// still owned by the given lease tokens. It does not change retries.
+	// Returned ids are the rows whose lease was extended.
+	RenewPublishedLeases(ctx context.Context, until time.Time, leases []Lease) ([]uint, error)
 
 	// ClaimPublishedBatch marks exhausted rows Failed for brokerName, then locks
 	// up to batchSize due rows for that broker name with retries below
