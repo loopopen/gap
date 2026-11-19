@@ -159,25 +159,25 @@ func TestClaimRoutesUseRegisteredBrokerNames(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, want := p.senderBrokerNames(), []string{"kafka", "rabbit"}; !reflect.DeepEqual(got, want) {
+	if got, want := p.publishedBrokerNames(), []string{"kafka", "rabbit"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("sender brokers = %v, want %v", got, want)
 	}
-	if got, want := p.handlerBrokerNames("billing"), []string{"kafka", "rabbit"}; !reflect.DeepEqual(got, want) {
+	if got, want := p.receivedBrokerNames("billing"), []string{"kafka", "rabbit"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("billing brokers = %v, want %v", got, want)
 	}
-	if got, want := p.handlerBrokerNames("shipping"), []string{"kafka"}; !reflect.DeepEqual(got, want) {
+	if got, want := p.receivedBrokerNames("shipping"), []string{"kafka"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("shipping brokers = %v, want %v", got, want)
 	}
 
 	var published []string
 	var billing []string
 	for i := 0; i < 4; i++ {
-		name, ok := p.nextSenderBroker()
+		name, ok := p.nextPublishedBroker()
 		if !ok {
 			t.Fatal("expected a sender broker")
 		}
 		published = append(published, name)
-		name, ok = p.nextHandlerBroker("billing")
+		name, ok = p.nextReceivedBroker("billing")
 		if !ok {
 			t.Fatal("expected a billing broker")
 		}
@@ -189,7 +189,7 @@ func TestClaimRoutesUseRegisteredBrokerNames(t *testing.T) {
 	if !reflect.DeepEqual(billing, []string{"kafka", "rabbit", "kafka", "rabbit"}) {
 		t.Fatalf("billing rotation = %v", billing)
 	}
-	if name, ok := p.nextHandlerBroker("shipping"); !ok || name != "kafka" {
+	if name, ok := p.nextReceivedBroker("shipping"); !ok || name != "kafka" {
 		t.Fatalf("shipping broker = %q ok=%v", name, ok)
 	}
 }
@@ -328,9 +328,8 @@ func TestNextClaimGroupFollowsNameWhenSetChanges(t *testing.T) {
 
 func TestNextClaimGroupRestartsWhenCursorLeaves(t *testing.T) {
 	p := &Pump{
-		handlers:       new(sync.Map),
-		claimCursor:    "gone",
-		claimCursorSet: true,
+		handlers:    new(sync.Map),
+		claimCursor: nameCursor{name: "gone", set: true},
 	}
 	p.handlers.Store(handlerKey("rabbit", "keep"), new(handlerStub))
 	group, ok := p.nextClaimGroup()

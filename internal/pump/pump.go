@@ -28,29 +28,28 @@ type Handler interface {
 }
 
 type Pump struct {
-	gapOpts               *ingap.Options
-	storage               storage.Storage
-	sendCh                chan *entity.Envelope
-	handleCh              chan *entity.Envelope
-	senderMu              sync.RWMutex
-	senders               map[string]Sender
-	senderConfigs         map[string]string
-	handlers              *sync.Map
-	handlerConfigs        *sync.Map
-	handlerOnce           sync.Once
-	dispatchMu            sync.RWMutex
-	sealOnce              sync.Once
-	sealed                bool
-	claimCursor           string
-	claimCursorSet        bool
-	publishedBrokerCursor string
-	publishedBrokerSet    bool
-	receivedBrokerCursors map[string]nameCursor
-	sourceWG              sync.WaitGroup
-	dispatcherWG          sync.WaitGroup
-	taskWG                sync.WaitGroup
-	renewWG               sync.WaitGroup
-	renewals              *publishedRenewals
+	gapOpts           *ingap.Options
+	storage           storage.Storage
+	sendCh            chan *entity.Envelope
+	handleCh          chan *entity.Envelope
+	senderMu          sync.RWMutex
+	senders           map[string]Sender
+	senderConfigs     map[string]string
+	handlers          *sync.Map
+	handlerConfigs    *sync.Map
+	handlerOnce       sync.Once
+	dispatchMu        sync.RWMutex
+	sealOnce          sync.Once
+	sealed            bool
+	claimCursor       nameCursor
+	publishedCursor   nameCursor
+	receivedCursors   map[string]nameCursor
+	sourceWG          sync.WaitGroup
+	dispatcherWG      sync.WaitGroup
+	taskWG            sync.WaitGroup
+	renewWG           sync.WaitGroup
+	publishedRenewals *leaseRenewer
+	receivedRenewals  *leaseRenewer
 }
 
 // New creates and starts a message pump.
@@ -212,7 +211,7 @@ func (p *Pump) startSender() {
 		size = 100
 	}
 	p.sendCh = make(chan *entity.Envelope, size)
-	p.startPublishedRenewals()
+	p.startRenewals()
 
 	// Polling stops with the intake context; a batch claimed before shutdown is
 	// completed on the work context inside pollingSend.
@@ -228,10 +227,6 @@ func (p *Pump) startSender() {
 		defer p.dispatcherWG.Done()
 		p.dispatchingSend(o.WorkContext(), o.MaxPublishConcurrency)
 	}()
-}
-
-func (p *Pump) startHandler() {
-	p.handlerOnce.Do(p.startHandlerOnce)
 }
 
 func (p *Pump) startHandlerOnce() {
@@ -266,15 +261,15 @@ func (p *Pump) DispatchToSend(ctx context.Context, envelope *entity.Envelope) er
 	if p.sealed {
 		return ingap.ErrRuntimeStopping
 	}
-	p.sendLease(envelope, true)
+	p.publishedLease(envelope, true)
 	select {
 	case p.sendCh <- envelope:
 		return nil
 	case <-ctx.Done():
-		p.sendLease(envelope, false)
+		p.publishedLease(envelope, false)
 		return ctx.Err()
 	default:
-		p.sendLease(envelope, false)
+		p.publishedLease(envelope, false)
 		return errors.New("system backpressure: send buffer overflow")
 	}
 }
@@ -290,12 +285,15 @@ func (p *Pump) DispatchToHandle(ctx context.Context, envelope *entity.Envelope) 
 	if p.sealed || p.handleCh == nil {
 		return ingap.ErrRuntimeStopping
 	}
+	p.receivedLease(envelope, true)
 	select {
 	case p.handleCh <- envelope:
 		return nil
 	case <-ctx.Done():
+		p.receivedLease(envelope, false)
 		return ctx.Err()
 	default:
+		p.receivedLease(envelope, false)
 		return errors.New("system backpressure: handle buffer overflow")
 	}
 }
@@ -321,7 +319,7 @@ func (p *Pump) pollingSend(ctx context.Context) {
 			return
 
 		case <-ticker.C:
-			brokerName, ok := p.nextSenderBroker()
+			brokerName, ok := p.nextPublishedBroker()
 			if !ok {
 				continue
 			}
@@ -333,7 +331,7 @@ func (p *Pump) pollingSend(ctx context.Context) {
 				continue
 			}
 
-			p.sendClaimed(ctx, workCtx, ps)
+			p.publishedClaimed(ctx, workCtx, ps)
 		}
 	}
 }
@@ -464,7 +462,7 @@ func (p *Pump) pollingHandle(ctx context.Context) {
 			if !ok {
 				continue
 			}
-			brokerName, ok := p.nextHandlerBroker(group)
+			brokerName, ok := p.nextReceivedBroker(group)
 			if !ok {
 				continue
 			}
@@ -475,17 +473,13 @@ func (p *Pump) pollingHandle(ctx context.Context) {
 				continue
 			}
 
-			for _, en := range rs {
-				if err := p.handle(workCtx, en); err != nil {
-					en.Log().Error("failed to handle received message", slog.Any("err", err))
-				}
-			}
+			p.receivedClaimed(ctx, workCtx, rs)
 		}
 	}
 }
 
 func (p *Pump) send(ctx context.Context, envelope *entity.Envelope) error {
-	defer p.sendLease(envelope, false)
+	defer p.publishedLease(envelope, false)
 	p.senderMu.RLock()
 	brokerName := envelope.BrokerName
 	if sender, ok := p.senders[routeKey(brokerName)]; ok {
@@ -507,6 +501,7 @@ func (p *Pump) releasePublished(ctx context.Context, envelope *entity.Envelope, 
 }
 
 func (p *Pump) handle(ctx context.Context, envelope *entity.Envelope) error {
+	defer p.receivedLease(envelope, false)
 	h, ok := p.handler(envelope)
 	if ok {
 		return h.(Handler).HandleAndUpdate(ctx, envelope)
@@ -526,7 +521,7 @@ func (p *Pump) releaseReceived(ctx context.Context, envelope *entity.Envelope, c
 	return cause
 }
 
-func (p *Pump) senderBrokerNames() []string {
+func (p *Pump) publishedBrokerNames() []string {
 	p.senderMu.RLock()
 	defer p.senderMu.RUnlock()
 	names := make([]string, 0, len(p.senders))
@@ -537,7 +532,7 @@ func (p *Pump) senderBrokerNames() []string {
 	return names
 }
 
-func (p *Pump) handlerBrokerNames(group string) []string {
+func (p *Pump) receivedBrokerNames(group string) []string {
 	if p.handlers == nil {
 		return nil
 	}
@@ -562,41 +557,41 @@ type nameCursor struct {
 	set  bool
 }
 
-func (p *Pump) nextSenderBroker() (string, bool) {
-	return nextName(p.senderBrokerNames(), &p.publishedBrokerCursor, &p.publishedBrokerSet)
+func (p *Pump) nextPublishedBroker() (string, bool) {
+	return nextName(p.publishedBrokerNames(), &p.publishedCursor)
 }
 
-func (p *Pump) nextHandlerBroker(group string) (string, bool) {
-	if p.receivedBrokerCursors == nil {
-		p.receivedBrokerCursors = map[string]nameCursor{}
+func (p *Pump) nextReceivedBroker(group string) (string, bool) {
+	if p.receivedCursors == nil {
+		p.receivedCursors = map[string]nameCursor{}
 	}
-	cursor := p.receivedBrokerCursors[group]
-	next, ok := nextName(p.handlerBrokerNames(group), &cursor.name, &cursor.set)
+	cursor := p.receivedCursors[group]
+	next, ok := nextName(p.receivedBrokerNames(group), &cursor)
 	if ok {
-		p.receivedBrokerCursors[group] = cursor
+		p.receivedCursors[group] = cursor
 	}
 	return next, ok
 }
 
 func (p *Pump) nextClaimGroup() (string, bool) {
-	return nextName(p.registeredGroups(), &p.claimCursor, &p.claimCursorSet)
+	return nextName(p.registeredGroups(), &p.claimCursor)
 }
 
-func nextName(names []string, cursor *string, set *bool) (string, bool) {
+func nextName(names []string, cursor *nameCursor) (string, bool) {
 	if len(names) == 0 {
 		return "", false
 	}
 	next := names[0]
-	if *set {
+	if cursor.set {
 		for i, name := range names {
-			if name == *cursor {
+			if name == cursor.name {
 				next = names[(i+1)%len(names)]
 				break
 			}
 		}
 	}
-	*cursor = next
-	*set = true
+	cursor.name = next
+	cursor.set = true
 	return next, true
 }
 
@@ -645,7 +640,7 @@ func (p *Pump) StopSources(ctx context.Context) error {
 	return waitGroup(ctx, &p.sourceWG)
 }
 
-// StopRenewals waits for published lease renewal to stop. The work context must
+// StopRenewals waits for lease renewal to stop. The work context must
 // already be canceled, because that is what makes the renewer return.
 func (p *Pump) StopRenewals(ctx context.Context) error {
 	return waitGroup(ctx, &p.renewWG)
@@ -695,5 +690,5 @@ func waitGroup(ctx context.Context, wg *sync.WaitGroup) error {
 
 // StartHandler starts handler polling and dispatch.
 func (p *Pump) StartHandler() {
-	p.startHandler()
+	p.handlerOnce.Do(p.startHandlerOnce)
 }

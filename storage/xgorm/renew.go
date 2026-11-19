@@ -11,6 +11,16 @@ import (
 // RenewPublishedLeases extends the lease of pending published rows that are
 // still owned by the given tokens.
 func (s *Storage) RenewPublishedLeases(ctx context.Context, until time.Time, leases []storage.Lease) ([]uint, error) {
+	return s.renewLeases(ctx, &Published{}, until, leases)
+}
+
+// RenewReceivedLeases extends the lease of pending received rows that are
+// still owned by the given tokens.
+func (s *Storage) RenewReceivedLeases(ctx context.Context, until time.Time, leases []storage.Lease) ([]uint, error) {
+	return s.renewLeases(ctx, &Received{}, until, leases)
+}
+
+func (s *Storage) renewLeases(ctx context.Context, model any, until time.Time, leases []storage.Lease) ([]uint, error) {
 	if len(leases) == 0 {
 		return nil, nil
 	}
@@ -20,7 +30,7 @@ func (s *Storage) RenewPublishedLeases(ctx context.Context, until time.Time, lea
 			continue
 		}
 		result := s.db.WithContext(ctx).
-			Model(&Published{}).
+			Model(model).
 			Where("id = ? AND status = ? AND lease_token = ?", lease.ID, enum.StatusPending, lease.LeaseToken).
 			Update("lease_until", until)
 		if result.Error != nil {

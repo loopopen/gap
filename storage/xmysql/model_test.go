@@ -33,7 +33,7 @@ func TestCleanupIndexSQL(t *testing.T) {
 }
 
 func TestFailExhaustedSQL(t *testing.T) {
-	sql := failExhaustedSQL("`gap_published`")
+	sql := failExhaustedPublishedSQL("`gap_published`")
 	assertPendingDueWhere(t, sql)
 	for _, condition := range []string{
 		"UPDATE `gap_published`",

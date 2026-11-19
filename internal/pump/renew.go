@@ -19,11 +19,14 @@ type msgLease struct {
 // earliest one. They are renewed together, slightly before their own half point.
 const renewalWindow = time.Second
 
-// publishedRenewals lazily extends leases for messages accepted onto the fast
-// send path. The earliest half-elapsed lease opens a renewal. Leases whose half
-// point falls within renewalWindow are included in that same renewal.
-type publishedRenewals struct {
-	storage    storage.Storage
+type leaseRenewFunc func(ctx context.Context, until time.Time, leases []storage.Lease) ([]uint, error)
+
+// leaseRenewer lazily extends leases for one message table. The earliest
+// half-elapsed lease opens a renewal. Leases whose half point falls within
+// renewalWindow are included in that same renewal.
+type leaseRenewer struct {
+	name       string
+	renew      leaseRenewFunc
 	ttl        time.Duration
 	retryDelay time.Duration
 
@@ -32,7 +35,7 @@ type publishedRenewals struct {
 	wake  chan struct{}
 }
 
-func (p *Pump) startPublishedRenewals() {
+func (p *Pump) startRenewals() {
 	if p.storage == nil || p.gapOpts == nil {
 		return
 	}
@@ -40,17 +43,40 @@ func (p *Pump) startPublishedRenewals() {
 	if ttl <= 0 {
 		return
 	}
-	p.renewals = newPublishedRenewals(p.storage, ttl)
-	p.renewWG.Add(1)
-	go func() {
-		defer p.renewWG.Done()
-		p.renewals.run(p.gapOpts.WorkContext())
-	}()
+	p.publishedRenewals = newLeaseRenewer("published", ttl, p.storage.RenewPublishedLeases)
+	p.receivedRenewals = newLeaseRenewer("received", ttl, p.storage.RenewReceivedLeases)
+	ctx := p.gapOpts.WorkContext()
+	for _, renewer := range []*leaseRenewer{p.publishedRenewals, p.receivedRenewals} {
+		p.renewWG.Add(1)
+		go func(renewer *leaseRenewer) {
+			defer p.renewWG.Done()
+			renewer.run(ctx)
+		}(renewer)
+	}
 }
 
-func newPublishedRenewals(stor storage.Storage, ttl time.Duration) *publishedRenewals {
-	return &publishedRenewals{
-		storage:    stor,
+func newPublishedRenewals(stor storage.Storage, ttl time.Duration) *leaseRenewer {
+	return newLeaseRenewer("published", ttl, func(ctx context.Context, until time.Time, leases []storage.Lease) ([]uint, error) {
+		if stor == nil {
+			return nil, nil
+		}
+		return stor.RenewPublishedLeases(ctx, until, leases)
+	})
+}
+
+func newReceivedRenewals(stor storage.Storage, ttl time.Duration) *leaseRenewer {
+	return newLeaseRenewer("received", ttl, func(ctx context.Context, until time.Time, leases []storage.Lease) ([]uint, error) {
+		if stor == nil {
+			return nil, nil
+		}
+		return stor.RenewReceivedLeases(ctx, until, leases)
+	})
+}
+
+func newLeaseRenewer(name string, ttl time.Duration, renew leaseRenewFunc) *leaseRenewer {
+	return &leaseRenewer{
+		name:       name,
+		renew:      renew,
 		ttl:        ttl,
 		retryDelay: time.Second,
 		items:      make(map[uint]msgLease),
@@ -58,8 +84,8 @@ func newPublishedRenewals(stor storage.Storage, ttl time.Duration) *publishedRen
 	}
 }
 
-func (r *publishedRenewals) attach(envelope *entity.Envelope) {
-	if envelope == nil || envelope.LeaseToken == "" || envelope.LeaseUntil.IsZero() {
+func (r *leaseRenewer) attach(envelope *entity.Envelope) {
+	if r == nil || envelope == nil || envelope.LeaseToken == "" || envelope.LeaseUntil.IsZero() {
 		return
 	}
 	r.mu.Lock()
@@ -71,7 +97,10 @@ func (r *publishedRenewals) attach(envelope *entity.Envelope) {
 	r.kick()
 }
 
-func (r *publishedRenewals) detach(id uint, token string) {
+func (r *leaseRenewer) detach(id uint, token string) {
+	if r == nil {
+		return
+	}
 	r.mu.Lock()
 	item, ok := r.items[id]
 	deleted := ok && item.token == token
@@ -84,14 +113,14 @@ func (r *publishedRenewals) detach(id uint, token string) {
 	}
 }
 
-func (r *publishedRenewals) kick() {
+func (r *leaseRenewer) kick() {
 	select {
 	case r.wake <- struct{}{}:
 	default: //drop
 	}
 }
 
-func (r *publishedRenewals) run(ctx context.Context) {
+func (r *leaseRenewer) run(ctx context.Context) {
 	timer := time.NewTimer(0)
 	if !timer.Stop() {
 		select {
@@ -123,7 +152,7 @@ func (r *publishedRenewals) run(ctx context.Context) {
 			}
 		case <-timer.C:
 			if err := r.renewDue(ctx, time.Now()); err != nil {
-				slog.Error("failed to renew published leases", slog.Any("err", err))
+				slog.Error("failed to renew leases", slog.String("table", r.name), slog.Any("err", err))
 				if !waitCtx(ctx, r.retryDelay) {
 					return
 				}
@@ -132,7 +161,7 @@ func (r *publishedRenewals) run(ctx context.Context) {
 	}
 }
 
-func (r *publishedRenewals) nextDelay(now time.Time) (time.Duration, bool) {
+func (r *leaseRenewer) nextDelay(now time.Time) (time.Duration, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var earliest time.Time
@@ -152,7 +181,7 @@ func (r *publishedRenewals) nextDelay(now time.Time) (time.Duration, bool) {
 	return delay, true
 }
 
-func (r *publishedRenewals) renewDue(ctx context.Context, now time.Time) error {
+func (r *leaseRenewer) renewDue(ctx context.Context, now time.Time) error {
 	deadline := now.Add(r.ttl/2 + renewalWindow)
 	r.mu.Lock()
 	due := make([]storage.Lease, 0)
@@ -168,7 +197,7 @@ func (r *publishedRenewals) renewDue(ctx context.Context, now time.Time) error {
 	}
 
 	until := now.Add(r.ttl)
-	renewed, err := r.storage.RenewPublishedLeases(ctx, until, due)
+	renewed, err := r.renew(ctx, until, due)
 	if err != nil {
 		return err
 	}
@@ -194,7 +223,7 @@ func (r *publishedRenewals) renewDue(ctx context.Context, now time.Time) error {
 	}
 	r.mu.Unlock()
 	if lost > 0 {
-		slog.Warn("published lease lost during renewal", slog.Int("lost", lost))
+		slog.Warn("lease lost during renewal", slog.String("table", r.name), slog.Int("lost", lost))
 	}
 	return nil
 }
@@ -210,53 +239,94 @@ func waitCtx(ctx context.Context, delay time.Duration) bool {
 	}
 }
 
-func (r *publishedRenewals) holds(id uint, token string) bool {
+func (r *leaseRenewer) holds(id uint, token string) bool {
+	if r == nil {
+		return false
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	item, ok := r.items[id]
 	return ok && item.token == token
 }
 
-// sendLease is the only path that mounts or drops a published send lease.
-// hold mounts the envelope before it enters sendCh, or before a claimed batch
-// waits to send. The matching drop runs when sendCh refuses the envelope, or
-// when send returns.
-func (p *Pump) sendLease(envelope *entity.Envelope, hold bool) {
-	if p == nil || p.renewals == nil || envelope == nil {
+// trackLease is the only path that mounts or drops a message lease.
+// hold mounts the envelope before it enters a dispatch channel, or before a
+// claimed batch waits to be processed. The matching drop runs when that channel
+// refuses the envelope, or when processing returns.
+func trackLease(renewals *leaseRenewer, envelope *entity.Envelope, hold bool) {
+	if renewals == nil || envelope == nil {
 		return
 	}
 	if hold {
-		p.renewals.attach(envelope)
+		renewals.attach(envelope)
 		return
 	}
-	p.renewals.detach(envelope.ID, envelope.LeaseToken)
+	renewals.detach(envelope.ID, envelope.LeaseToken)
 }
 
-// leaseHeld reports whether a tracked published lease is still owned.
-// Messages outside renewal tracking are treated as held so sending proceeds.
-func (p *Pump) leaseHeld(envelope *entity.Envelope) bool {
-	if p == nil || p.renewals == nil || envelope == nil {
+// leaseTracked reports whether a tracked lease is still owned.
+// Messages outside renewal tracking are treated as held so processing proceeds.
+func leaseTracked(renewals *leaseRenewer, envelope *entity.Envelope) bool {
+	if renewals == nil || envelope == nil {
 		return true
 	}
 	if envelope.LeaseToken == "" || envelope.LeaseUntil.IsZero() {
 		return true
 	}
-	return p.renewals.holds(envelope.ID, envelope.LeaseToken)
+	return renewals.holds(envelope.ID, envelope.LeaseToken)
 }
 
-// sendClaimed mounts every claimed published message, then sends the ones whose
-// lease is still held. A lease dropped by renewal is not produced again.
-func (p *Pump) sendClaimed(ctx, workCtx context.Context, envelopes []*entity.Envelope) {
+func (p *Pump) publishedLease(envelope *entity.Envelope, hold bool) {
+	if p == nil {
+		return
+	}
+	trackLease(p.publishedRenewals, envelope, hold)
+}
+
+func (p *Pump) receivedLease(envelope *entity.Envelope, hold bool) {
+	if p == nil {
+		return
+	}
+	trackLease(p.receivedRenewals, envelope, hold)
+}
+
+func (p *Pump) publishedLeaseHeld(envelope *entity.Envelope) bool {
+	if p == nil {
+		return true
+	}
+	return leaseTracked(p.publishedRenewals, envelope)
+}
+
+func (p *Pump) receivedLeaseHeld(envelope *entity.Envelope) bool {
+	if p == nil {
+		return true
+	}
+	return leaseTracked(p.receivedRenewals, envelope)
+}
+
+func (p *Pump) renewClaimed(ctx, workCtx context.Context, renewals *leaseRenewer, envelopes []*entity.Envelope, run func(context.Context, *entity.Envelope) error, skip string) {
 	for _, envelope := range envelopes {
-		p.sendLease(envelope, true)
+		trackLease(renewals, envelope, true)
 	}
 	for _, envelope := range envelopes {
-		if !p.leaseHeld(envelope) {
-			envelope.Log().Warn("skipping claimed published message after lease loss")
+		if !leaseTracked(renewals, envelope) {
+			envelope.Log().Warn(skip)
 			continue
 		}
-		if err := p.send(workCtx, envelope); err != nil && ctx.Err() == nil {
+		if err := run(workCtx, envelope); err != nil && ctx.Err() == nil {
 			wait(ctx, 10*time.Second)
 		}
 	}
+}
+
+// publishedClaimed mounts every claimed published message, then sends the ones whose
+// lease is still held. A lease dropped by renewal is not produced again.
+func (p *Pump) publishedClaimed(ctx, workCtx context.Context, envelopes []*entity.Envelope) {
+	p.renewClaimed(ctx, workCtx, p.publishedRenewals, envelopes, p.send, "skipping claimed published message after lease loss")
+}
+
+// receivedClaimed mounts every claimed received message, then handles the ones
+// whose lease is still held. A lease dropped by renewal is not handled again.
+func (p *Pump) receivedClaimed(ctx, workCtx context.Context, envelopes []*entity.Envelope) {
+	p.renewClaimed(ctx, workCtx, p.receivedRenewals, envelopes, p.handle, "skipping claimed received message after lease loss")
 }

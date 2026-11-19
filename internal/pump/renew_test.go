@@ -13,12 +13,13 @@ import (
 
 type renewStorage struct {
 	storage.Storage
-	mu      sync.Mutex
-	calls   int
-	until   time.Time
-	leases  []storage.Lease
-	renewed []uint
-	err     error
+	mu       sync.Mutex
+	calls    int
+	until    time.Time
+	leases   []storage.Lease
+	renewed  []uint
+	err      error
+	received bool
 }
 
 func (s *renewStorage) RenewPublishedLeases(_ context.Context, until time.Time, leases []storage.Lease) ([]uint, error) {
@@ -40,6 +41,13 @@ func (s *renewStorage) RenewPublishedLeases(_ context.Context, until time.Time, 
 	return ids, nil
 }
 
+func (s *renewStorage) RenewReceivedLeases(ctx context.Context, until time.Time, leases []storage.Lease) ([]uint, error) {
+	s.mu.Lock()
+	s.received = true
+	s.mu.Unlock()
+	return s.RenewPublishedLeases(ctx, until, leases)
+}
+
 func (s *renewStorage) callCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -47,22 +55,22 @@ func (s *renewStorage) callCount() int {
 }
 
 func TestSendLeaseMountsAndDropsOnlyMatchingToken(t *testing.T) {
-	p := &Pump{renewals: newPublishedRenewals(nil, time.Minute)}
+	p := &Pump{publishedRenewals: newPublishedRenewals(nil, time.Minute)}
 	envelope := &entity.Envelope{ID: 7, LeaseToken: "owned", LeaseUntil: time.Now().Add(time.Minute)}
-	p.sendLease(envelope, true)
-	p.sendLease(&entity.Envelope{ID: 7, LeaseToken: "other"}, false)
+	p.publishedLease(envelope, true)
+	p.publishedLease(&entity.Envelope{ID: 7, LeaseToken: "other"}, false)
 
-	p.renewals.mu.Lock()
-	_, held := p.renewals.items[envelope.ID]
-	p.renewals.mu.Unlock()
+	p.publishedRenewals.mu.Lock()
+	_, held := p.publishedRenewals.items[envelope.ID]
+	p.publishedRenewals.mu.Unlock()
 	if !held {
 		t.Fatal("lease dropped for a different token")
 	}
 
-	p.sendLease(envelope, false)
-	p.renewals.mu.Lock()
-	_, held = p.renewals.items[envelope.ID]
-	p.renewals.mu.Unlock()
+	p.publishedLease(envelope, false)
+	p.publishedRenewals.mu.Lock()
+	_, held = p.publishedRenewals.items[envelope.ID]
+	p.publishedRenewals.mu.Unlock()
 	if held {
 		t.Fatal("lease still held after drop")
 	}
@@ -188,8 +196,8 @@ func TestPublishedRenewalLoopRenewsAfterHalfLease(t *testing.T) {
 
 func TestDispatchDropsLeaseWhenSendBufferIsFull(t *testing.T) {
 	p := &Pump{
-		sendCh:   make(chan *entity.Envelope, 1),
-		renewals: newPublishedRenewals(&renewStorage{}, time.Minute),
+		sendCh:            make(chan *entity.Envelope, 1),
+		publishedRenewals: newPublishedRenewals(&renewStorage{}, time.Minute),
 	}
 	queued := leasedEnvelope(1)
 	rejected := leasedEnvelope(2)
@@ -200,10 +208,10 @@ func TestDispatchDropsLeaseWhenSendBufferIsFull(t *testing.T) {
 		t.Fatal("expected send buffer overflow")
 	}
 
-	p.renewals.mu.Lock()
-	_, queuedHeld := p.renewals.items[queued.ID]
-	_, rejectedHeld := p.renewals.items[rejected.ID]
-	p.renewals.mu.Unlock()
+	p.publishedRenewals.mu.Lock()
+	_, queuedHeld := p.publishedRenewals.items[queued.ID]
+	_, rejectedHeld := p.publishedRenewals.items[rejected.ID]
+	p.publishedRenewals.mu.Unlock()
 	if !queuedHeld {
 		t.Fatal("queued message was dropped before send")
 	}
@@ -215,7 +223,7 @@ func TestDispatchDropsLeaseWhenSendBufferIsFull(t *testing.T) {
 func TestDispatchDropsLeaseWhenSendReturns(t *testing.T) {
 	sender := newBlockingSender()
 	p := newDispatchTestPump(sender, 1, 1)
-	p.renewals = newPublishedRenewals(&renewStorage{}, time.Minute)
+	p.publishedRenewals = newPublishedRenewals(&renewStorage{}, time.Minute)
 	envelope := leasedEnvelope(1)
 	if err := p.DispatchToSend(context.Background(), envelope); err != nil {
 		t.Fatal(err)
@@ -224,9 +232,9 @@ func TestDispatchDropsLeaseWhenSendReturns(t *testing.T) {
 		t.Fatalf("started message = %d, want %d", id, envelope.ID)
 	}
 
-	p.renewals.mu.Lock()
-	_, held := p.renewals.items[envelope.ID]
-	p.renewals.mu.Unlock()
+	p.publishedRenewals.mu.Lock()
+	_, held := p.publishedRenewals.items[envelope.ID]
+	p.publishedRenewals.mu.Unlock()
 	if !held {
 		t.Fatal("lease dropped while send was still running")
 	}
@@ -252,9 +260,9 @@ func waitUntilDropped(t *testing.T, p *Pump, id uint) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for {
-		p.renewals.mu.Lock()
-		_, held := p.renewals.items[id]
-		p.renewals.mu.Unlock()
+		p.publishedRenewals.mu.Lock()
+		_, held := p.publishedRenewals.items[id]
+		p.publishedRenewals.mu.Unlock()
 		if !held {
 			return
 		}
@@ -268,20 +276,20 @@ func waitUntilDropped(t *testing.T, p *Pump, id uint) {
 func TestSendClaimedRenewsUntilEachSendReturns(t *testing.T) {
 	sender := newBlockingSender()
 	p := &Pump{
-		senders:  map[string]Sender{routeKey("events"): sender},
-		renewals: newPublishedRenewals(&renewStorage{}, time.Minute),
+		senders:           map[string]Sender{routeKey("events"): sender},
+		publishedRenewals: newPublishedRenewals(&renewStorage{}, time.Minute),
 	}
 	first := leasedEnvelope(1)
 	second := leasedEnvelope(2)
 	done := make(chan struct{})
 	go func() {
-		p.sendClaimed(context.Background(), context.Background(), []*entity.Envelope{first, second})
+		p.publishedClaimed(context.Background(), context.Background(), []*entity.Envelope{first, second})
 		close(done)
 	}()
 	if id := <-sender.started; id != first.ID {
 		t.Fatalf("started message = %d, want %d", id, first.ID)
 	}
-	if !p.leaseHeld(first) || !p.leaseHeld(second) {
+	if !p.publishedLeaseHeld(first) || !p.publishedLeaseHeld(second) {
 		t.Fatal("claimed messages were dropped before their send returned")
 	}
 
@@ -289,19 +297,19 @@ func TestSendClaimedRenewsUntilEachSendReturns(t *testing.T) {
 	if id := <-sender.started; id != second.ID {
 		t.Fatalf("started message = %d, want %d", id, second.ID)
 	}
-	if p.leaseHeld(first) {
+	if p.publishedLeaseHeld(first) {
 		t.Fatal("finished message stayed on the renewal list")
 	}
-	if !p.leaseHeld(second) {
+	if !p.publishedLeaseHeld(second) {
 		t.Fatal("message was dropped while its send was running")
 	}
 	sender.release <- struct{}{}
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("sendClaimed did not finish")
+		t.Fatal("publishedClaimed did not finish")
 	}
-	if p.leaseHeld(second) {
+	if p.publishedLeaseHeld(second) {
 		t.Fatal("last message stayed on the renewal list")
 	}
 }
@@ -309,29 +317,89 @@ func TestSendClaimedRenewsUntilEachSendReturns(t *testing.T) {
 func TestSendClaimedSkipsMessageAfterLeaseLoss(t *testing.T) {
 	sender := newBlockingSender()
 	p := &Pump{
-		senders:  map[string]Sender{routeKey("events"): sender},
-		renewals: newPublishedRenewals(&renewStorage{}, time.Minute),
+		senders:           map[string]Sender{routeKey("events"): sender},
+		publishedRenewals: newPublishedRenewals(&renewStorage{}, time.Minute),
 	}
 	first := leasedEnvelope(1)
 	lost := leasedEnvelope(2)
 	done := make(chan struct{})
 	go func() {
-		p.sendClaimed(context.Background(), context.Background(), []*entity.Envelope{first, lost})
+		p.publishedClaimed(context.Background(), context.Background(), []*entity.Envelope{first, lost})
 		close(done)
 	}()
 	if id := <-sender.started; id != first.ID {
 		t.Fatalf("started message = %d, want %d", id, first.ID)
 	}
-	p.renewals.detach(lost.ID, lost.LeaseToken)
+	p.publishedRenewals.detach(lost.ID, lost.LeaseToken)
 	sender.release <- struct{}{}
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("sendClaimed did not finish")
+		t.Fatal("publishedClaimed did not finish")
 	}
 	select {
 	case id := <-sender.started:
 		t.Fatalf("sent message %d after its lease was lost", id)
+	default:
+	}
+}
+
+type blockingHandler struct {
+	started chan uint
+	release chan struct{}
+}
+
+func (h *blockingHandler) HandleAndUpdate(_ context.Context, envelope *entity.Envelope) error {
+	h.started <- envelope.ID
+	<-h.release
+	return nil
+}
+
+func TestReceivedRenewalUpdatesReceivedLeases(t *testing.T) {
+	stor := &renewStorage{}
+	renewals := newReceivedRenewals(stor, time.Minute)
+	now := time.Now()
+	renewals.attach(&entity.Envelope{ID: 3, LeaseToken: "tok", LeaseUntil: now})
+	if err := renewals.renewDue(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	stor.mu.Lock()
+	received := stor.received
+	stor.mu.Unlock()
+	if !received {
+		t.Fatal("received renewal did not call RenewReceivedLeases")
+	}
+}
+
+func TestHandleClaimedSkipsMessageAfterLeaseLoss(t *testing.T) {
+	handler := &blockingHandler{started: make(chan uint, 1), release: make(chan struct{}, 1)}
+	p := &Pump{
+		handlers:         new(sync.Map),
+		receivedRenewals: newReceivedRenewals(&renewStorage{}, time.Minute),
+	}
+	p.handlers.Store(handlerKey("events", "billing"), handler)
+	first := leasedEnvelope(1)
+	lost := leasedEnvelope(2)
+	first.Group = "billing"
+	lost.Group = "billing"
+	done := make(chan struct{})
+	go func() {
+		p.receivedClaimed(context.Background(), context.Background(), []*entity.Envelope{first, lost})
+		close(done)
+	}()
+	if id := <-handler.started; id != first.ID {
+		t.Fatalf("handled message = %d, want %d", id, first.ID)
+	}
+	p.receivedRenewals.detach(lost.ID, lost.LeaseToken)
+	handler.release <- struct{}{}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("receivedClaimed did not finish")
+	}
+	select {
+	case id := <-handler.started:
+		t.Fatalf("handled message %d after its lease was lost", id)
 	default:
 	}
 }

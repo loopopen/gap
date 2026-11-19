@@ -116,7 +116,7 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group, br
 			claimFilterArgs(o.Version, enum.StatusPending, brokerName, now, o.MaxRetries, batchSize, group)...,
 		)
 	} else {
-		if err = s.failExhausted(ctx, tx, table, statusType, now, brokerName); err != nil {
+		if err = s.failExhaustedPublished(ctx, tx, table, statusType, now, brokerName); err != nil {
 			return nil, err
 		}
 		rows, err = tx.QueryContext(ctx, claimPublishedSQL(table, statusType),
@@ -208,6 +208,7 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group, br
 	}
 	for _, rec := range recs {
 		rec.LeaseToken = leaseToken
+		rec.LeaseUntil = sql.Null[time.Time]{V: leaseUntil, Valid: true}
 	}
 	script2 := "UPDATE " + table + ` SET "retries" = "retries" + 1, "lease_token" = $1, "lease_until" = $2 WHERE "id" IN (` + strings.Join(placeholders, ", ") + ")"
 	if _, err = tx.ExecContext(ctx, script2, params...); err != nil {
@@ -219,9 +220,9 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group, br
 	return pubsToEntities(pubs)
 }
 
-func (s *Storage) failExhausted(ctx context.Context, tx *xsql.Tx, table, statusType string, now time.Time, brokerName string) error {
+func (s *Storage) failExhaustedPublished(ctx context.Context, tx *xsql.Tx, table, statusType string, now time.Time, brokerName string) error {
 	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
-	_, err := tx.ExecContext(ctx, failExhaustedSQL(table, statusType),
+	_, err := tx.ExecContext(ctx, failExhaustedPublishedSQL(table, statusType),
 		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, now, s.gapOpts.MaxRetries)...)
 	return err
 }
@@ -260,7 +261,7 @@ AND "group" = $7
 LIMIT $8 FOR UPDATE SKIP LOCKED`, table, statusType)
 }
 
-func failExhaustedSQL(table, statusType string) string {
+func failExhaustedPublishedSQL(table, statusType string) string {
 	return fmt.Sprintf(`
 UPDATE %s
 SET "status" = $1::%s, "expired_at" = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second'), "lease_token" = NULL, "lease_until" = NULL

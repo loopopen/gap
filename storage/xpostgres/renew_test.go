@@ -11,17 +11,17 @@ import (
 
 func TestRenewPublishedSQLExtendsLeaseWithoutChangingRetries(t *testing.T) {
 	until := time.Date(2026, 11, 18, 8, 0, 0, 0, time.UTC)
-	query, args := renewPublishedSQL(`"gap"."published"`, `"gap"."status_enum"`, until, enum.StatusPending, []storage.Lease{
+	query, args := renewLeaseSQL(`"gap"."published"`, `"gap"."status_enum"`, until, enum.StatusPending, []storage.Lease{
 		{ID: 7, LeaseToken: "token-a"},
 		{ID: 8, LeaseToken: "token-b"},
 	})
 	for _, part := range []string{
-		`UPDATE "gap"."published" AS p SET "lease_until" = $1`,
+		`UPDATE "gap"."published" AS m SET "lease_until" = $1`,
 		`FROM (VALUES ($2::bigint, $3::varchar), ($4::bigint, $5::varchar)) AS v(id, token)`,
-		`p."id" = v.id`,
-		`p."lease_token" = v.token`,
-		`p."status" = $6::"gap"."status_enum"`,
-		`RETURNING p."id"`,
+		`m."id" = v.id`,
+		`m."lease_token" = v.token`,
+		`m."status" = $6::"gap"."status_enum"`,
+		`RETURNING m."id"`,
 	} {
 		if !strings.Contains(query, part) {
 			t.Fatalf("renew SQL %q does not contain %q", query, part)

@@ -12,11 +12,20 @@ import (
 
 // RenewPublishedLeases implements [storage.Storage].
 func (s *Storage) RenewPublishedLeases(ctx context.Context, until time.Time, leases []storage.Lease) ([]uint, error) {
+	return s.renewLeases(ctx, "published", until, leases)
+}
+
+// RenewReceivedLeases implements [storage.Storage].
+func (s *Storage) RenewReceivedLeases(ctx context.Context, until time.Time, leases []storage.Lease) ([]uint, error) {
+	return s.renewLeases(ctx, "received", until, leases)
+}
+
+func (s *Storage) renewLeases(ctx context.Context, base string, until time.Time, leases []storage.Lease) ([]uint, error) {
 	leases = ownedLeases(leases)
 	if len(leases) == 0 {
 		return nil, nil
 	}
-	table, err := s.quotedTable("published")
+	table, err := s.quotedTable(base)
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +33,7 @@ func (s *Storage) RenewPublishedLeases(ctx context.Context, until time.Time, lea
 	if err != nil {
 		return nil, err
 	}
-	query, args := renewPublishedSQL(table, statusType, until, enum.StatusPending, leases)
+	query, args := renewLeaseSQL(table, statusType, until, enum.StatusPending, leases)
 	rows, err := s.queryer().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -45,11 +54,11 @@ func (s *Storage) RenewPublishedLeases(ctx context.Context, until time.Time, lea
 	return renewed, nil
 }
 
-func renewPublishedSQL(table, statusType string, until time.Time, status enum.Status, leases []storage.Lease) (string, []any) {
+func renewLeaseSQL(table, statusType string, until time.Time, status enum.Status, leases []storage.Lease) (string, []any) {
 	var b strings.Builder
 	b.WriteString("UPDATE ")
 	b.WriteString(table)
-	b.WriteString(` AS p SET "lease_until" = $1 FROM (VALUES `)
+	b.WriteString(` AS m SET "lease_until" = $1 FROM (VALUES `)
 	args := make([]any, 0, len(leases)*2+2)
 	args = append(args, until)
 	for i, lease := range leases {
@@ -61,7 +70,7 @@ func renewPublishedSQL(table, statusType string, until time.Time, status enum.St
 		args = append(args, lease.ID, lease.LeaseToken)
 	}
 	statusPos := len(leases)*2 + 2
-	fmt.Fprintf(&b, `) AS v(id, token) WHERE p."id" = v.id AND p."lease_token" = v.token AND p."status" = $%d::%s RETURNING p."id"`, statusPos, statusType)
+	fmt.Fprintf(&b, `) AS v(id, token) WHERE m."id" = v.id AND m."lease_token" = v.token AND m."status" = $%d::%s RETURNING m."id"`, statusPos, statusType)
 	args = append(args, status)
 	return b.String(), args
 }

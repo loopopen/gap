@@ -6,7 +6,7 @@ import (
 )
 
 func TestRenewPublishedSQLExtendsLeaseWithoutChangingRetries(t *testing.T) {
-	query := renewPublishedSQL("`gap_published`")
+	query := renewLeaseSQL("`gap_published`")
 	for _, part := range []string{
 		"UPDATE `gap_published`",
 		"SET `lease_until` = ?",

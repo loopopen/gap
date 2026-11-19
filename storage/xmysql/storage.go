@@ -88,7 +88,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, broker
 			}
 		}()
 	}
-	if err = s.failExhausted(ctx, tx, table, now, brokerName); err != nil {
+	if err = s.failExhaustedPublished(ctx, tx, table, now, brokerName); err != nil {
 		return nil, err
 	}
 	rows, err := tx.QueryContext(ctx, claimPublishedSQL(table),
@@ -217,6 +217,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 	params[1] = leaseUntil
 	for i, r := range recs {
 		r.LeaseToken = leaseToken
+		r.LeaseUntil = sql.Null[time.Time]{V: leaseUntil, Valid: true}
 		placeholders[i] = "?"
 		params[i+2] = r.ID
 		r.Retries++
@@ -233,9 +234,9 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 	return es, nil
 }
 
-func (s *Storage) failExhausted(ctx context.Context, tx *xsql.Tx, table string, now time.Time, brokerName string) error {
+func (s *Storage) failExhaustedPublished(ctx context.Context, tx *xsql.Tx, table string, now time.Time, brokerName string) error {
 	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
-	_, err := tx.ExecContext(ctx, failExhaustedSQL(table),
+	_, err := tx.ExecContext(ctx, failExhaustedPublishedSQL(table),
 		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, now, s.gapOpts.MaxRetries)...)
 	return err
 }
@@ -276,7 +277,7 @@ func claimReceivedSQL(table string) string {
 	)
 }
 
-func failExhaustedSQL(table string) string {
+func failExhaustedPublishedSQL(table string) string {
 	return fmt.Sprintf(
 		"UPDATE %s SET `status` = ?, `expired_at` = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3)), `lease_token` = NULL, `lease_until` = NULL "+
 			"WHERE `version` = ? "+

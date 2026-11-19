@@ -64,6 +64,11 @@ type Storage interface {
 	// schedules the next attempt after RetryInterval.
 	UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error
 
+	// RenewReceivedLeases extends lease_until to until for pending received rows
+	// still owned by the given lease tokens. It does not change retries.
+	// Returned ids are the rows whose lease was extended.
+	RenewReceivedLeases(ctx context.Context, until time.Time, leases []Lease) ([]uint, error)
+
 	// DeleteExpiredPublishedBatch removes at most batchSize terminal published
 	// messages whose retention period has elapsed.
 	DeleteExpiredPublishedBatch(ctx context.Context, batchSize int) (int64, error)

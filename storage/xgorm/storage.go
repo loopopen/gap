@@ -319,6 +319,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 			ids = append(ids, p.ID)
 			p.Retries++
 			p.LeaseToken = leaseToken
+			p.LeaseUntil = sql.Null[time.Time]{V: leaseUntil, Valid: true}
 		}
 		if err := tx.
 			Model(&Received{}).
