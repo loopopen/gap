@@ -132,6 +132,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, broker
 	params[1] = leaseUntil
 	for i, p := range pubs {
 		p.LeaseToken = leaseToken
+		p.LeaseUntil = sql.Null[time.Time]{V: leaseUntil, Valid: true}
 		placeholders[i] = "?"
 		params[i+2] = p.ID
 		p.Retries++

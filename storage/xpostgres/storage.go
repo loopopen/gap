@@ -204,6 +204,7 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group, br
 	}
 	for _, pub := range pubs {
 		pub.LeaseToken = leaseToken
+		pub.LeaseUntil = sql.Null[time.Time]{V: leaseUntil, Valid: true}
 	}
 	for _, rec := range recs {
 		rec.LeaseToken = leaseToken

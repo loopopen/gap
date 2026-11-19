@@ -9,11 +9,13 @@ import (
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/utility"
 )
 
 //go:generate go tool shoot map -path=../../internal/entity -to=Envelope,Envelope -type=Published,Received
 
 type Published struct {
+	utility.Mapper
 	ID            uint                // Unique envelope ID.
 	CreatedAt     time.Time           // Creation time.
 	Version       string              // Message version.
@@ -32,9 +34,6 @@ type Published struct {
 
 func (p *Published) writeEntity(e *entity.Envelope) {
 	p.err = nil
-	if p.LeaseUntil.Valid {
-		e.LeaseUntil = p.LeaseUntil.V
-	}
 	if p.Headers != "" {
 		var headers map[string]string
 		if err := json.Unmarshal([]byte(p.Headers), &headers); err != nil {
@@ -51,7 +50,6 @@ func (p *Published) writeEntity(e *entity.Envelope) {
 
 func (p *Published) readEntity(e *entity.Envelope) {
 	p.err = nil
-	p.LeaseUntil = sql.Null[time.Time]{V: e.LeaseUntil, Valid: !e.LeaseUntil.IsZero()}
 	if p.CreatedAt.IsZero() {
 		p.CreatedAt = time.Now()
 	}
@@ -73,6 +71,7 @@ func (p *Published) readEntity(e *entity.Envelope) {
 }
 
 type Received struct {
+	utility.Mapper
 	ID            uint                // Unique envelope ID.
 	CreatedAt     time.Time           // Creation time.
 	Version       string              // Message version.

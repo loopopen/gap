@@ -9,6 +9,7 @@ import (
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/utility"
 )
 
 type Status enum.Status
@@ -33,15 +34,12 @@ type Model struct {
 //go:generate go tool shoot map -path=../../internal/entity -to=Envelope,Envelope -type=Published,Received
 
 type Published struct {
+	utility.Mapper `gorm:"-"`
 	Model
 }
 
 func (p *Published) writeEntity(e *entity.Envelope) {
 	p.err = nil
-	if p.LeaseUntil.Valid {
-		e.LeaseUntil = p.LeaseUntil.V
-	}
-	e.NextAttemptAt = p.NextAttemptAt
 	if p.Headers != "" {
 		var headers map[string]string
 		if err := json.Unmarshal([]byte(p.Headers), &headers); err != nil {
@@ -58,8 +56,6 @@ func (p *Published) writeEntity(e *entity.Envelope) {
 
 func (p *Published) readEntity(e *entity.Envelope) {
 	p.err = nil
-	p.LeaseUntil = sql.Null[time.Time]{V: e.LeaseUntil, Valid: !e.LeaseUntil.IsZero()}
-	p.NextAttemptAt = e.NextAttemptAt
 	if p.CreatedAt.IsZero() {
 		p.CreatedAt = time.Now()
 	}
@@ -81,15 +77,13 @@ func (p *Published) readEntity(e *entity.Envelope) {
 }
 
 type Received struct {
+	utility.Mapper `gorm:"-"`
 	Model
 	Group string `gorm:"not null;size:128"` // Consumer group.
 }
 
 func (r *Received) writeEntity(e *entity.Envelope) {
 	r.err = nil
-	if r.LeaseUntil.Valid {
-		e.LeaseUntil = r.LeaseUntil.V
-	}
 	if r.Headers != "" {
 		var headers map[string]string
 		if err := json.Unmarshal([]byte(r.Headers), &headers); err != nil {
@@ -105,7 +99,6 @@ func (r *Received) writeEntity(e *entity.Envelope) {
 
 func (r *Received) readEntity(e *entity.Envelope) {
 	r.err = nil
-	r.LeaseUntil = sql.Null[time.Time]{V: e.LeaseUntil, Valid: !e.LeaseUntil.IsZero()}
 	if r.CreatedAt.IsZero() {
 		r.CreatedAt = time.Now()
 	}

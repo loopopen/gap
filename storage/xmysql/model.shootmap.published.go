@@ -19,6 +19,8 @@ func (p *Published) ToEntity() *entity.Envelope {
 	envelope_.Payload = []byte(p.Payload)
 	envelope_.Retries = p.Retries
 	envelope_.LeaseToken = p.LeaseToken
+	envelope_.LeaseUntil = p.NullTimeToTime(p.LeaseUntil)
+	envelope_.NextAttemptAt = p.NextAttemptAt
 	p.writeEntity(envelope_)
 	return envelope_
 }
@@ -39,6 +41,8 @@ func (p *Published) FromEntity(envelope_ *entity.Envelope) *Published {
 	p.BrokerName = envelope_.BrokerName
 	p.Retries = envelope_.Retries
 	p.LeaseToken = envelope_.LeaseToken
+	p.LeaseUntil = p.TimeToNullTime(envelope_.LeaseUntil)
+	p.NextAttemptAt = envelope_.NextAttemptAt
 	p.readEntity(envelope_)
 	return p
 }

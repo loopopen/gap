@@ -210,9 +210,17 @@ func waitCtx(ctx context.Context, delay time.Duration) bool {
 	}
 }
 
-// sendLease is the only path that mounts or drops a fast-path published lease.
-// hold mounts the envelope before it enters sendCh. The matching drop runs when
-// sendCh refuses the envelope, or when send returns.
+func (r *publishedRenewals) holds(id uint, token string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item, ok := r.items[id]
+	return ok && item.token == token
+}
+
+// sendLease is the only path that mounts or drops a published send lease.
+// hold mounts the envelope before it enters sendCh, or before a claimed batch
+// waits to send. The matching drop runs when sendCh refuses the envelope, or
+// when send returns.
 func (p *Pump) sendLease(envelope *entity.Envelope, hold bool) {
 	if p == nil || p.renewals == nil || envelope == nil {
 		return
@@ -222,4 +230,33 @@ func (p *Pump) sendLease(envelope *entity.Envelope, hold bool) {
 		return
 	}
 	p.renewals.detach(envelope.ID, envelope.LeaseToken)
+}
+
+// leaseHeld reports whether a tracked published lease is still owned.
+// Messages outside renewal tracking are treated as held so sending proceeds.
+func (p *Pump) leaseHeld(envelope *entity.Envelope) bool {
+	if p == nil || p.renewals == nil || envelope == nil {
+		return true
+	}
+	if envelope.LeaseToken == "" || envelope.LeaseUntil.IsZero() {
+		return true
+	}
+	return p.renewals.holds(envelope.ID, envelope.LeaseToken)
+}
+
+// sendClaimed mounts every claimed published message, then sends the ones whose
+// lease is still held. A lease dropped by renewal is not produced again.
+func (p *Pump) sendClaimed(ctx, workCtx context.Context, envelopes []*entity.Envelope) {
+	for _, envelope := range envelopes {
+		p.sendLease(envelope, true)
+	}
+	for _, envelope := range envelopes {
+		if !p.leaseHeld(envelope) {
+			envelope.Log().Warn("skipping claimed published message after lease loss")
+			continue
+		}
+		if err := p.send(workCtx, envelope); err != nil && ctx.Err() == nil {
+			wait(ctx, 10*time.Second)
+		}
+	}
 }

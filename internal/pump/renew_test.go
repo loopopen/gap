@@ -265,6 +265,77 @@ func waitUntilDropped(t *testing.T, p *Pump, id uint) {
 	}
 }
 
+func TestSendClaimedRenewsUntilEachSendReturns(t *testing.T) {
+	sender := newBlockingSender()
+	p := &Pump{
+		senders:  map[string]Sender{routeKey("events"): sender},
+		renewals: newPublishedRenewals(&renewStorage{}, time.Minute),
+	}
+	first := leasedEnvelope(1)
+	second := leasedEnvelope(2)
+	done := make(chan struct{})
+	go func() {
+		p.sendClaimed(context.Background(), context.Background(), []*entity.Envelope{first, second})
+		close(done)
+	}()
+	if id := <-sender.started; id != first.ID {
+		t.Fatalf("started message = %d, want %d", id, first.ID)
+	}
+	if !p.leaseHeld(first) || !p.leaseHeld(second) {
+		t.Fatal("claimed messages were dropped before their send returned")
+	}
+
+	sender.release <- struct{}{}
+	if id := <-sender.started; id != second.ID {
+		t.Fatalf("started message = %d, want %d", id, second.ID)
+	}
+	if p.leaseHeld(first) {
+		t.Fatal("finished message stayed on the renewal list")
+	}
+	if !p.leaseHeld(second) {
+		t.Fatal("message was dropped while its send was running")
+	}
+	sender.release <- struct{}{}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("sendClaimed did not finish")
+	}
+	if p.leaseHeld(second) {
+		t.Fatal("last message stayed on the renewal list")
+	}
+}
+
+func TestSendClaimedSkipsMessageAfterLeaseLoss(t *testing.T) {
+	sender := newBlockingSender()
+	p := &Pump{
+		senders:  map[string]Sender{routeKey("events"): sender},
+		renewals: newPublishedRenewals(&renewStorage{}, time.Minute),
+	}
+	first := leasedEnvelope(1)
+	lost := leasedEnvelope(2)
+	done := make(chan struct{})
+	go func() {
+		p.sendClaimed(context.Background(), context.Background(), []*entity.Envelope{first, lost})
+		close(done)
+	}()
+	if id := <-sender.started; id != first.ID {
+		t.Fatalf("started message = %d, want %d", id, first.ID)
+	}
+	p.renewals.detach(lost.ID, lost.LeaseToken)
+	sender.release <- struct{}{}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("sendClaimed did not finish")
+	}
+	select {
+	case id := <-sender.started:
+		t.Fatalf("sent message %d after its lease was lost", id)
+	default:
+	}
+}
+
 func TestRenewDueKeepsLeasesWhenStorageFails(t *testing.T) {
 	stor := &renewStorage{err: errors.New("db down")}
 	renewals := newPublishedRenewals(stor, time.Minute)

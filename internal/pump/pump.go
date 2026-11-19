@@ -333,12 +333,7 @@ func (p *Pump) pollingSend(ctx context.Context) {
 				continue
 			}
 
-			for _, en := range ps {
-				err := p.send(workCtx, en)
-				if err != nil && ctx.Err() == nil {
-					wait(ctx, 10*time.Second)
-				}
-			}
+			p.sendClaimed(ctx, workCtx, ps)
 		}
 	}
 }
