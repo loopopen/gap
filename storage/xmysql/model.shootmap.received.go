@@ -21,6 +21,7 @@ func (r *Received) ToEntity() *entity.Envelope {
 	envelope_.LeaseToken = r.LeaseToken
 	envelope_.LeaseUntil = r.NullTimeToTime(r.LeaseUntil)
 	envelope_.NextAttemptAt = r.NextAttemptAt
+	envelope_.ExpiredAt = r.NullTimeToTime(r.ExpiredAt)
 	envelope_.Group = r.Group
 	r.writeEntity(envelope_)
 	return envelope_
@@ -45,6 +46,7 @@ func (r *Received) FromEntity(envelope_ *entity.Envelope) *Received {
 	r.LeaseToken = envelope_.LeaseToken
 	r.LeaseUntil = r.TimeToNullTime(envelope_.LeaseUntil)
 	r.NextAttemptAt = envelope_.NextAttemptAt
+	r.ExpiredAt = r.TimeToNullTime(envelope_.ExpiredAt)
 	r.readEntity(envelope_)
 	return r
 }

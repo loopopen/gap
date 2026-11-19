@@ -28,7 +28,7 @@ type Published struct {
 	LeaseToken    string              // Current lease token.
 	LeaseUntil    sql.Null[time.Time] // Lease expiry time.
 	NextAttemptAt time.Time           // Next eligible attempt time.
-	ExpiredAt     sql.Null[time.Time]
+	ExpiredAt     sql.Null[time.Time] // Terminal record cleanup deadline.
 	err           error
 }
 
@@ -84,8 +84,8 @@ type Received struct {
 	LeaseToken    string              // Current lease token.
 	LeaseUntil    sql.Null[time.Time] // Lease expiry time.
 	NextAttemptAt time.Time           // Next eligible attempt time.
-	ExpiredAt     sql.Null[time.Time]
-	Group         string // Consumer group.
+	ExpiredAt     sql.Null[time.Time] // Terminal record cleanup deadline.
+	Group         string              // Consumer group.
 	err           error
 }
 

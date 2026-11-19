@@ -49,6 +49,7 @@ type Envelope struct {
 	LeaseToken    string            // Current lease token.
 	LeaseUntil    time.Time         // Lease expiry time.
 	NextAttemptAt time.Time         // Next eligible attempt time.
+	ExpiredAt     time.Time         // Terminal record cleanup deadline.
 	Tag           any               // Broker delivery metadata.
 	Logger        *slog.Logger      // Envelope-scoped logger.
 }

@@ -15,20 +15,20 @@ import (
 type Status enum.Status
 
 type Model struct {
-	ID            uint      `gorm:"primarykey"`
-	CreatedAt     time.Time `gorm:"not null"`
-	Version       string    `gorm:"not null;size:16"`
-	Topic         string    `gorm:"not null;size:256"`
-	BrokerName    string    `gorm:"not null;size:128"`
-	Status        Status    `gorm:"not null"`
-	Headers       string    `gorm:"type:text"`
-	Payload       string
-	Retries       int    `gorm:"default:0"`
-	LeaseToken    string `gorm:"size:32"`
-	LeaseUntil    sql.Null[time.Time]
-	NextAttemptAt time.Time `gorm:"not null"`
-	ExpiredAt     sql.Null[time.Time]
-	err           error `gorm:"-"`
+	ID            uint                `gorm:"primarykey"`
+	CreatedAt     time.Time           `gorm:"not null"`
+	Version       string              `gorm:"not null;size:16"`
+	Topic         string              `gorm:"not null;size:256"`
+	BrokerName    string              `gorm:"not null;size:128"`
+	Status        Status              `gorm:"not null"`
+	Headers       string              `gorm:"type:text"`
+	Payload       string              ``
+	Retries       int                 `gorm:"default:0"`
+	LeaseToken    string              `gorm:"size:32"`
+	LeaseUntil    sql.Null[time.Time] ``
+	NextAttemptAt time.Time           `gorm:"not null"`
+	ExpiredAt     sql.Null[time.Time] ``
+	err           error               `gorm:"-"`
 }
 
 //go:generate go tool shoot map -path=../../internal/entity -to=Envelope,Envelope -type=Published,Received

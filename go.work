@@ -16,4 +16,5 @@ use (
 	./storage/xgorm
 	./storage/xmysql
 	./storage/xpostgres
+	./storage/contracttest
 )

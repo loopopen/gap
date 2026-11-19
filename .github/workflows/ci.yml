@@ -43,6 +43,9 @@ jobs:
       - name: Test modules independently
         run: make test-isolated
 
+      - name: Test storage contracts
+        run: make test-storage
+
   dashboard:
     name: Dashboard
     runs-on: ubuntu-latest

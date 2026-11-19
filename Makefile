@@ -17,15 +17,31 @@ EXAMPLE_MODULES := \
 	examples/rabbitmq-mysql-example-fiber \
 	examples/rabbitmq-mysql-example-worker
 
-MODULES := . $(PLUGIN_MODULES) $(EXAMPLE_MODULES)
+TEST_MODULES := storage/contracttest
+
+MODULES := . $(PLUGIN_MODULES) $(EXAMPLE_MODULES) $(TEST_MODULES)
 
 .PHONY: \
-	test test-isolated tidy generate build-ui versions release \
+	test test-isolated test-storage tidy generate build-ui versions release \
 	test-modules test-modules-isolated tidy-modules gen-modules
 
 test: test-modules
 
 test-isolated: test-modules-isolated
+
+test-storage:
+	@set -eu; \
+	compose='docker compose -f storage/contracttest/docker-compose.yml'; \
+	trap '$$compose down -v' EXIT INT TERM; \
+	$$compose up -d --wait; \
+	GAP_STORAGE_CONTRACT=1 \
+	GAP_TEST_MYSQL_DSN="root:root@tcp(127.0.0.1:$${GAP_TEST_MYSQL_PORT:-3307})/gap_contract?parseTime=true" \
+	GAP_TEST_POSTGRES_DSN="postgres://postgres:postgres@127.0.0.1:$${GAP_TEST_POSTGRES_PORT:-5433}/gap_contract?sslmode=disable" \
+	$(MAKE) --no-print-directory test-storage-running
+
+.PHONY: test-storage-running
+test-storage-running:
+	@(cd storage/contracttest && go test -run Contract -count=1 ./...)
 
 tidy: tidy-modules
 
@@ -47,6 +63,9 @@ test-modules-isolated:
 	@for dir in $(EXAMPLE_MODULES); do \
 		(cd $$dir && GOWORK=off go test ./...) || exit 1; \
 	done
+	@for dir in $(TEST_MODULES); do \
+		(cd $$dir && GOWORK=off go test ./...) || exit 1; \
+	done
 
 tidy-modules:
 	@GOWORK=off go mod tidy
@@ -57,6 +76,9 @@ tidy-modules:
 			GOWORK=off go mod tidy) || exit 1; \
 	done
 	@for dir in $(EXAMPLE_MODULES); do \
+		(cd $$dir && GOWORK=off go mod tidy) || exit 1; \
+	done
+	@for dir in $(TEST_MODULES); do \
 		(cd $$dir && GOWORK=off go mod tidy) || exit 1; \
 	done
 
