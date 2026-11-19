@@ -15,18 +15,16 @@ type renewStorage struct {
 	storage.Storage
 	mu       sync.Mutex
 	calls    int
-	until    time.Time
 	leases   []storage.Lease
 	renewed  []uint
 	err      error
 	received bool
 }
 
-func (s *renewStorage) RenewPublishedLeases(_ context.Context, until time.Time, leases []storage.Lease) ([]uint, error) {
+func (s *renewStorage) RenewPublishedLeases(_ context.Context, leases []storage.Lease) ([]uint, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls++
-	s.until = until
 	s.leases = append([]storage.Lease(nil), leases...)
 	if s.err != nil {
 		return nil, s.err
@@ -41,11 +39,11 @@ func (s *renewStorage) RenewPublishedLeases(_ context.Context, until time.Time, 
 	return ids, nil
 }
 
-func (s *renewStorage) RenewReceivedLeases(ctx context.Context, until time.Time, leases []storage.Lease) ([]uint, error) {
+func (s *renewStorage) RenewReceivedLeases(ctx context.Context, leases []storage.Lease) ([]uint, error) {
 	s.mu.Lock()
 	s.received = true
 	s.mu.Unlock()
-	return s.RenewPublishedLeases(ctx, until, leases)
+	return s.RenewPublishedLeases(ctx, leases)
 }
 
 func (s *renewStorage) callCount() int {

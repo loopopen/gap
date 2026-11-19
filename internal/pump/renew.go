@@ -19,7 +19,7 @@ type msgLease struct {
 // earliest one. They are renewed together, slightly before their own half point.
 const renewalWindow = time.Second
 
-type leaseRenewFunc func(ctx context.Context, until time.Time, leases []storage.Lease) ([]uint, error)
+type leaseRenewFunc func(ctx context.Context, leases []storage.Lease) ([]uint, error)
 
 // leaseRenewer lazily extends leases for one message table. The earliest
 // half-elapsed lease opens a renewal. Leases whose half point falls within
@@ -56,20 +56,20 @@ func (p *Pump) startRenewals() {
 }
 
 func newPublishedRenewals(stor storage.Storage, ttl time.Duration) *leaseRenewer {
-	return newLeaseRenewer("published", ttl, func(ctx context.Context, until time.Time, leases []storage.Lease) ([]uint, error) {
+	return newLeaseRenewer("published", ttl, func(ctx context.Context, leases []storage.Lease) ([]uint, error) {
 		if stor == nil {
 			return nil, nil
 		}
-		return stor.RenewPublishedLeases(ctx, until, leases)
+		return stor.RenewPublishedLeases(ctx, leases)
 	})
 }
 
 func newReceivedRenewals(stor storage.Storage, ttl time.Duration) *leaseRenewer {
-	return newLeaseRenewer("received", ttl, func(ctx context.Context, until time.Time, leases []storage.Lease) ([]uint, error) {
+	return newLeaseRenewer("received", ttl, func(ctx context.Context, leases []storage.Lease) ([]uint, error) {
 		if stor == nil {
 			return nil, nil
 		}
-		return stor.RenewReceivedLeases(ctx, until, leases)
+		return stor.RenewReceivedLeases(ctx, leases)
 	})
 }
 
@@ -196,8 +196,7 @@ func (r *leaseRenewer) renewDue(ctx context.Context, now time.Time) error {
 		return nil
 	}
 
-	until := now.Add(r.ttl)
-	renewed, err := r.renew(ctx, until, due)
+	renewed, err := r.renew(ctx, due)
 	if err != nil {
 		return err
 	}
@@ -214,7 +213,7 @@ func (r *leaseRenewer) renewDue(ctx context.Context, now time.Time) error {
 			continue
 		}
 		if _, ok := renewedSet[lease.ID]; ok {
-			item.leaseUntil = until
+			item.leaseUntil = now.Add(r.ttl)
 			r.items[lease.ID] = item
 			continue
 		}

@@ -43,7 +43,7 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 	if pub.err != nil {
 		return pub.err
 	}
-	err := s.db.WithContext(ctx).Create(pub).Error
+	err := s.insertMessage(ctx, &Published{}, pub.Model, "")
 	if err != nil {
 		return err
 	}
@@ -63,7 +63,7 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 	if rec.err != nil {
 		return rec.err
 	}
-	err := s.db.WithContext(ctx).Create(rec).Error
+	err := s.insertMessage(ctx, &Received{}, rec.Model, rec.Group)
 	if err != nil {
 		return err
 	}
@@ -202,11 +202,11 @@ func (s *Storage) InTx() bool {
 	return ok
 }
 
-func retryUpdates(nextAttemptAt time.Time) map[string]any {
+func (s *Storage) retryUpdates() map[string]any {
 	return map[string]any{
 		"lease_token":     nil,
 		"lease_until":     nil,
-		"next_attempt_at": nextAttemptAt,
+		"next_attempt_at": s.databaseAfter(int64(s.gapOpts.RetryInterval() / time.Second)),
 	}
 }
 
@@ -226,11 +226,10 @@ func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken
 }
 
 func (s *Storage) scheduleRetry(ctx context.Context, model any, kind string, id uint, leaseToken string) error {
-	nextAttemptAt := time.Now().Add(s.gapOpts.RetryInterval())
 	result := s.db.WithContext(ctx).
 		Model(model).
 		Where("id = ? AND status = ? AND lease_token = ?", id, enum.StatusPending, leaseToken).
-		Updates(retryUpdates(nextAttemptAt))
+		Updates(s.retryUpdates())
 	if result.Error != nil {
 		return result.Error
 	}
@@ -238,7 +237,7 @@ func (s *Storage) scheduleRetry(ctx context.Context, model any, kind string, id 
 		return storage.ErrLeaseLost
 	}
 	if id != 0 {
-		slog.Debug("scheduled retry", slog.String("table", kind), slog.Any("id", id), slog.Time("next_attempt_at", nextAttemptAt))
+		slog.Debug("scheduled retry", slog.String("table", kind), slog.Any("id", id), slog.Duration("retry_after", s.gapOpts.RetryInterval()))
 	}
 	return nil
 }
@@ -251,11 +250,11 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, broker
 	var pubs []*Published
 	var es []*entity.Envelope
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if result := s.failExhausted(tx, &Published{}, now, "", brokerName); result.Error != nil {
+		if result := s.failExhausted(tx, &Published{}, "", brokerName); result.Error != nil {
 			return result.Error
 		}
 
-		err := s.claimQuery(tx, &Published{}, now, batchSize, "", brokerName).Scan(&pubs).Error
+		err := s.claimQuery(tx, &Published{}, batchSize, "", brokerName).Scan(&pubs).Error
 		if err != nil {
 			return err
 		}
@@ -280,7 +279,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, broker
 			Updates(map[string]any{
 				"retries":     gorm.Expr("retries + 1"),
 				"lease_token": leaseToken,
-				"lease_until": leaseUntil,
+				"lease_until": s.databaseAfter(int64(o.LeaseTTL() / time.Second)),
 			}).Error; err != nil {
 			return err
 		}
@@ -302,10 +301,10 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 	var recs []*Received
 	var es []*entity.Envelope
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if result := s.failExhausted(tx, &Received{}, now, group, brokerName); result.Error != nil {
+		if result := s.failExhausted(tx, &Received{}, group, brokerName); result.Error != nil {
 			return result.Error
 		}
-		err := s.claimQuery(tx, &Received{}, now, batchSize, group, brokerName).Scan(&recs).Error
+		err := s.claimQuery(tx, &Received{}, batchSize, group, brokerName).Scan(&recs).Error
 		if err != nil {
 			return err
 		}
@@ -330,7 +329,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 			Updates(map[string]any{
 				"retries":     gorm.Expr("retries + 1"),
 				"lease_token": leaseToken,
-				"lease_until": leaseUntil,
+				"lease_until": s.databaseAfter(int64(o.LeaseTTL() / time.Second)),
 			}).Error; err != nil {
 			return err
 		}
@@ -344,8 +343,8 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 	return es, nil
 }
 
-func (s *Storage) failExhausted(tx *gorm.DB, model any, now time.Time, group, brokerName string) *gorm.DB {
-	return s.exhaustedQuery(tx, model, now, group, brokerName).
+func (s *Storage) failExhausted(tx *gorm.DB, model any, group, brokerName string) *gorm.DB {
+	return s.exhaustedQuery(tx, model, group, brokerName).
 		Updates(map[string]any{
 			"status":      enum.StatusFailed,
 			"expired_at":  s.terminalExpiration(enum.StatusFailed),
@@ -355,22 +354,22 @@ func (s *Storage) failExhausted(tx *gorm.DB, model any, now time.Time, group, br
 }
 
 // pendingDueQuery selects this version's pending messages that are due and have no live lease.
-func (s *Storage) pendingDueQuery(tx *gorm.DB, model any, now time.Time) *gorm.DB {
+func (s *Storage) pendingDueQuery(tx *gorm.DB, model any) *gorm.DB {
 	return tx.
 		Model(model).
 		Where(&Model{Version: s.gapOpts.Version}).
-		Where("status = ? AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until <= ?)", enum.StatusPending, now, now)
+		Where("status = ? AND next_attempt_at <= "+s.databaseNow()+" AND (lease_until IS NULL OR lease_until <= "+s.databaseNow()+")", enum.StatusPending)
 }
 
-func (s *Storage) claimQuery(tx *gorm.DB, model any, now time.Time, batchSize int, group, brokerName string) *gorm.DB {
-	return s.withBrokerName(s.withReceivedGroup(s.pendingDueQuery(tx, model, now), model, group), brokerName).
+func (s *Storage) claimQuery(tx *gorm.DB, model any, batchSize int, group, brokerName string) *gorm.DB {
+	return s.withBrokerName(s.withReceivedGroup(s.pendingDueQuery(tx, model), model, group), brokerName).
 		Where("retries < ?", s.gapOpts.MaxRetries).
 		Limit(batchSize).
 		Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"})
 }
 
-func (s *Storage) exhaustedQuery(tx *gorm.DB, model any, now time.Time, group, brokerName string) *gorm.DB {
-	return s.withBrokerName(s.withReceivedGroup(s.pendingDueQuery(tx, model, now), model, group), brokerName).
+func (s *Storage) exhaustedQuery(tx *gorm.DB, model any, group, brokerName string) *gorm.DB {
+	return s.withBrokerName(s.withReceivedGroup(s.pendingDueQuery(tx, model), model, group), brokerName).
 		Where("retries >= ?", s.gapOpts.MaxRetries)
 }
 
@@ -424,15 +423,52 @@ func statusUpdates(status enum.Status, expiredAt any) map[string]any {
 }
 
 func (s *Storage) terminalExpiration(status enum.Status) any {
-	seconds := int64(s.gapOpts.Retention(status) / time.Second)
-	switch s.db.Dialector.Name() {
-	case xsql.MySQL:
+	return s.databaseAfter(int64(s.gapOpts.Retention(status) / time.Second))
+}
+
+func (s *Storage) databaseNow() string {
+	if s.db != nil && s.db.Dialector != nil && s.db.Dialector.Name() == xsql.MySQL {
+		return "CURRENT_TIMESTAMP(3)"
+	}
+	return "CURRENT_TIMESTAMP"
+}
+
+func (s *Storage) databaseAfter(seconds int64) any {
+	switch {
+	case s.db != nil && s.db.Dialector != nil && s.db.Dialector.Name() == xsql.MySQL:
 		return clause.Expr{SQL: "TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3))", Vars: []any{seconds}}
-	case xsql.Postgres:
+	case s.db != nil && s.db.Dialector != nil && s.db.Dialector.Name() == xsql.Postgres:
 		return clause.Expr{SQL: "CURRENT_TIMESTAMP + (? * INTERVAL '1 second')", Vars: []any{seconds}}
 	default:
 		return time.Now().Add(time.Duration(seconds) * time.Second)
 	}
+}
+
+func (s *Storage) insertMessage(ctx context.Context, model any, row Model, group string) error {
+	values := map[string]any{
+		"id":              row.ID,
+		"created_at":      row.CreatedAt,
+		"version":         row.Version,
+		"topic":           row.Topic,
+		"broker_name":     row.BrokerName,
+		"status":          row.Status,
+		"headers":         row.Headers,
+		"payload":         row.Payload,
+		"retries":         row.Retries,
+		"lease_token":     row.LeaseToken,
+		"lease_until":     s.databaseAfter(int64(s.gapOpts.LeaseTTL() / time.Second)),
+		"next_attempt_at": clause.Expr{SQL: s.databaseNow()},
+		"expired_at":      nil,
+	}
+	if group != "" || modelIsReceived(model) {
+		values["group"] = group
+	}
+	return s.db.WithContext(ctx).Model(model).Create(values).Error
+}
+
+func modelIsReceived(model any) bool {
+	_, ok := model.(*Received)
+	return ok
 }
 
 // DeleteExpiredPublishedBatch deletes one batch of expired terminal published messages.

@@ -100,8 +100,8 @@ func assertPendingDueWhere(t *testing.T, sql string) {
 	for _, condition := range []string{
 		"`version` = ?",
 		"`status` = ?",
-		"`next_attempt_at` <= ?",
-		"`lease_until` IS NULL OR `lease_until` <= ?",
+		"`next_attempt_at` <= CURRENT_TIMESTAMP(3)",
+		"`lease_until` IS NULL OR `lease_until` <= CURRENT_TIMESTAMP(3)",
 	} {
 		if !strings.Contains(sql, condition) {
 			t.Fatalf("SQL %q does not contain %q", sql, condition)
@@ -118,7 +118,7 @@ func TestRetryPublishedSQLKeepsStatus(t *testing.T) {
 		"UPDATE `gap_published`",
 		"`lease_token` = NULL",
 		"`lease_until` = NULL",
-		"`next_attempt_at` = ?",
+		"`next_attempt_at` = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3))",
 		"`id` = ?",
 		"`status` = ?",
 		"`lease_token` = ?",

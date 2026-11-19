@@ -88,11 +88,11 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, broker
 			}
 		}()
 	}
-	if err = s.failExhaustedPublished(ctx, tx, table, now, brokerName); err != nil {
+	if err = s.failExhaustedPublished(ctx, tx, table, brokerName); err != nil {
 		return nil, err
 	}
 	rows, err := tx.QueryContext(ctx, claimPublishedSQL(table),
-		claimFilterArgs(o.Version, enum.StatusPending, brokerName, now, o.MaxRetries, batchSize)...,
+		claimFilterArgs(o.Version, enum.StatusPending, brokerName, o.MaxRetries, batchSize)...,
 	)
 	if err != nil {
 		return nil, err
@@ -129,7 +129,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, broker
 	placeholders := make([]string, c)
 	params := make([]any, c+2)
 	params[0] = leaseToken
-	params[1] = leaseUntil
+	params[1] = int64(o.LeaseTTL() / time.Second)
 	for i, p := range pubs {
 		p.LeaseToken = leaseToken
 		p.LeaseUntil = sql.Null[time.Time]{V: leaseUntil, Valid: true}
@@ -137,7 +137,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, broker
 		params[i+2] = p.ID
 		p.Retries++
 	}
-	script2 := "UPDATE " + table + " SET `retries` = `retries` + 1, `lease_token` = ?, `lease_until` = ? WHERE `id` IN (" + strings.Join(placeholders, ", ") + ")"
+	script2 := "UPDATE " + table + " SET `retries` = `retries` + 1, `lease_token` = ?, `lease_until` = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3)) WHERE `id` IN (" + strings.Join(placeholders, ", ") + ")"
 	_, err = tx.ExecContext(ctx, script2, params...)
 	if err != nil {
 		return nil, err
@@ -172,11 +172,11 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 			}
 		}()
 	}
-	if err = s.failExhaustedReceived(ctx, tx, table, now, group, brokerName); err != nil {
+	if err = s.failExhaustedReceived(ctx, tx, table, group, brokerName); err != nil {
 		return nil, err
 	}
 	rows, err := tx.QueryContext(ctx, claimReceivedSQL(table),
-		claimFilterArgs(o.Version, enum.StatusPending, brokerName, now, o.MaxRetries, batchSize, group)...,
+		claimFilterArgs(o.Version, enum.StatusPending, brokerName, o.MaxRetries, batchSize, group)...,
 	)
 	if err != nil {
 		return nil, err
@@ -214,7 +214,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 	placeholders := make([]string, c)
 	params := make([]any, c+2)
 	params[0] = leaseToken
-	params[1] = leaseUntil
+	params[1] = int64(o.LeaseTTL() / time.Second)
 	for i, r := range recs {
 		r.LeaseToken = leaseToken
 		r.LeaseUntil = sql.Null[time.Time]{V: leaseUntil, Valid: true}
@@ -222,7 +222,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 		params[i+2] = r.ID
 		r.Retries++
 	}
-	script2 := "UPDATE " + table + " SET `retries` = `retries` + 1, `lease_token` = ?, `lease_until` = ? WHERE `id` IN (" + strings.Join(placeholders, ", ") + ")"
+	script2 := "UPDATE " + table + " SET `retries` = `retries` + 1, `lease_token` = ?, `lease_until` = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3)) WHERE `id` IN (" + strings.Join(placeholders, ", ") + ")"
 	_, err = tx.ExecContext(ctx, script2, params...)
 	if err != nil {
 		return nil, err
@@ -234,17 +234,17 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 	return es, nil
 }
 
-func (s *Storage) failExhaustedPublished(ctx context.Context, tx *xsql.Tx, table string, now time.Time, brokerName string) error {
+func (s *Storage) failExhaustedPublished(ctx context.Context, tx *xsql.Tx, table, brokerName string) error {
 	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
 	_, err := tx.ExecContext(ctx, failExhaustedPublishedSQL(table),
-		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, now, s.gapOpts.MaxRetries)...)
+		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, s.gapOpts.MaxRetries)...)
 	return err
 }
 
-func (s *Storage) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table string, now time.Time, group, brokerName string) error {
+func (s *Storage) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table, group, brokerName string) error {
 	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
 	_, err := tx.ExecContext(ctx, failExhaustedReceivedSQL(table),
-		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, now, s.gapOpts.MaxRetries, group)...)
+		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, s.gapOpts.MaxRetries, group)...)
 	return err
 }
 
@@ -254,8 +254,8 @@ func claimPublishedSQL(table string) string {
 			"WHERE `version` = ? "+
 			"AND `status` = ? "+
 			"AND `broker_name` = ? "+
-			"AND `next_attempt_at` <= ? "+
-			"AND (`lease_until` IS NULL OR `lease_until` <= ?) "+
+			"AND `next_attempt_at` <= CURRENT_TIMESTAMP(3) "+
+			"AND (`lease_until` IS NULL OR `lease_until` <= CURRENT_TIMESTAMP(3)) "+
 			"AND `retries` < ? "+
 			"LIMIT ? FOR UPDATE SKIP LOCKED",
 		table,
@@ -268,8 +268,8 @@ func claimReceivedSQL(table string) string {
 			"WHERE `version` = ? "+
 			"AND `status` = ? "+
 			"AND `broker_name` = ? "+
-			"AND `next_attempt_at` <= ? "+
-			"AND (`lease_until` IS NULL OR `lease_until` <= ?) "+
+			"AND `next_attempt_at` <= CURRENT_TIMESTAMP(3) "+
+			"AND (`lease_until` IS NULL OR `lease_until` <= CURRENT_TIMESTAMP(3)) "+
 			"AND `retries` < ? "+
 			"AND `group` = ? "+
 			"LIMIT ? FOR UPDATE SKIP LOCKED",
@@ -283,8 +283,8 @@ func failExhaustedPublishedSQL(table string) string {
 			"WHERE `version` = ? "+
 			"AND `status` = ? "+
 			"AND `broker_name` = ? "+
-			"AND `next_attempt_at` <= ? "+
-			"AND (`lease_until` IS NULL OR `lease_until` <= ?) "+
+			"AND `next_attempt_at` <= CURRENT_TIMESTAMP(3) "+
+			"AND (`lease_until` IS NULL OR `lease_until` <= CURRENT_TIMESTAMP(3)) "+
 			"AND `retries` >= ?",
 		table,
 	)
@@ -296,25 +296,25 @@ func failExhaustedReceivedSQL(table string) string {
 			"WHERE `version` = ? "+
 			"AND `status` = ? "+
 			"AND `broker_name` = ? "+
-			"AND `next_attempt_at` <= ? "+
-			"AND (`lease_until` IS NULL OR `lease_until` <= ?) "+
+			"AND `next_attempt_at` <= CURRENT_TIMESTAMP(3) "+
+			"AND (`lease_until` IS NULL OR `lease_until` <= CURRENT_TIMESTAMP(3)) "+
 			"AND `retries` >= ? "+
 			"AND `group` = ?",
 		table,
 	)
 }
 
-func claimFilterArgs(version string, status enum.Status, brokerName string, now time.Time, maxRetries, batchSize int, extra ...any) []any {
-	args := make([]any, 0, 6+len(extra))
-	args = append(args, version, status, brokerName, now, now, maxRetries)
+func claimFilterArgs(version string, status enum.Status, brokerName string, maxRetries, batchSize int, extra ...any) []any {
+	args := make([]any, 0, 4+len(extra))
+	args = append(args, version, status, brokerName, maxRetries)
 	args = append(args, extra...)
 	args = append(args, batchSize)
 	return args
 }
 
-func exhaustedArgs(failed enum.Status, retention int64, version, brokerName string, now time.Time, maxRetries int, extra ...any) []any {
-	args := make([]any, 0, 7+len(extra))
-	args = append(args, failed, retention, version, enum.StatusPending, brokerName, now, now, maxRetries)
+func exhaustedArgs(failed enum.Status, retention int64, version, brokerName string, maxRetries int, extra ...any) []any {
+	args := make([]any, 0, 5+len(extra))
+	args = append(args, failed, retention, version, enum.StatusPending, brokerName, maxRetries)
 	return append(args, extra...)
 }
 
@@ -335,7 +335,7 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 	}
 	const script = "INSERT INTO %s (" +
 		"`id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`lease_token`,`lease_until`,`next_attempt_at`,`expired_at`" +
-		") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+		") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3)), CURRENT_TIMESTAMP(3), ?)"
 	xer := s.execer()
 	_, err = xer.ExecContext(ctx, fmt.Sprintf(script, table),
 		pub.ID,
@@ -348,8 +348,7 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 		string(pub.Payload),
 		pub.Retries,
 		pub.LeaseToken,
-		pub.LeaseUntil,
-		pub.NextAttemptAt,
+		int64(s.gapOpts.LeaseTTL()/time.Second),
 		pub.ExpiredAt,
 	)
 	if err != nil {
@@ -377,7 +376,7 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 	}
 	const script = "INSERT INTO %s (" +
 		"`id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`lease_token`,`lease_until`,`next_attempt_at`,`expired_at`,`group`" +
-		") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+		") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3)), CURRENT_TIMESTAMP(3), ?, ?)"
 	_, err = s.execer().ExecContext(ctx, fmt.Sprintf(script, table),
 		rec.ID,
 		rec.CreatedAt,
@@ -388,7 +387,8 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 		string(rec.Headers),
 		string(rec.Payload),
 		rec.Retries,
-		rec.LeaseToken, rec.LeaseUntil, rec.NextAttemptAt,
+		rec.LeaseToken,
+		int64(s.gapOpts.LeaseTTL()/time.Second),
 		rec.ExpiredAt,
 		rec.Group,
 	)
@@ -460,8 +460,8 @@ func (s *Storage) scheduleRetry(ctx context.Context, base string, id uint, lease
 	if err != nil {
 		return err
 	}
-	nextAttemptAt := time.Now().Add(s.gapOpts.RetryInterval())
-	result, err := s.execer().ExecContext(ctx, retryAttemptSQL(table), nextAttemptAt, id, enum.StatusPending, leaseToken)
+	retryAfter := s.gapOpts.RetryInterval()
+	result, err := s.execer().ExecContext(ctx, retryAttemptSQL(table), int64(retryAfter/time.Second), id, enum.StatusPending, leaseToken)
 	if err != nil {
 		return err
 	}
@@ -471,13 +471,13 @@ func (s *Storage) scheduleRetry(ctx context.Context, base string, id uint, lease
 		return storage.ErrLeaseLost
 	}
 	if id != 0 {
-		slog.Debug("scheduled retry", slog.String("table", base), slog.Any("id", id), slog.Time("next_attempt_at", nextAttemptAt))
+		slog.Debug("scheduled retry", slog.String("table", base), slog.Any("id", id), slog.Duration("retry_after", retryAfter))
 	}
 	return nil
 }
 
 func retryAttemptSQL(table string) string {
-	return "UPDATE " + table + " SET `lease_token` = NULL, `lease_until` = NULL, `next_attempt_at` = ? WHERE `id` = ? AND `status` = ? AND `lease_token` = ?"
+	return "UPDATE " + table + " SET `lease_token` = NULL, `lease_until` = NULL, `next_attempt_at` = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3)) WHERE `id` = ? AND `status` = ? AND `lease_token` = ?"
 }
 
 func updateStatusSQL(table string) string {

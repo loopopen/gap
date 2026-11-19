@@ -3,20 +3,18 @@ package xpostgres
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/storage"
 )
 
 func TestRenewPublishedSQLExtendsLeaseWithoutChangingRetries(t *testing.T) {
-	until := time.Date(2026, 11, 18, 8, 0, 0, 0, time.UTC)
-	query, args := renewLeaseSQL(`"gap"."published"`, `"gap"."status_enum"`, until, enum.StatusPending, []storage.Lease{
+	query, args := renewLeaseSQL(`"gap"."published"`, `"gap"."status_enum"`, 180, enum.StatusPending, []storage.Lease{
 		{ID: 7, LeaseToken: "token-a"},
 		{ID: 8, LeaseToken: "token-b"},
 	})
 	for _, part := range []string{
-		`UPDATE "gap"."published" AS m SET "lease_until" = $1`,
+		`UPDATE "gap"."published" AS m SET "lease_until" = CURRENT_TIMESTAMP + ($1 * INTERVAL '1 second')`,
 		`FROM (VALUES ($2::bigint, $3::varchar), ($4::bigint, $5::varchar)) AS v(id, token)`,
 		`m."id" = v.id`,
 		`m."lease_token" = v.token`,
@@ -30,7 +28,7 @@ func TestRenewPublishedSQLExtendsLeaseWithoutChangingRetries(t *testing.T) {
 	if strings.Contains(query, "retries") {
 		t.Fatalf("renew SQL changes retries: %s", query)
 	}
-	if len(args) != 6 || args[0] != until || args[1] != uint(7) || args[2] != "token-a" || args[3] != uint(8) || args[4] != "token-b" || args[5] != enum.StatusPending {
+	if len(args) != 6 || args[0] != int64(180) || args[1] != uint(7) || args[2] != "token-a" || args[3] != uint(8) || args[4] != "token-b" || args[5] != enum.StatusPending {
 		t.Fatalf("renew args = %#v", args)
 	}
 }

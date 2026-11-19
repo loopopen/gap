@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
@@ -38,10 +37,11 @@ type Storage interface {
 	// schedules the next attempt after RetryInterval.
 	UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error
 
-	// RenewPublishedLeases extends lease_until to until for pending published rows
-	// still owned by the given lease tokens. It does not change retries.
-	// Returned ids are the rows whose lease was extended.
-	RenewPublishedLeases(ctx context.Context, until time.Time, leases []Lease) ([]uint, error)
+	// RenewPublishedLeases extends lease_until by LeaseTTL for pending published
+	// rows still owned by the given lease tokens. The database clock supplies the
+	// new deadline. It does not change retries. Returned ids are the rows whose
+	// lease was extended.
+	RenewPublishedLeases(ctx context.Context, leases []Lease) ([]uint, error)
 
 	// ClaimPublishedBatch marks exhausted rows Failed for brokerName, then locks
 	// up to batchSize due rows for that broker name with retries below
@@ -64,10 +64,11 @@ type Storage interface {
 	// schedules the next attempt after RetryInterval.
 	UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error
 
-	// RenewReceivedLeases extends lease_until to until for pending received rows
-	// still owned by the given lease tokens. It does not change retries.
-	// Returned ids are the rows whose lease was extended.
-	RenewReceivedLeases(ctx context.Context, until time.Time, leases []Lease) ([]uint, error)
+	// RenewReceivedLeases extends lease_until by LeaseTTL for pending received
+	// rows still owned by the given lease tokens. The database clock supplies the
+	// new deadline. It does not change retries. Returned ids are the rows whose
+	// lease was extended.
+	RenewReceivedLeases(ctx context.Context, leases []Lease) ([]uint, error)
 
 	// DeleteExpiredPublishedBatch removes at most batchSize terminal published
 	// messages whose retention period has elapsed.

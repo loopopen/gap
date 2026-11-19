@@ -87,7 +87,7 @@ func TestFailExhaustedSQL(t *testing.T) {
 		`"expired_at" = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second')`,
 		`"lease_token" = NULL`,
 		`"lease_until" = NULL`,
-		`"retries" >= $8`,
+		`"retries" >= $6`,
 	} {
 		if !strings.Contains(sql, condition) {
 			t.Fatalf("fail exhausted SQL %q does not contain %q", sql, condition)
@@ -104,8 +104,8 @@ func TestClaimSelectSQL(t *testing.T) {
 	for _, condition := range []string{
 		`SELECT "id","created_at","version","topic","broker_name","status","headers","payload","retries","expired_at"`,
 		`FROM "gap"."published"`,
-		`"retries" < $6`,
-		"LIMIT $7 FOR UPDATE SKIP LOCKED",
+		`"retries" < $4`,
+		"LIMIT $5 FOR UPDATE SKIP LOCKED",
 	} {
 		if !strings.Contains(published, condition) {
 			t.Fatalf("claim SQL %q does not contain %q", published, condition)
@@ -120,8 +120,8 @@ func TestClaimSelectSQL(t *testing.T) {
 	for _, condition := range []string{
 		`"broker_name","status","headers","payload","retries","expired_at","group"`,
 		`FROM "gap"."received"`,
-		`"group" = $7`,
-		"LIMIT $8 FOR UPDATE SKIP LOCKED",
+		`"group" = $5`,
+		"LIMIT $6 FOR UPDATE SKIP LOCKED",
 	} {
 		if !strings.Contains(received, condition) {
 			t.Fatalf("received claim SQL %q does not contain %q", received, condition)
@@ -131,8 +131,8 @@ func TestClaimSelectSQL(t *testing.T) {
 	exhausted := failExhaustedReceivedSQL(`"gap"."received"`, `"gap"."status_enum"`)
 	assertPendingDueWhere(t, exhausted, 3)
 	for _, condition := range []string{
-		`"retries" >= $8`,
-		`"group" = $9`,
+		`"retries" >= $6`,
+		`"group" = $7`,
 	} {
 		if !strings.Contains(exhausted, condition) {
 			t.Fatalf("received exhausted SQL %q does not contain %q", exhausted, condition)
@@ -143,13 +143,12 @@ func TestClaimSelectSQL(t *testing.T) {
 func assertPendingDueWhere(t *testing.T, sql string, start int) {
 	t.Helper()
 	statusType := `"gap"."status_enum"`
-	next := start + 3
 	for _, condition := range []string{
 		fmt.Sprintf(`"version" = $%d`, start),
 		fmt.Sprintf(`"status" = $%d::%s`, start+1, statusType),
 		fmt.Sprintf(`"broker_name" = $%d`, start+2),
-		fmt.Sprintf(`"next_attempt_at" <= $%d`, next),
-		fmt.Sprintf(`"lease_until" IS NULL OR "lease_until" <= $%d`, next+1),
+		`"next_attempt_at" <= CURRENT_TIMESTAMP`,
+		`"lease_until" IS NULL OR "lease_until" <= CURRENT_TIMESTAMP`,
 	} {
 		if !strings.Contains(sql, condition) {
 			t.Fatalf("SQL %q does not contain %q", sql, condition)
@@ -166,7 +165,7 @@ func TestRetryPublishedSQLKeepsStatus(t *testing.T) {
 		`UPDATE "gap"."published"`,
 		`"lease_token" = NULL`,
 		`"lease_until" = NULL`,
-		`"next_attempt_at" = $1`,
+		`"next_attempt_at" = CURRENT_TIMESTAMP + ($1 * INTERVAL '1 second')`,
 		`"id" = $2`,
 		`"status" = $3::"gap"."status_enum"`,
 		`"lease_token" = $4`,
