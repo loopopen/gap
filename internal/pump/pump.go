@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"runtime"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,24 +28,31 @@ type Handler interface {
 }
 
 type Pump struct {
-	gapOpts        *ingap.Options
-	storage        storage.Storage
-	sendCh         chan *entity.Envelope
-	handleCh       chan *entity.Envelope
-	senderMu       sync.RWMutex
-	senders        map[string]Sender
-	senderConfigs  map[string]string
-	handlers       *sync.Map
-	handlerConfigs *sync.Map
-	handlerOnce    sync.Once
-	dispatchMu     sync.RWMutex
-	sealOnce       sync.Once
-	sealed         bool
-	sourceWG       sync.WaitGroup
-	dispatcherWG   sync.WaitGroup
-	taskWG         sync.WaitGroup
+	gapOpts           *ingap.Options
+	storage           storage.Storage
+	sendCh            chan *entity.Envelope
+	handleCh          chan *entity.Envelope
+	senderMu          sync.RWMutex
+	senders           map[string]Sender
+	senderConfigs     map[string]string
+	handlers          *sync.Map
+	handlerConfigs    *sync.Map
+	handlerOnce       sync.Once
+	dispatchMu        sync.RWMutex
+	sealOnce          sync.Once
+	sealed            bool
+	claimCursor       nameCursor
+	publishedCursor   nameCursor
+	receivedCursors   map[string]nameCursor
+	sourceWG          sync.WaitGroup
+	dispatcherWG      sync.WaitGroup
+	taskWG            sync.WaitGroup
+	renewWG           sync.WaitGroup
+	publishedRenewals *leaseRenewer
+	receivedRenewals  *leaseRenewer
 }
 
+// New creates and starts a message pump.
 func New(gapOpts *ingap.Options, stor storage.Storage) *Pump {
 	if stor == nil {
 		panic(errx.ErrNoStorage)
@@ -57,14 +67,104 @@ func New(gapOpts *ingap.Options, stor storage.Storage) *Pump {
 		handlerConfigs: &sync.Map{},
 	}
 	p.startSender()
+	p.startCleaner()
 	return p
 }
 
-func routeKey(brokerType, brokerName string) string {
-	return brokerType + "\x00" + brokerName
+func (p *Pump) startCleaner() {
+	if !p.gapOpts.CleanupEnabled {
+		return
+	}
+	p.sourceWG.Add(1)
+	go func() {
+		defer p.sourceWG.Done()
+		p.cleanExpired(p.gapOpts.IntakeContext())
+	}()
 }
 
-func (p *Pump) SetSender(brokerType, brokerName, configIdentity string, sender Sender) error {
+func (p *Pump) cleanExpired(ctx context.Context) {
+	interval := p.gapOpts.CleanupInterval()
+	timer := time.NewTimer(cleanupDelay(interval))
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			cycleCtx, cancel := context.WithTimeout(ctx, p.gapOpts.CleanupTimeout())
+			deleted, err := p.cleanupCycle(cycleCtx)
+			cancel()
+			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
+				return
+			}
+			switch {
+			case errors.Is(err, context.DeadlineExceeded):
+				slog.Info("message cleanup reached its time budget", slog.Int64("deleted", deleted))
+			case err != nil:
+				slog.Error("failed to clean expired messages", slog.Any("err", err))
+			case deleted > 0:
+				slog.Info("cleaned expired messages", slog.Int64("deleted", deleted))
+			}
+			timer.Reset(cleanupDelay(interval))
+		}
+	}
+}
+
+func cleanupDelay(interval time.Duration) time.Duration {
+	jitter := interval / 10
+	if jitter <= 0 {
+		return interval
+	}
+	return interval - jitter + time.Duration(rand.Int64N(int64(2*jitter)+1))
+}
+
+func (p *Pump) cleanupCycle(ctx context.Context) (int64, error) {
+	type cleanupStream struct {
+		name   string
+		active bool
+		delete func(context.Context, int) (int64, error)
+	}
+	streams := []cleanupStream{
+		{name: "published", active: true, delete: p.storage.DeleteExpiredPublishedBatch},
+		{name: "received", active: true, delete: p.storage.DeleteExpiredReceivedBatch},
+	}
+
+	var total int64
+	var cleanupErr error
+	for streams[0].active || streams[1].active {
+		for i := range streams {
+			stream := &streams[i]
+			if !stream.active {
+				continue
+			}
+			if ctx.Err() != nil {
+				return total, errors.Join(cleanupErr, ctx.Err())
+			}
+			deleted, err := stream.delete(ctx, p.gapOpts.CleanupBatchSize)
+			if err != nil {
+				if ctx.Err() != nil {
+					return total, errors.Join(cleanupErr, ctx.Err())
+				}
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("clean expired %s messages: %w", stream.name, err))
+				stream.active = false
+				continue
+			}
+			total += deleted
+			if deleted < int64(p.gapOpts.CleanupBatchSize) {
+				stream.active = false
+			}
+		}
+	}
+	return total, cleanupErr
+}
+
+func routeKey(brokerName string) string {
+	return brokerName
+}
+
+// SetSender registers a broker sender route with the pump.
+func (p *Pump) SetSender(brokerName, configID string, sender Sender) error {
 	p.senderMu.Lock()
 	defer p.senderMu.Unlock()
 	if p.senders == nil {
@@ -73,33 +173,34 @@ func (p *Pump) SetSender(brokerType, brokerName, configIdentity string, sender S
 	if p.senderConfigs == nil {
 		p.senderConfigs = make(map[string]string)
 	}
-	key := routeKey(brokerType, brokerName)
-	if existing, ok := p.senderConfigs[key]; ok && existing != configIdentity {
-		return fmt.Errorf("broker route %q (%s) has multiple configurations; set a unique BrokerName", brokerName, brokerType)
+	key := routeKey(brokerName)
+	if existing, ok := p.senderConfigs[key]; ok && existing != configID {
+		return fmt.Errorf("broker name %q has multiple configurations; set a unique BrokerName", brokerName)
 	}
 	if _, ok := p.senders[key]; !ok {
 		p.senders[key] = sender
-		p.senderConfigs[key] = configIdentity
+		p.senderConfigs[key] = configID
 	}
 	return nil
 }
 
-func handlerKey(brokerType, brokerName, group string) string {
-	return routeKey(brokerType, brokerName) + "\x00" + group
+func handlerKey(brokerName, group string) string {
+	return routeKey(brokerName) + "\x00" + group
 }
 
-func (p *Pump) SetHandler(brokerType, brokerName, configIdentity, group string, handler Handler) error {
+// SetHandler registers a handler route with the pump.
+func (p *Pump) SetHandler(brokerName, configID, group string, handler Handler) error {
 	if p.handlers == nil {
 		p.handlers = &sync.Map{}
 	}
 	if p.handlerConfigs == nil {
 		p.handlerConfigs = &sync.Map{}
 	}
-	key := routeKey(brokerType, brokerName)
-	if existing, loaded := p.handlerConfigs.LoadOrStore(key, configIdentity); loaded && existing != configIdentity {
-		return fmt.Errorf("broker route %q (%s) has multiple configurations; set a unique BrokerName", brokerName, brokerType)
+	key := routeKey(brokerName)
+	if existing, loaded := p.handlerConfigs.LoadOrStore(key, configID); loaded && existing != configID {
+		return fmt.Errorf("broker name %q has multiple configurations; set a unique BrokerName", brokerName)
 	}
-	p.handlers.LoadOrStore(handlerKey(brokerType, brokerName, group), handler)
+	p.handlers.LoadOrStore(handlerKey(brokerName, group), handler)
 	return nil
 }
 
@@ -110,25 +211,22 @@ func (p *Pump) startSender() {
 		size = 100
 	}
 	p.sendCh = make(chan *entity.Envelope, size)
+	p.startRenewals()
 
 	// Polling stops with the intake context; a batch claimed before shutdown is
 	// completed on the work context inside pollingSend.
 	p.sourceWG.Add(1)
 	go func() {
 		defer p.sourceWG.Done()
-		p.pollingSend(o.Context)
+		p.pollingSend(o.IntakeContext())
 	}()
 
 	// Queued work uses the drain context.
 	p.dispatcherWG.Add(1)
 	go func() {
 		defer p.dispatcherWG.Done()
-		p.dispatchingSend(o.DrainContext, o.MaxPublishConcurrency)
+		p.dispatchingSend(o.WorkContext(), o.MaxPublishConcurrency)
 	}()
-}
-
-func (p *Pump) startHandler() {
-	p.handlerOnce.Do(p.startHandlerOnce)
 }
 
 func (p *Pump) startHandlerOnce() {
@@ -142,16 +240,17 @@ func (p *Pump) startHandlerOnce() {
 	p.sourceWG.Add(1)
 	go func() {
 		defer p.sourceWG.Done()
-		p.pollingHandle(o.Context)
+		p.pollingHandle(o.IntakeContext())
 	}()
 
 	p.dispatcherWG.Add(1)
 	go func() {
 		defer p.dispatcherWG.Done()
-		p.dispatchingHandle(o.DrainContext, size)
+		p.dispatchingHandle(o.WorkContext(), size)
 	}()
 }
 
+// DispatchToSend queues an envelope for broker delivery.
 func (p *Pump) DispatchToSend(ctx context.Context, envelope *entity.Envelope) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -162,16 +261,20 @@ func (p *Pump) DispatchToSend(ctx context.Context, envelope *entity.Envelope) er
 	if p.sealed {
 		return ingap.ErrRuntimeStopping
 	}
+	p.publishedLease(envelope, true)
 	select {
 	case p.sendCh <- envelope:
 		return nil
 	case <-ctx.Done():
+		p.publishedLease(envelope, false)
 		return ctx.Err()
 	default:
+		p.publishedLease(envelope, false)
 		return errors.New("system backpressure: send buffer overflow")
 	}
 }
 
+// DispatchToHandle queues an envelope for handler execution.
 func (p *Pump) DispatchToHandle(ctx context.Context, envelope *entity.Envelope) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -182,18 +285,21 @@ func (p *Pump) DispatchToHandle(ctx context.Context, envelope *entity.Envelope) 
 	if p.sealed || p.handleCh == nil {
 		return ingap.ErrRuntimeStopping
 	}
+	p.receivedLease(envelope, true)
 	select {
 	case p.handleCh <- envelope:
 		return nil
 	case <-ctx.Done():
+		p.receivedLease(envelope, false)
 		return ctx.Err()
 	default:
+		p.receivedLease(envelope, false)
 		return errors.New("system backpressure: handle buffer overflow")
 	}
 }
 
 func (p *Pump) pollingSend(ctx context.Context) {
-	workCtx := p.gapOpts.DrainContext
+	workCtx := p.gapOpts.WorkContext()
 	ticker := time.NewTicker(p.gapOpts.PumpInterval())
 	defer ticker.Stop()
 
@@ -213,23 +319,19 @@ func (p *Pump) pollingSend(ctx context.Context) {
 			return
 
 		case <-ticker.C:
-			if !p.hasSender() {
+			brokerName, ok := p.nextPublishedBroker()
+			if !ok {
 				continue
 			}
 
-			ps, err := p.storage.ClaimPublishedBatch(ctx, p.gapOpts.ClaimBatchSize)
+			ps, err := p.storage.ClaimPublishedBatch(ctx, p.gapOpts.ClaimBatchSize, brokerName)
 			if err != nil {
 				slog.Error("failed to claim published messages", slog.Any("err", err))
 				wait(ctx, 10*time.Second)
 				continue
 			}
 
-			for _, en := range ps {
-				err := p.send(workCtx, en)
-				if err != nil && ctx.Err() == nil {
-					wait(ctx, 10*time.Second)
-				}
-			}
+			p.publishedClaimed(ctx, workCtx, ps)
 		}
 	}
 }
@@ -338,7 +440,7 @@ func (p *Pump) handleParallel(ctx context.Context, envelope *entity.Envelope, se
 }
 
 func (p *Pump) pollingHandle(ctx context.Context) {
-	workCtx := p.gapOpts.DrainContext
+	workCtx := p.gapOpts.WorkContext()
 	ticker := time.NewTicker(p.gapOpts.PumpInterval())
 	defer ticker.Stop()
 
@@ -356,76 +458,174 @@ func (p *Pump) pollingHandle(ctx context.Context) {
 			return
 
 		case <-ticker.C:
-			rs, err := p.storage.ClaimReceivedBatch(ctx, p.gapOpts.ClaimBatchSize)
+			group, ok := p.nextClaimGroup()
+			if !ok {
+				continue
+			}
+			brokerName, ok := p.nextReceivedBroker(group)
+			if !ok {
+				continue
+			}
+			rs, err := p.storage.ClaimReceivedBatch(ctx, p.gapOpts.ClaimBatchSize, group, brokerName)
 			if err != nil {
 				slog.Error("failed to claim received messages", slog.Any("err", err))
 				wait(ctx, 10*time.Second)
 				continue
 			}
 
-			for _, en := range rs {
-				if err := p.handle(workCtx, en); err != nil {
-					en.Log().Error("failed to handle received message", slog.Any("err", err))
-				}
-			}
+			p.receivedClaimed(ctx, workCtx, rs)
 		}
 	}
 }
 
 func (p *Pump) send(ctx context.Context, envelope *entity.Envelope) error {
+	defer p.publishedLease(envelope, false)
 	p.senderMu.RLock()
-	brokerType := envelope.Headers[entity.BrokerTypeHeader]
-	brokerName := envelope.Headers[entity.BrokerNameHeader]
-	if sender, ok := p.senders[routeKey(brokerType, brokerName)]; ok {
+	brokerName := envelope.BrokerName
+	if sender, ok := p.senders[routeKey(brokerName)]; ok {
 		p.senderMu.RUnlock()
 		return sender.SendAndUpdate(ctx, envelope)
 	}
 	p.senderMu.RUnlock()
-	return p.failPublished(ctx, envelope, fmt.Errorf("sender not found for broker %q (%s)", brokerName, brokerType))
+	return p.releasePublished(ctx, envelope, fmt.Errorf("sender not found for broker %q", brokerName))
 }
 
-func (p *Pump) failPublished(ctx context.Context, envelope *entity.Envelope, cause error) error {
+func (p *Pump) releasePublished(ctx context.Context, envelope *entity.Envelope, cause error) error {
 	if p.storage == nil {
 		return cause
 	}
-	if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, envelope.LeaseToken, enum.StatusFailed); err != nil {
-		return fmt.Errorf("%w; mark published message failed: %v", cause, err)
+	if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, envelope.LeaseToken, enum.StatusPending); err != nil {
+		return fmt.Errorf("%w; release published message: %v", cause, err)
 	}
 	return cause
 }
 
 func (p *Pump) handle(ctx context.Context, envelope *entity.Envelope) error {
+	defer p.receivedLease(envelope, false)
 	h, ok := p.handler(envelope)
 	if ok {
 		return h.(Handler).HandleAndUpdate(ctx, envelope)
 	}
 
-	brokerType := envelope.Headers[entity.BrokerTypeHeader]
-	brokerName := envelope.Headers[entity.BrokerNameHeader]
-	cause := fmt.Errorf("handler not found for broker %q (%s), group %q", brokerName, brokerType, envelope.Group)
-	return p.failReceived(ctx, envelope, cause)
+	cause := fmt.Errorf("handler not found for broker %q, group %q", envelope.BrokerName, envelope.Group)
+	return p.releaseReceived(ctx, envelope, cause)
 }
 
-func (p *Pump) failReceived(ctx context.Context, envelope *entity.Envelope, cause error) error {
+func (p *Pump) releaseReceived(ctx context.Context, envelope *entity.Envelope, cause error) error {
 	if p.storage == nil {
 		return cause
 	}
-	if err := p.storage.UpdateStatusReceived(ctx, envelope.ID, envelope.LeaseToken, enum.StatusFailed); err != nil {
-		return fmt.Errorf("%w; mark received message failed: %v", cause, err)
+	if err := p.storage.UpdateStatusReceived(ctx, envelope.ID, envelope.LeaseToken, enum.StatusPending); err != nil {
+		return fmt.Errorf("%w; release received message: %v", cause, err)
 	}
 	return cause
 }
 
-func (p *Pump) hasSender() bool {
+func (p *Pump) publishedBrokerNames() []string {
 	p.senderMu.RLock()
 	defer p.senderMu.RUnlock()
-	return len(p.senders) != 0
+	names := make([]string, 0, len(p.senders))
+	for name := range p.senders {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (p *Pump) receivedBrokerNames(group string) []string {
+	if p.handlers == nil {
+		return nil
+	}
+	var names []string
+	p.handlers.Range(func(key, _ any) bool {
+		name, ok := key.(string)
+		if !ok {
+			return true
+		}
+		broker, handlerGroup, ok := strings.Cut(name, "\x00")
+		if ok && handlerGroup == group {
+			names = append(names, broker)
+		}
+		return true
+	})
+	sort.Strings(names)
+	return names
+}
+
+type nameCursor struct {
+	name string
+	set  bool
+}
+
+func (p *Pump) nextPublishedBroker() (string, bool) {
+	return nextName(p.publishedBrokerNames(), &p.publishedCursor)
+}
+
+func (p *Pump) nextReceivedBroker(group string) (string, bool) {
+	if p.receivedCursors == nil {
+		p.receivedCursors = map[string]nameCursor{}
+	}
+	cursor := p.receivedCursors[group]
+	next, ok := nextName(p.receivedBrokerNames(group), &cursor)
+	if ok {
+		p.receivedCursors[group] = cursor
+	}
+	return next, ok
+}
+
+func (p *Pump) nextClaimGroup() (string, bool) {
+	return nextName(p.registeredGroups(), &p.claimCursor)
+}
+
+func nextName(names []string, cursor *nameCursor) (string, bool) {
+	if len(names) == 0 {
+		return "", false
+	}
+	next := names[0]
+	if cursor.set {
+		for i, name := range names {
+			if name == cursor.name {
+				next = names[(i+1)%len(names)]
+				break
+			}
+		}
+	}
+	cursor.name = next
+	cursor.set = true
+	return next, true
+}
+
+func (p *Pump) registeredGroups() []string {
+	if p.handlers == nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	p.handlers.Range(func(key, _ any) bool {
+		name, ok := key.(string)
+		if !ok {
+			return true
+		}
+		seen[groupFromHandlerKey(name)] = struct{}{}
+		return true
+	})
+	groups := make([]string, 0, len(seen))
+	for group := range seen {
+		groups = append(groups, group)
+	}
+	sort.Strings(groups)
+	return groups
+}
+
+func groupFromHandlerKey(key string) string {
+	_, group, ok := strings.Cut(key, "\x00")
+	if !ok {
+		return key
+	}
+	return group
 }
 
 func (p *Pump) handler(envelope *entity.Envelope) (any, bool) {
-	brokerType := envelope.Headers[entity.BrokerTypeHeader]
-	brokerName := envelope.Headers[entity.BrokerNameHeader]
-	return p.handlers.Load(handlerKey(brokerType, brokerName, envelope.Group))
+	return p.handlers.Load(handlerKey(envelope.BrokerName, envelope.Group))
 }
 
 func wait(ctx context.Context, duration time.Duration) {
@@ -435,8 +635,15 @@ func wait(ctx context.Context, duration time.Duration) {
 	}
 }
 
+// StopSources waits for pump input sources to stop.
 func (p *Pump) StopSources(ctx context.Context) error {
 	return waitGroup(ctx, &p.sourceWG)
+}
+
+// StopRenewals waits for lease renewal to stop. The work context must
+// already be canceled, because that is what makes the renewer return.
+func (p *Pump) StopRenewals(ctx context.Context) error {
+	return waitGroup(ctx, &p.renewWG)
 }
 
 // Seal rejects future dispatches and closes dispatcher inputs. Callers must
@@ -481,6 +688,7 @@ func waitGroup(ctx context.Context, wg *sync.WaitGroup) error {
 	}
 }
 
+// StartHandler starts handler polling and dispatch.
 func (p *Pump) StartHandler() {
-	p.startHandler()
+	p.handlerOnce.Do(p.startHandlerOnce)
 }

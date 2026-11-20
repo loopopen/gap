@@ -10,8 +10,9 @@ import (
 	"github.com/loopopen/gap/storage/xsql"
 )
 
+// OpenStorage opens and initializes the configured storage.
 func (o *Options) OpenStorage(gapOpts *ingap.Options, role storage.Role) (storage.Storage, error) {
-	pool, err := registry.Open(gapOpts.Context, o.DSN, role, xsql.DataPlaneMaxOpen(gapOpts))
+	pool, err := registry.Open(gapOpts.IntakeContext(), o.DSN, role, xsql.DataPlaneMaxOpen(gapOpts))
 	if err != nil {
 		slog.Error("failed to connect mysql database", slog.Any("err", err))
 		return nil, err

@@ -9,15 +9,18 @@ import (
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/internal/utility"
 )
 
 //go:generate go tool shoot map -path=../../internal/entity -to=Envelope,Envelope -type=Published,Received
 
 type Published struct {
+	utility.Mapper
 	ID            uint                // Unique envelope ID.
 	CreatedAt     time.Time           // Creation time.
 	Version       string              // Message version.
 	Topic         string              // Routing topic.
+	BrokerName    string              // Logical broker name.
 	Status        enum.Status         // Message status.
 	Headers       string              // Message metadata.
 	Payload       string              // Serialized payload.
@@ -25,16 +28,12 @@ type Published struct {
 	LeaseToken    string              // Current lease token.
 	LeaseUntil    sql.Null[time.Time] // Lease expiry time.
 	NextAttemptAt time.Time           // Next eligible attempt time.
-	ExpiredAt     sql.Null[time.Time]
+	ExpiredAt     sql.Null[time.Time] // Terminal record cleanup deadline.
 	err           error
 }
 
 func (p *Published) writeEntity(e *entity.Envelope) {
 	p.err = nil
-	if p.LeaseUntil.Valid {
-		e.LeaseUntil = p.LeaseUntil.V
-	}
-	e.NextAttemptAt = p.NextAttemptAt
 	if p.Headers != "" {
 		var headers map[string]string
 		if err := json.Unmarshal([]byte(p.Headers), &headers); err != nil {
@@ -51,8 +50,6 @@ func (p *Published) writeEntity(e *entity.Envelope) {
 
 func (p *Published) readEntity(e *entity.Envelope) {
 	p.err = nil
-	p.LeaseUntil = sql.Null[time.Time]{V: e.LeaseUntil, Valid: !e.LeaseUntil.IsZero()}
-	p.NextAttemptAt = e.NextAttemptAt
 	if p.CreatedAt.IsZero() {
 		p.CreatedAt = time.Now()
 	}
@@ -74,10 +71,12 @@ func (p *Published) readEntity(e *entity.Envelope) {
 }
 
 type Received struct {
+	utility.Mapper
 	ID            uint                // Unique envelope ID.
 	CreatedAt     time.Time           // Creation time.
 	Version       string              // Message version.
 	Topic         string              // Routing topic.
+	BrokerName    string              // Logical broker name.
 	Status        enum.Status         // Message status.
 	Headers       string              // Message metadata.
 	Payload       string              // Serialized payload.
@@ -85,16 +84,13 @@ type Received struct {
 	LeaseToken    string              // Current lease token.
 	LeaseUntil    sql.Null[time.Time] // Lease expiry time.
 	NextAttemptAt time.Time           // Next eligible attempt time.
-	ExpiredAt     sql.Null[time.Time]
-	Group         string // Consumer group.
+	ExpiredAt     sql.Null[time.Time] // Terminal record cleanup deadline.
+	Group         string              // Consumer group.
 	err           error
 }
 
 func (r *Received) writeEntity(e *entity.Envelope) {
 	r.err = nil
-	if r.LeaseUntil.Valid {
-		e.LeaseUntil = r.LeaseUntil.V
-	}
 	if r.Headers != "" {
 		var headers map[string]string
 		if err := json.Unmarshal([]byte(r.Headers), &headers); err != nil {
@@ -110,7 +106,6 @@ func (r *Received) writeEntity(e *entity.Envelope) {
 
 func (r *Received) readEntity(e *entity.Envelope) {
 	r.err = nil
-	r.LeaseUntil = sql.Null[time.Time]{V: e.LeaseUntil, Valid: !e.LeaseUntil.IsZero()}
 	if r.CreatedAt.IsZero() {
 		r.CreatedAt = time.Now()
 	}

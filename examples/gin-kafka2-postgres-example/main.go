@@ -28,12 +28,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	g, svcCtx := initSvc(ctx)
+	g, svcHub := initSvc()
 	dashboard := g.DashboardHandler()
 	r.Any("/dashboard/*any", func(c *gin.Context) {
 		dashboard.ServeHTTP(c.Writer, c.Request)
 	})
-	r.GET("/api/say", handlers.Say(svcCtx.SaySvc))
+	r.GET("/api/say", handlers.Say(svcHub.SaySvc))
 
 	srv := &http.Server{
 		Addr:    ":8080",
@@ -83,12 +83,11 @@ func main() {
 	}
 }
 
-func initSvc(ctx context.Context) (*gap.Gap, *service.SvcContext) {
+func initSvc() (*gap.Gap, *service.SvcHub) {
 	dsn := "postgres://postgres:postgres@127.0.0.1:5432/example?sslmode=disable"
 	brokers := []string{"127.0.0.1:9092"}
 
 	g := gap.New(
-		gap.Context(ctx),
 		gap.UseDashboard(),
 		xpostgres.UsePostgres(
 			xpostgres.DSN(dsn),
@@ -106,13 +105,13 @@ func initSvc(ctx context.Context) (*gap.Gap, *service.SvcContext) {
 		),
 	)
 
-	svcCtx := service.NewSvcContext(pub)
-	svcCtx.Init()
+	svcHub := service.NewSvcHub(pub)
+	svcHub.Init()
 
 	g.Subscribe(
-		pub,
-		gap.Inject(svcCtx.SaySvc),
+		gap.From(pub),
+		gap.Inject(svcHub.SaySvc),
 	)
 
-	return g, svcCtx
+	return g, svcHub
 }

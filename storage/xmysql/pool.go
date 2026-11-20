@@ -26,7 +26,7 @@ func openMySQL(ctx context.Context, dsn string) (*sql.DB, error) {
 	if strings.TrimSpace(dsn) == "" {
 		return nil, errors.New("mysql dsn is empty")
 	}
-	return xsql.Open(ctx, "mysql", dsn)
+	return xsql.Open(ctx, xsql.MySQL, dsn)
 }
 
 func openDashboard(ctx context.Context, dsn string) (*sql.DB, error) {
@@ -36,7 +36,7 @@ func openDashboard(ctx context.Context, dsn string) (*sql.DB, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	probe, err := xsql.Open(ctx, "mysql", dsn)
+	probe, err := xsql.Open(ctx, xsql.MySQL, dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func openDashboard(ctx context.Context, dsn string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return xsql.OpenWithSetup(ctx, "mysql", dsn, dashboardLimitSQL(version))
+	return xsql.OpenWithSetup(ctx, xsql.MySQL, dsn, dashboardLimitSQL(version))
 }
 
 func dashboardLimitSQL(version string) string {

@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"testing"
 
 	ingap "github.com/loopopen/gap/internal/gap"
@@ -37,13 +38,13 @@ func TestRuntimeResourcesAreSharedByOptionSnapshots(t *testing.T) {
 		t.Fatalf("publisher pool capacity = %d, want 4", first.publishers.capacity)
 	}
 
-	if err := releaseFirst(); err != nil {
+	if err := releaseFirst(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if first.publishers.isClosed() {
 		t.Fatal("releasing one client closed resources still used by another client")
 	}
-	if err := releaseSecond(); err != nil {
+	if err := releaseSecond(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if !first.publishers.isClosed() {
@@ -59,8 +60,8 @@ func TestRuntimeResourcesAreIsolated(t *testing.T) {
 	first, releaseFirst := opts.acquireRuntime(firstOpts)
 	second, releaseSecond := opts.acquireRuntime(secondOpts)
 	t.Cleanup(func() {
-		_ = releaseFirst()
-		_ = releaseSecond()
+		_ = releaseFirst(context.Background())
+		_ = releaseSecond(context.Background())
 	})
 
 	if first == second || first.conn == second.conn || first.publishers == second.publishers {

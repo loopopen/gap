@@ -21,6 +21,7 @@ type Headers struct {
 	headers map[string]string
 }
 
+// Add merges a header map or key-value pairs into the collection.
 func (h *Headers) Add(args ...any) {
 	if len(args) == 0 {
 		return
@@ -50,6 +51,7 @@ func (h *Headers) Add(args ...any) {
 	}
 }
 
+// Value returns the accumulated headers.
 func (h *Headers) Value() map[string]string {
 	return h.headers
 }

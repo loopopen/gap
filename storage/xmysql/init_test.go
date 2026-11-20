@@ -35,10 +35,9 @@ func TestOpenMySQLPingFails(t *testing.T) {
 
 func TestCreateStorageEmptyDSN(t *testing.T) {
 	storOpts := &Options{Schema: "gap"}
-	_, err := storOpts.OpenStorage(&ingap.Options{
-		Context:        context.Background(),
-		StorageOptions: storOpts,
-	}, xsql.RoleData)
+	opts := &ingap.Options{StorageOptions: storOpts}
+	opts.InitRuntime()
+	_, err := storOpts.OpenStorage(opts, xsql.RoleData)
 	if err == nil || !strings.Contains(err.Error(), "empty") {
 		t.Fatal(err)
 	}
@@ -59,7 +58,7 @@ func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
 	var opened *sql.DB
 	openPoolDB = func(context.Context, string, xsql.Role) (*sql.DB, error) {
 		opens.Add(1)
-		db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:1)/gap?timeout=1s")
+		db, err := sql.Open(xsql.MySQL, "root:@tcp(127.0.0.1:1)/gap?timeout=1s")
 		opened = db
 		return db, err
 	}
@@ -68,10 +67,8 @@ func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
 		Schema: "gap",
 		DSN:    "dsn-init-fail",
 	}
-	opts := &ingap.Options{
-		Context:        context.Background(),
-		StorageOptions: storOpts,
-	}
+	opts := &ingap.Options{StorageOptions: storOpts}
+	opts.InitRuntime()
 	for range 2 {
 		_, err := storOpts.OpenStorage(opts, xsql.RoleData)
 		if err == nil {

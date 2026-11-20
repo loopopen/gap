@@ -3,6 +3,7 @@ package pump
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -17,11 +18,48 @@ type senderStub struct {
 	ids []uint
 }
 
+type handlerStub struct{}
+
+func (*handlerStub) HandleAndUpdate(context.Context, *entity.Envelope) error { return nil }
+
 type statusStorageStub struct {
 	storage.Storage
 	receivedID         uint
 	receivedLeaseToken string
 	receivedStatus     enum.Status
+}
+
+type cleanupResult struct {
+	deleted int64
+	err     error
+}
+
+type cleanupStorageStub struct {
+	storage.Storage
+	published []cleanupResult
+	received  []cleanupResult
+	pubCalls  int
+	recCalls  int
+}
+
+func (s *cleanupStorageStub) DeleteExpiredPublishedBatch(context.Context, int) (int64, error) {
+	s.pubCalls++
+	if len(s.published) == 0 {
+		return 0, nil
+	}
+	result := s.published[0]
+	s.published = s.published[1:]
+	return result.deleted, result.err
+}
+
+func (s *cleanupStorageStub) DeleteExpiredReceivedBatch(context.Context, int) (int64, error) {
+	s.recCalls++
+	if len(s.received) == 0 {
+		return 0, nil
+	}
+	result := s.received[0]
+	s.received = s.received[1:]
+	return result.deleted, result.err
 }
 
 func (s *statusStorageStub) UpdateStatusReceived(_ context.Context, id uint, leaseToken string, status enum.Status) error {
@@ -40,21 +78,15 @@ func TestPumpRoutesMessagesToConfiguredSender(t *testing.T) {
 	p := &Pump{}
 	rabbit := new(senderStub)
 	kafka := new(senderStub)
-	if err := p.SetSender("RabbitMQ", "events", "rabbit-config", rabbit); err != nil {
+	if err := p.SetSender("rabbit-events", "rabbit-config", rabbit); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.SetSender("Kafka", "events", "kafka-config", kafka); err != nil {
+	if err := p.SetSender("kafka-events", "kafka-config", kafka); err != nil {
 		t.Fatal(err)
 	}
 
-	rabbitMessage := &entity.Envelope{ID: 1, Headers: map[string]string{
-		entity.BrokerNameHeader: "events",
-		entity.BrokerTypeHeader: "RabbitMQ",
-	}}
-	kafkaMessage := &entity.Envelope{ID: 2, Headers: map[string]string{
-		entity.BrokerNameHeader: "events",
-		entity.BrokerTypeHeader: "Kafka",
-	}}
+	rabbitMessage := &entity.Envelope{ID: 1, BrokerName: "rabbit-events"}
+	kafkaMessage := &entity.Envelope{ID: 2, BrokerName: "kafka-events"}
 	if err := p.send(context.Background(), rabbitMessage); err != nil {
 		t.Fatal(err)
 	}
@@ -72,20 +104,17 @@ func TestPumpRoutesMessagesToConfiguredSender(t *testing.T) {
 
 func TestPumpRejectsUnknownBrokerIdentity(t *testing.T) {
 	p := &Pump{}
-	if err := p.SetSender("RabbitMQ", "events", "rabbit-config", new(senderStub)); err != nil {
+	if err := p.SetSender("events", "rabbit-config", new(senderStub)); err != nil {
 		t.Fatal(err)
 	}
 
-	message := &entity.Envelope{Headers: map[string]string{
-		entity.BrokerNameHeader: "events",
-		entity.BrokerTypeHeader: "Kafka",
-	}}
+	message := &entity.Envelope{BrokerName: "missing"}
 	if err := p.send(context.Background(), message); err == nil {
 		t.Fatal("expected unknown broker identity error")
 	}
 }
 
-func TestPumpMarksReceivedFailedWhenHandlerRouteIsMissing(t *testing.T) {
+func TestPumpReleasesReceivedWhenHandlerRouteIsMissing(t *testing.T) {
 	stor := new(statusStorageStub)
 	p := &Pump{
 		storage:  stor,
@@ -95,10 +124,7 @@ func TestPumpMarksReceivedFailedWhenHandlerRouteIsMissing(t *testing.T) {
 		ID:         42,
 		Group:      "billing",
 		LeaseToken: "lease-token",
-		Headers: map[string]string{
-			entity.BrokerNameHeader: "events",
-			entity.BrokerTypeHeader: "RabbitMQ",
-		},
+		BrokerName: "events",
 	}
 
 	if err := p.handle(context.Background(), envelope); err == nil {
@@ -110,21 +136,226 @@ func TestPumpMarksReceivedFailedWhenHandlerRouteIsMissing(t *testing.T) {
 	if stor.receivedLeaseToken != envelope.LeaseToken {
 		t.Fatalf("updated lease token = %q, want %q", stor.receivedLeaseToken, envelope.LeaseToken)
 	}
-	if stor.receivedStatus != enum.StatusFailed {
-		t.Fatalf("updated status = %v, want %v", stor.receivedStatus, enum.StatusFailed)
+	if stor.receivedStatus != enum.StatusPending {
+		t.Fatalf("updated status = %v, want %v", stor.receivedStatus, enum.StatusPending)
+	}
+}
+
+func TestClaimRoutesUseRegisteredBrokerNames(t *testing.T) {
+	p := &Pump{handlers: new(sync.Map)}
+	if err := p.SetSender("kafka", "kafka-config", new(senderStub)); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetSender("rabbit", "rabbit-config", new(senderStub)); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetHandler("rabbit", "rabbit-config", "billing", &handlerStub{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetHandler("kafka", "kafka-config", "billing", &handlerStub{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetHandler("kafka", "kafka-config", "shipping", &handlerStub{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := p.publishedBrokerNames(), []string{"kafka", "rabbit"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("sender brokers = %v, want %v", got, want)
+	}
+	if got, want := p.receivedBrokerNames("billing"), []string{"kafka", "rabbit"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("billing brokers = %v, want %v", got, want)
+	}
+	if got, want := p.receivedBrokerNames("shipping"), []string{"kafka"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("shipping brokers = %v, want %v", got, want)
+	}
+
+	var published []string
+	var billing []string
+	for i := 0; i < 4; i++ {
+		name, ok := p.nextPublishedBroker()
+		if !ok {
+			t.Fatal("expected a sender broker")
+		}
+		published = append(published, name)
+		name, ok = p.nextReceivedBroker("billing")
+		if !ok {
+			t.Fatal("expected a billing broker")
+		}
+		billing = append(billing, name)
+	}
+	if !reflect.DeepEqual(published, []string{"kafka", "rabbit", "kafka", "rabbit"}) {
+		t.Fatalf("published rotation = %v", published)
+	}
+	if !reflect.DeepEqual(billing, []string{"kafka", "rabbit", "kafka", "rabbit"}) {
+		t.Fatalf("billing rotation = %v", billing)
+	}
+	if name, ok := p.nextReceivedBroker("shipping"); !ok || name != "kafka" {
+		t.Fatalf("shipping broker = %q ok=%v", name, ok)
+	}
+}
+
+func TestCleanupCycleAlternatesTablesUntilBothAreDrained(t *testing.T) {
+	stor := &cleanupStorageStub{
+		published: []cleanupResult{{deleted: 2}, {deleted: 2}, {deleted: 0}},
+		received:  []cleanupResult{{deleted: 2}, {deleted: 1}},
+	}
+	p := &Pump{
+		gapOpts: &ingap.Options{CleanupBatchSize: 2},
+		storage: stor,
+	}
+
+	deleted, err := p.cleanupCycle(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != 7 {
+		t.Fatalf("deleted = %d, want 7", deleted)
+	}
+	if stor.pubCalls != 3 || stor.recCalls != 2 {
+		t.Fatalf("cleanup calls = published:%d received:%d, want 3 and 2", stor.pubCalls, stor.recCalls)
+	}
+}
+
+func TestCleanupCycleContinuesOtherTableAfterError(t *testing.T) {
+	boom := errors.New("cleanup failed")
+	stor := &cleanupStorageStub{
+		published: []cleanupResult{{err: boom}},
+		received:  []cleanupResult{{deleted: 1}},
+	}
+	p := &Pump{
+		gapOpts: &ingap.Options{CleanupBatchSize: 2},
+		storage: stor,
+	}
+
+	deleted, err := p.cleanupCycle(context.Background())
+	if deleted != 1 {
+		t.Fatalf("deleted = %d, want 1", deleted)
+	}
+	if !errors.Is(err, boom) {
+		t.Fatalf("cleanup error = %v, want %v", err, boom)
+	}
+	if stor.recCalls != 1 {
+		t.Fatalf("received cleanup calls = %d, want 1", stor.recCalls)
+	}
+}
+
+func TestCleanupCycleStopsOnContextCancellation(t *testing.T) {
+	stor := new(cleanupStorageStub)
+	p := &Pump{
+		gapOpts: &ingap.Options{CleanupBatchSize: 2},
+		storage: stor,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	deleted, err := p.cleanupCycle(ctx)
+	if deleted != 0 || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cleanup = deleted:%d err:%v, want 0 and context canceled", deleted, err)
+	}
+	if stor.pubCalls != 0 || stor.recCalls != 0 {
+		t.Fatalf("cleanup called storage after cancellation: published:%d received:%d", stor.pubCalls, stor.recCalls)
+	}
+}
+
+func TestCleanupDelayStaysWithinTenPercent(t *testing.T) {
+	interval := 5 * time.Minute
+	for range 100 {
+		delay := cleanupDelay(interval)
+		if delay < 9*interval/10 || delay > 11*interval/10 {
+			t.Fatalf("cleanup delay = %v, want within 10%% of %v", delay, interval)
+		}
 	}
 }
 
 func TestPumpRejectsTwoLiveConfigsForSameBrokerRoute(t *testing.T) {
 	p := &Pump{}
 	first := new(senderStub)
-	if err := p.SetSender("RabbitMQ", "events", "old-config", first); err != nil {
+	if err := p.SetSender("events", "old-config", first); err != nil {
 		t.Fatal(err)
 	}
 
-	err := p.SetSender("RabbitMQ", "events", "new-config", new(senderStub))
+	err := p.SetSender("events", "new-config", new(senderStub))
 	if err == nil {
 		t.Fatal("expected duplicate broker route configuration error")
+	}
+	if got, want := err.Error(), `broker name "events" has multiple configurations; set a unique BrokerName`; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestPumpRejectsSameBrokerNameWithDifferentConfigs(t *testing.T) {
+	p := &Pump{}
+	if err := p.SetSender("events", "rabbit-config", new(senderStub)); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetSender("events", "kafka-config", new(senderStub)); err == nil {
+		t.Fatal("expected duplicate broker name configuration error")
+	}
+}
+
+func TestNextClaimGroupRotatesRegisteredNames(t *testing.T) {
+	p := &Pump{handlers: new(sync.Map)}
+	p.handlers.Store(handlerKey("rabbit", "shipping"), new(handlerStub))
+	p.handlers.Store(handlerKey("rabbit", "billing"), new(handlerStub))
+	p.handlers.Store(handlerKey("kafka", "billing"), new(handlerStub))
+	p.handlers.Store(handlerKey("rabbit", ""), new(handlerStub))
+
+	var got []string
+	for i := 0; i < 4; i++ {
+		group, ok := p.nextClaimGroup()
+		if !ok {
+			t.Fatal("expected a group")
+		}
+		got = append(got, group)
+	}
+	if !reflect.DeepEqual(got, []string{"", "billing", "shipping", ""}) {
+		t.Fatalf("rotation = %#v", got)
+	}
+}
+
+func TestNextClaimGroupFollowsNameWhenSetChanges(t *testing.T) {
+	p := &Pump{handlers: new(sync.Map)}
+	p.handlers.Store(handlerKey("rabbit", "b"), new(handlerStub))
+	p.handlers.Store(handlerKey("rabbit", "d"), new(handlerStub))
+	if group, ok := p.nextClaimGroup(); !ok || group != "b" {
+		t.Fatalf("first group = %q ok=%v", group, ok)
+	}
+	p.handlers.Store(handlerKey("rabbit", "a"), new(handlerStub))
+	if group, _ := p.nextClaimGroup(); group != "d" {
+		t.Fatalf("next group = %q, want d", group)
+	}
+}
+
+func TestNextClaimGroupRestartsWhenCursorLeaves(t *testing.T) {
+	p := &Pump{
+		handlers:    new(sync.Map),
+		claimCursor: nameCursor{name: "gone", set: true},
+	}
+	p.handlers.Store(handlerKey("rabbit", "keep"), new(handlerStub))
+	group, ok := p.nextClaimGroup()
+	if !ok || group != "keep" {
+		t.Fatalf("group = %q ok=%v", group, ok)
+	}
+}
+
+func TestNextClaimGroupEmpty(t *testing.T) {
+	p := &Pump{handlers: new(sync.Map)}
+	if _, ok := p.nextClaimGroup(); ok {
+		t.Fatal("expected no group")
+	}
+}
+
+func TestPumpRejectsSameHandlerBrokerNameWithDifferentConfigs(t *testing.T) {
+	p := &Pump{}
+	if err := p.SetHandler("events", "rabbit-config", "billing", new(handlerStub)); err != nil {
+		t.Fatal(err)
+	}
+	err := p.SetHandler("events", "kafka-config", "billing", new(handlerStub))
+	if err == nil {
+		t.Fatal("expected duplicate handler broker name configuration error")
+	}
+	if got, want := err.Error(), `broker name "events" has multiple configurations; set a unique BrokerName`; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
 	}
 }
 
@@ -149,7 +380,7 @@ func (s *blockingSender) SendAndUpdate(_ context.Context, envelope *entity.Envel
 func newDispatchTestPump(sender Sender, concurrency, queueSize int) *Pump {
 	p := &Pump{
 		sendCh:         make(chan *entity.Envelope, queueSize),
-		senders:        map[string]Sender{routeKey("RabbitMQ", "events"): sender},
+		senders:        map[string]Sender{routeKey("events"): sender},
 		senderConfigs:  make(map[string]string),
 		handlers:       new(sync.Map),
 		handlerConfigs: new(sync.Map),
@@ -163,10 +394,7 @@ func newDispatchTestPump(sender Sender, concurrency, queueSize int) *Pump {
 }
 
 func dispatchTestEnvelope(id uint) *entity.Envelope {
-	return &entity.Envelope{ID: id, Headers: map[string]string{
-		entity.BrokerNameHeader: "events",
-		entity.BrokerTypeHeader: "RabbitMQ",
-	}}
+	return &entity.Envelope{ID: id, BrokerName: "events"}
 }
 
 func TestDrainWaitsForQueuedAndLateStartedTasks(t *testing.T) {
@@ -218,7 +446,7 @@ func TestDrainWaitsWhenTaskCountChangesFromZero(t *testing.T) {
 	startDispatcher := make(chan struct{})
 	p := &Pump{
 		sendCh:         make(chan *entity.Envelope, 1),
-		senders:        map[string]Sender{routeKey("RabbitMQ", "events"): sender},
+		senders:        map[string]Sender{routeKey("events"): sender},
 		senderConfigs:  make(map[string]string),
 		handlers:       new(sync.Map),
 		handlerConfigs: new(sync.Map),

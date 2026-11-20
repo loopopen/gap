@@ -28,12 +28,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	g, svcCtx := initSvc(ctx)
+	g, svcHub := initSvc()
 	dashboardHandler := g.DashboardHandler()
 	r.Any("/gap/*any", func(c *gin.Context) {
 		dashboardHandler.ServeHTTP(c.Writer, c.Request)
 	})
-	r.GET("/api/say", handlers.Say(svcCtx.SaySvc))
+	r.GET("/api/say", handlers.Say(svcHub.SaySvc))
 
 	srv := &http.Server{
 		Addr:    ":8080",
@@ -83,12 +83,11 @@ func main() {
 	}
 }
 
-func initSvc(ctx context.Context) (*gap.Gap, *service.SvcContext) {
+func initSvc() (*gap.Gap, *service.SvcHub) {
 	dsn := "root:root@tcp(127.0.0.1:3306)/example?charset=utf8mb4&parseTime=True&loc=Local"
 	brokers := []string{"127.0.0.1:9092"}
 
 	g := gap.New(
-		gap.Context(ctx),
 		gap.UseDashboard(
 			dashboard.PathPrefix("/gap"),
 		),
@@ -108,13 +107,13 @@ func initSvc(ctx context.Context) (*gap.Gap, *service.SvcContext) {
 		),
 	)
 
-	svcCtx := service.NewSvcContext(pub)
-	svcCtx.Init()
+	svcHub := service.NewSvcHub(pub)
+	svcHub.Init()
 
 	g.Subscribe(
-		pub,
-		gap.Inject(svcCtx.SaySvc),
+		gap.From(pub),
+		gap.Inject(svcHub.SaySvc),
 	)
 
-	return g, svcCtx
+	return g, svcHub
 }

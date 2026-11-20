@@ -18,7 +18,8 @@ func checkType[T any]() {
 	}
 }
 
-func HandleTopicWithinGroup[T any](handler Handler[T], topic string, group string) shoot.Option[Options, *Options] {
+// HandleTopicWithinGroup registers a typed topic handler in a consumer group.
+func HandleTopicWithinGroup[T any](handler Handler[T], topic string, group string) shoot.Option[BrokerOptions, *BrokerOptions] {
 	checkType[T]()
 	if handler == nil {
 		panic(errx.ErrParamIsNil("handler"))
@@ -27,18 +28,19 @@ func HandleTopicWithinGroup[T any](handler Handler[T], topic string, group strin
 		var t T
 		err := json.Unmarshal(msg, &t)
 		if err != nil {
-			return err
+			return errx.Permanent(err)
 		}
 		return handler(ctx, t, headers)
 	}
 	return HandleTopicWithinGroupRaw(h, topic, group)
 }
 
-func HandleTopicWithinGroupRaw(handler Handler[[]byte], topic string, group string) shoot.Option[Options, *Options] {
+// HandleTopicWithinGroupRaw registers a raw topic handler in a consumer group.
+func HandleTopicWithinGroupRaw(handler Handler[[]byte], topic string, group string) shoot.Option[BrokerOptions, *BrokerOptions] {
 	if handler == nil {
 		panic(errx.ErrParamIsNil("handler"))
 	}
-	return func(o *Options) {
+	return func(o *BrokerOptions) {
 		o.HandlerOptsLst = append(o.HandlerOptsLst, HandlerOptions{
 			GroupOptions: GroupOptions{
 				Group:             group,

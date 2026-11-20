@@ -66,8 +66,10 @@ func (f *fakeKafkaReader) snapshot() (commits []kafka.Message, closeCount int) {
 
 func testConsumer(fake *fakeKafkaReader) *Consumer {
 	entity.MustInitSnowflake(1)
+	gapOpts := &ingap.Options{Version: "v-test"}
+	gapOpts.InitRuntime()
 	return &Consumer{
-		gapOpts:          &ingap.Options{Version: "v-test"},
+		gapOpts:          gapOpts,
 		group:            "workers",
 		groupID:          "gap.v-test.g.workers",
 		state:            consumerSubscribed,
@@ -187,9 +189,6 @@ func TestReaderCommitsDeliveredMessageAfterIntakeStops(t *testing.T) {
 	fake := newFakeKafkaReader()
 	fake.fetches <- fetchResult{message: kafka.Message{Topic: "orders", Partition: 0, Offset: 5}}
 	r := testConsumer(fake)
-	workCtx, cancelWork := context.WithCancel(context.Background())
-	defer cancelWork()
-	r.gapOpts.DrainContext = workCtx
 	intakeCtx, stopIntake := context.WithCancel(context.Background())
 	envelopes, err := r.Consume(intakeCtx)
 	if err != nil {

@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/storage"
@@ -14,6 +13,7 @@ import (
 
 var _ storage.StorageX = (*Storage)(nil)
 
+// DashboardStats returns aggregate delivery statistics for the dashboard.
 func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, error) {
 	published, err := s.messageStats(ctx, "published")
 	if err != nil {
@@ -23,7 +23,11 @@ func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, e
 	if err != nil {
 		return nil, err
 	}
-	return &entity.DashboardStats{Published: published, Received: received}, nil
+	groups, err := s.receivedGroupStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &entity.DashboardStats{Published: published, Received: received, Groups: groups}, nil
 }
 
 func (s *Storage) messageStats(ctx context.Context, name string) (entity.MessageStats, error) {
@@ -65,12 +69,69 @@ func (s *Storage) messageStats(ctx context.Context, name string) (entity.Message
 	return stats, nil
 }
 
+func (s *Storage) receivedGroupStats(ctx context.Context) ([]entity.GroupMessageStats, error) {
+	table, err := s.quotedTable("received")
+	if err != nil {
+		return nil, err
+	}
+	const script = `SELECT
+		` + "`group`" + `,
+		COUNT(*),
+		COALESCE(SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN status = 'Succeeded' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(retries), 0),
+		MAX(created_at),
+		MIN(CASE WHEN status = 'Pending' THEN created_at END)
+		FROM %s
+		GROUP BY ` + "`group`" + `
+		ORDER BY ` + "`group`"
+
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(script, table))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	groups := make([]entity.GroupMessageStats, 0)
+	for rows.Next() {
+		var item entity.GroupMessageStats
+		var lastActivity sql.NullTime
+		var oldestBacklog sql.NullTime
+		err = rows.Scan(
+			&item.Group,
+			&item.Total,
+			&item.Pending,
+			&item.Succeeded,
+			&item.Failed,
+			&item.Retries,
+			&lastActivity,
+			&oldestBacklog,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if lastActivity.Valid {
+			item.LastActivity = &lastActivity.Time
+		}
+		if oldestBacklog.Valid {
+			item.OldestBacklog = &oldestBacklog.Time
+		}
+		groups = append(groups, item)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return groups, nil
+}
+
+// GetPublishedByID returns a published message by ID.
 func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
 	table, err := s.quotedTable("published")
 	if err != nil {
 		return nil, err
 	}
-	const script = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` " +
+	const script = "SELECT `id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`expired_at` " +
 		"FROM %s WHERE `id` = ?"
 	row := s.db.QueryRowContext(ctx, fmt.Sprintf(script, table), id)
 	if row == nil {
@@ -82,6 +143,7 @@ func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelo
 		&pub.CreatedAt,
 		&pub.Version,
 		&pub.Topic,
+		&pub.BrokerName,
 		&pub.Status,
 		&pub.Headers,
 		&pub.Payload,
@@ -112,22 +174,19 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 		return nil, nil, err
 	}
 	const script2 = "SELECT COUNT(*) FROM %s %s"
-
 	var count int64
 	script := fmt.Sprintf(script2, table, wh.String())
 	params := wh.Params()
-	slog.Info(script, slog.Any("args", params))
 	err = s.db.QueryRowContext(ctx, script, params...).Scan(&count)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at` " +
+	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`expired_at` " +
 		"FROM %s %s ORDER BY `id` %s %s"
 
 	pg := page.Normalize()
 	script = fmt.Sprintf(script1, table, wh.String(), messageOrder(filter), paginate(pg))
-	slog.Info(script, slog.Any("args", params))
 	rows, err := s.db.QueryContext(ctx, script, params...)
 	if err != nil {
 		return nil, nil, err
@@ -140,6 +199,7 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 			&pub.CreatedAt,
 			&pub.Version,
 			&pub.Topic,
+			&pub.BrokerName,
 			&pub.Status,
 			&pub.Headers,
 			&pub.Payload,
@@ -183,7 +243,7 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 		return nil, nil, err
 	}
 
-	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` " +
+	const script1 = "SELECT `id`,`created_at`,`version`,`topic`,`broker_name`,`status`,`headers`,`payload`,`retries`,`expired_at`,`group` " +
 		"FROM %s %s ORDER BY `id` %s %s"
 
 	pg := page.Normalize()
@@ -199,6 +259,7 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 			&rec.CreatedAt,
 			&rec.Version,
 			&rec.Topic,
+			&rec.BrokerName,
 			&rec.Status,
 			&rec.Headers,
 			&rec.Payload,

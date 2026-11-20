@@ -28,7 +28,6 @@ func main() {
 	}))
 
 	g := gap.New(
-		gap.Context(ctx),
 		xgorm.UseGorm(
 			xgorm.DB(db),
 		),
@@ -42,7 +41,7 @@ func main() {
 	mySvc := service.NewMySvc(db, pub)
 
 	g.Subscribe(
-		pub,
+		gap.From(pub),
 		gap.Inject(mySvc),
 	)
 

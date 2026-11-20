@@ -19,13 +19,14 @@ type Producer struct {
 	opts    *Options
 	group   string
 	chPool  *pubChannelPool
-	release func() error
+	release func(context.Context) error
 	closed  atomic.Bool
 	x       string
 	q       string
 	ctag    string
 }
 
+// NewProducer creates a broker producer.
 func NewProducer(gapOpts *ingap.Options, opts *Options) *Producer {
 	resources, release := opts.acquireRuntime(gapOpts)
 	producer := &Producer{
@@ -40,7 +41,7 @@ func NewProducer(gapOpts *ingap.Options, opts *Options) *Producer {
 }
 
 func (p *Producer) init() error {
-	pooled, err := p.chPool.Rent(p.gapOpts.Context)
+	pooled, err := p.chPool.Rent(p.gapOpts.IntakeContext())
 	if err != nil {
 		return err
 	}
@@ -59,12 +60,15 @@ func (p *Producer) init() error {
 // Produce implements [broker.Producer].
 func (p *Producer) Produce(ctx context.Context, envelope *entity.Envelope) error {
 	routingKey := envelope.Topic
+	if routingKey == "" {
+		return errx.Permanent(errx.ErrEmptyTopic)
+	}
 	body, err := envelope.PayloadBytes()
 	if err != nil {
-		return err
+		return errx.Permanent(err)
 	}
 	if len(body) == 0 {
-		return errx.ErrNilPayload
+		return errx.Permanent(errx.ErrNilPayload)
 	}
 	return p.send(ctx, routingKey, envelope.Headers, envelope.Payload)
 }
@@ -101,9 +105,7 @@ func (p *Producer) send(ctx context.Context, routingKey string, headers map[stri
 		}
 		reusable = true
 	} else {
-		confirm, err := ch.PublishWithDeferredConfirmWithContext(
-			ctx, p.exchange(), routingKey, p.opts.Mandatory, false, publishing,
-		)
+		confirm, err := ch.PublishWithDeferredConfirmWithContext(ctx, p.exchange(), routingKey, p.opts.Mandatory, false, publishing)
 		if err != nil {
 			return err
 		}
@@ -147,12 +149,21 @@ func (p *Producer) exchange() string {
 	return p.x
 }
 
+// Close releases resources held by the receiver.
 func (p *Producer) Close() error {
+	return p.CloseContext(context.Background())
+}
+
+// CloseContext releases resources held by the receiver, bounded by ctx.
+func (p *Producer) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if !p.closed.CompareAndSwap(false, true) {
 		return nil
 	}
 	if p.release != nil {
-		return p.release()
+		return p.release(ctx)
 	}
 	return nil
 }

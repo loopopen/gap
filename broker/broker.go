@@ -21,7 +21,7 @@ type Closer interface {
 // ConfigIdentifier can be implemented by broker options to distinguish live
 // connection configurations. It must not be used as a persisted route name.
 type ConfigIdentifier interface {
-	ConfigIdentity() string
+	ConfigID() string
 }
 
 type Consumer interface {
@@ -34,9 +34,9 @@ type Consumer interface {
 	Reject(tag any) error
 }
 
-// ConfigIdentity returns a stable, non-sensitive identity for a broker
+// ConfigID returns a stable, non-sensitive ID for a broker
 // configuration.
-func ConfigIdentity(namespace, key string) string {
+func ConfigID(namespace, key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return namespace + ":" + hex.EncodeToString(sum[:])
 }

@@ -90,7 +90,7 @@ func main() {
 
     // 创建应用级 Gap 实例
     g := gap.New(
-        gap.Context(ctx),
+        gap.ServiceName("my-service.worker"),
         xgorm.UseGorm(
             xgorm.DB(db),
         ),
@@ -105,8 +105,7 @@ func main() {
 
     // 设置 subscriber
     g.Subscribe(
-        pub,
-        gap.ServiceName("my-service.worker"),
+        gap.From(pub),
         gap.Inject(/*handler_dependencies*/),
     )
 
@@ -166,15 +165,22 @@ go generate ./...
 
 ### 4. 优雅关机
 
-该库通过上下文取消和 Runtime 统一管理的关闭流程支持优雅关机。
+该库通过显式调用 Runtime 统一管理的关闭流程支持优雅关机。
 
 - `g.Shutdown(ctx context.Context) error` 停止接收新任务、排空已接收任务，并关闭 Runtime 持有的资源
+- 取消应用的信号上下文不会关闭 Gap；应使用独立的排空上下文显式调用 `g.Shutdown`
 
 ## 投递语义
 
 GAP 采用 **at-least-once（至少一次）** 的消息处理语义，不保证 Handler 只执行一次。同一条逻辑消息可能多次到达 Handler，例如 Broker 重新投递、租约过期，或者业务操作已经成功但消息状态尚未持久化时进程退出。
 
 因此，Handler 必须保证幂等。建议使用订单 ID、事件 ID 等稳定的业务键，并在 Handler 的业务事务中同时完成幂等校验，例如使用唯一约束或记录已处理的消息。不要根据消息内容是否相同来去重，因为业务可能有意再次发布相同内容。
+
+## 消息保留与清理
+
+GAP 会分批自动删除终态消息记录，`Pending` 消息永远不会被自动删除。默认情况下，成功消息保留 24 小时，失败消息保留 15 天；清理器每 5 分钟运行一次，每轮最多运行 30 秒。存储支持时，多实例通过行锁协调清理。
+
+可以使用 `gap.SucceededRetentionSeconds`、`gap.FailedRetentionSeconds`、`gap.CleanupIntervalSeconds`、`gap.CleanupBatchSize` 和 `gap.CleanupTimeoutSeconds` 调整保留及清理策略。如果清理由外部任务负责，可传入 `gap.CleanupEnabled(false)`。
 
 ## 使用示例
 
@@ -203,13 +209,13 @@ go run .
 
 ### 订阅者
 
-- `g.Subscribe(publisher, opts...)`：设置带处理器的订阅者
+- `g.Subscribe(opts...)`：使用 broker、handler 与依赖选项设置订阅者
 - `g.DashboardHandler()`：创建 Dashboard HTTP handler
 - `g.Shutdown(ctx)`：停止接收新任务、排空已接收任务，并关闭 Runtime 持有的资源
 
 ### 选项
 
-- 传给 `gap.New` 的运行时 `Options`：`gap.Context`、`gap.UseDashboard`，以及 `xmysql.UseMySQL` 等 storage 配置
+- 传给 `gap.New` 的运行时 `Options`：Dashboard、消息保留、清理，以及 storage 配置，例如 `gap.UseDashboard`、`gap.CleanupBatchSize` 和 `xmysql.UseMySQL`
 - 传给 publisher 构造函数的 `BrokerOptions`：`gap.BrokerName`，以及 `xrabbitmq.UseRabbitMQ` 等 broker 配置
 - 传给 `g.Subscribe` 的订阅配置：`gap.ServiceName` 和 `gap.Inject`
 
