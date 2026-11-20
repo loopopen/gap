@@ -15,6 +15,7 @@ type DependencyOptions struct {
 	resolvers []func(values []any) string `new:"-"`
 }
 
+// ResolveType returns the concrete type represented by an option.
 func ResolveType[T any](typeName string, resolve func(v T)) shoot.Option[DependencyOptions, *DependencyOptions] {
 	return func(o *DependencyOptions) {
 		o.resolvers = append(o.resolvers, func(values []any) string {
@@ -36,6 +37,7 @@ func ResolveType[T any](typeName string, resolve func(v T)) shoot.Option[Depende
 	}
 }
 
+// Resolve resolves a generated handler dependency.
 func Resolve(opts ...shoot.Option[DependencyOptions, *DependencyOptions]) shoot.Option[BrokerOptions, *BrokerOptions] {
 	return func(o *BrokerOptions) {
 		options := new(DependencyOptions).With(opts...)
@@ -43,6 +45,7 @@ func Resolve(opts ...shoot.Option[DependencyOptions, *DependencyOptions]) shoot.
 	}
 }
 
+// Resolve resolves a generated handler dependency.
 func (d *DependencyOptions) Resolve(values []any) {
 	var unresolved string
 	for _, r := range d.resolvers {

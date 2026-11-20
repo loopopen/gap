@@ -118,6 +118,7 @@ type Consumer struct {
 	commitRetryMax time.Duration
 }
 
+// NewConsumer creates a broker consumer.
 func NewConsumer(gapOpts *ingap.Options, opts *Options, group string) (*Consumer, error) {
 	if group == "" {
 		panic("group should not be empty")
@@ -153,6 +154,7 @@ func (c *Consumer) init() error {
 	return c.ensurer.ensure(c.gapOpts.IntakeContext())
 }
 
+// Subscribe subscribes the consumer to a topic.
 func (c *Consumer) Subscribe(ctx context.Context, topic string) error {
 	c.mu.Lock()
 	err := c.subscribeStateError()
@@ -189,6 +191,7 @@ func (c *Consumer) subscribeStateError() error {
 	}
 }
 
+// Consume starts consuming broker messages.
 func (c *Consumer) Consume(ctx context.Context) (<-chan *entity.Envelope, error) {
 	c.mu.Lock()
 	if len(c.topics) == 0 {
@@ -295,6 +298,7 @@ func (c *Consumer) deliveryContext(intakeCtx context.Context) context.Context {
 	return intakeCtx
 }
 
+// Close releases resources held by the receiver.
 func (c *Consumer) Close() error {
 	c.mu.Lock()
 	cancel := c.consumeCancel
@@ -383,6 +387,7 @@ func (c *Consumer) reassign(client consumerClient, message *kafka.Message) error
 	return nil
 }
 
+// Commit acknowledges successful processing of a consumed message.
 func (c *Consumer) Commit(tag any) error {
 	delivery, err := c.deliveryTag(tag)
 	if err != nil {
@@ -391,6 +396,7 @@ func (c *Consumer) Commit(tag any) error {
 	return delivery.submit(deliveryCommit)
 }
 
+// Reject negatively acknowledges a consumed message.
 func (c *Consumer) Reject(tag any) error {
 	delivery, err := c.deliveryTag(tag)
 	if err != nil {

@@ -23,7 +23,7 @@ func (g *Gap) Subscribe(opts ...shoot.Option[BrokerOptions, *BrokerOptions]) {
 	}
 	defer done()
 
-	brokerOpts := g.publisherOptions(opts...)
+	brokerOpts := new(BrokerOptions).With(opts...)
 
 	g.subs.AddDependencyOtps(brokerOpts.DependencyOptsLst)
 	g.subs.AddHandlerOtps(brokerOpts.HandlerOptsLst)

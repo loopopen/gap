@@ -52,6 +52,7 @@ func (c *sharedConn) connection() (*amqp.Connection, error) {
 	return conn, nil
 }
 
+// Channel returns the underlying RabbitMQ channel.
 func (c *sharedConn) Channel() (*amqp.Channel, error) {
 	conn, err := c.connection()
 	if err != nil {
@@ -78,10 +79,12 @@ func (c *sharedConn) Channel() (*amqp.Channel, error) {
 	return conn.Channel()
 }
 
+// Close releases resources held by the receiver.
 func (c *sharedConn) Close() error {
 	return c.CloseContext(context.Background())
 }
 
+// CloseContext releases resources held by the receiver, bounded by ctx.
 func (c *sharedConn) CloseContext(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -170,6 +173,7 @@ func newPubChannelPool(conn *sharedConn, opts *Options, capacity int) *pubChanne
 	return pool
 }
 
+// Rent borrows a RabbitMQ channel from the pool.
 func (p *pubChannelPool) Rent(ctx context.Context) (*publisherChannel, error) {
 	for {
 		select {
@@ -300,6 +304,7 @@ func (p *pubChannelPool) isClosed() bool {
 	return p.closed
 }
 
+// Close releases resources held by the receiver.
 func (p *pubChannelPool) Close() error {
 	var closeErr error
 	p.closeOnce.Do(func() {
@@ -340,10 +345,12 @@ func newRuntimeResources(opts *Options, publisherConcurrency int) *runtimeResour
 	}
 }
 
+// Close releases resources held by the receiver.
 func (r *runtimeResources) Close() error {
 	return r.CloseContext(context.Background())
 }
 
+// CloseContext releases resources held by the receiver, bounded by ctx.
 func (r *runtimeResources) CloseContext(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()

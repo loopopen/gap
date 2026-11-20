@@ -67,6 +67,7 @@ func TestFromEntityPayloadAndHeaders(t *testing.T) {
 	en := &entity.Envelope{
 		ID:            4,
 		Topic:         "t",
+		BrokerName:    "orders",
 		Message:       map[string]string{"a": "b"},
 		Headers:       map[string]string{"h": "v"},
 		LeaseUntil:    now.Add(time.Minute),
@@ -81,6 +82,12 @@ func TestFromEntityPayloadAndHeaders(t *testing.T) {
 	}
 	if p.Headers != `{"h":"v"}` {
 		t.Fatalf("headers = %q", p.Headers)
+	}
+	if p.BrokerName != "orders" {
+		t.Fatalf("broker name = %q", p.BrokerName)
+	}
+	if got := p.ToEntity().BrokerName; got != "orders" {
+		t.Fatalf("broker name = %q", got)
 	}
 	if p.Status != Status(enum.StatusPending) {
 		t.Fatalf("status = %s", p.Status)

@@ -13,6 +13,7 @@ import (
 
 var _ storage.StorageX = (*Storage)(nil)
 
+// DashboardStats returns aggregate delivery statistics for the dashboard.
 func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, error) {
 	published, err := s.messageStats(ctx, "published")
 	if err != nil {
@@ -124,12 +125,13 @@ func (s *Storage) receivedGroupStats(ctx context.Context) ([]entity.GroupMessage
 	return groups, nil
 }
 
+// GetPublishedByID returns a published message by ID.
 func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
 	table, err := s.quotedTable("published")
 	if err != nil {
 		return nil, err
 	}
-	script := `SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at" FROM ` +
+	script := `SELECT "id","created_at","version","topic","broker_name","status","headers","payload","retries","expired_at" FROM ` +
 		table + ` WHERE "id" = $1`
 	var pub Published
 	err = s.db.QueryRowContext(ctx, script, id).Scan(
@@ -137,6 +139,7 @@ func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelo
 		&pub.CreatedAt,
 		&pub.Version,
 		&pub.Topic,
+		&pub.BrokerName,
 		&pub.Status,
 		&pub.Headers,
 		&pub.Payload,
@@ -177,7 +180,7 @@ func (s *Storage) queryPublished(ctx context.Context, wh *WhereHelper, filter *e
 	}
 
 	pg := page.Normalize()
-	script := `SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at" FROM ` +
+	script := `SELECT "id","created_at","version","topic","broker_name","status","headers","payload","retries","expired_at" FROM ` +
 		table + " " + wh.String() + ` ORDER BY "id" ` + messageOrder(filter) + " " + paginate(pg)
 	rows, err := s.db.QueryContext(ctx, script, wh.Params()...)
 	if err != nil {
@@ -193,6 +196,7 @@ func (s *Storage) queryPublished(ctx context.Context, wh *WhereHelper, filter *e
 			&pub.CreatedAt,
 			&pub.Version,
 			&pub.Topic,
+			&pub.BrokerName,
 			&pub.Status,
 			&pub.Headers,
 			&pub.Payload,
@@ -233,7 +237,7 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 	}
 
 	pg := page.Normalize()
-	script := `SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at","group" FROM ` +
+	script := `SELECT "id","created_at","version","topic","broker_name","status","headers","payload","retries","expired_at","group" FROM ` +
 		table + " " + h.String() + ` ORDER BY "id" ` + messageOrder(filter) + " " + paginate(pg)
 	rows, err := s.db.QueryContext(ctx, script, h.Params()...)
 	if err != nil {
@@ -249,6 +253,7 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 			&rec.CreatedAt,
 			&rec.Version,
 			&rec.Topic,
+			&rec.BrokerName,
 			&rec.Status,
 			&rec.Headers,
 			&rec.Payload,

@@ -123,6 +123,7 @@ func initSvc() (*gap.Gap, *service.SvcHub) {
 		gap.UseDashboard(),
 		xmysql.UseMySQL(
 			xmysql.DSN(dsn),
+			xmysql.Log(true),
 		),
 	)
 	pub := g.NewEventPublisher(

@@ -41,6 +41,24 @@ type Options struct {
 	//@def=1
 	PumpIntervalSeconds int
 
+	//@def=true
+	CleanupEnabled bool
+
+	//@def=86400
+	SucceededRetentionSeconds int
+
+	//@def=1296000
+	FailedRetentionSeconds int
+
+	//@def=300
+	CleanupIntervalSeconds int
+
+	//@def=1000
+	CleanupBatchSize int
+
+	//@def=30
+	CleanupTimeoutSeconds int
+
 	MaxPublishConcurrency int
 
 	//@def=-1
@@ -104,6 +122,13 @@ func (o *Options) Validate() error {
 	errs = append(errs, validateDurationSeconds("LeaseTTLSeconds", o.LeaseTTLSeconds))
 	errs = append(errs, validateDurationSeconds("RetryIntervalSeconds", o.RetryIntervalSeconds))
 	errs = append(errs, validateDurationSeconds("PumpIntervalSeconds", o.PumpIntervalSeconds))
+	if o.CleanupEnabled {
+		errs = append(errs, validateDurationSeconds("SucceededRetentionSeconds", o.SucceededRetentionSeconds))
+		errs = append(errs, validateDurationSeconds("FailedRetentionSeconds", o.FailedRetentionSeconds))
+		errs = append(errs, validateDurationSeconds("CleanupIntervalSeconds", o.CleanupIntervalSeconds))
+		errs = append(errs, validatePositiveOption("CleanupBatchSize", o.CleanupBatchSize))
+		errs = append(errs, validateDurationSeconds("CleanupTimeoutSeconds", o.CleanupTimeoutSeconds))
+	}
 	return errors.Join(errs...)
 }
 
@@ -238,6 +263,7 @@ func (o *Options) StopAccepting() {
 	r.mu.Unlock()
 }
 
+// WaitOperations waits for all admitted runtime operations to finish.
 func (o *Options) WaitOperations(ctx context.Context) error {
 	if o.runtime == nil {
 		return nil
@@ -250,12 +276,14 @@ func (o *Options) WaitOperations(ctx context.Context) error {
 	}
 }
 
+// CancelWork cancels work still owned by the runtime.
 func (o *Options) CancelWork() {
 	if o.runtime != nil {
 		o.runtime.workCancel()
 	}
 }
 
+// RegisterCloser registers a resource for runtime-owned shutdown.
 func (o *Options) RegisterCloser(resource any) {
 	resourceCloser, ok := resource.(closer)
 	if !ok || o.runtime == nil {
@@ -266,6 +294,7 @@ func (o *Options) RegisterCloser(resource any) {
 	o.runtime.mu.Unlock()
 }
 
+// CloseResources closes all resources owned by the runtime.
 func (o *Options) CloseResources(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -341,18 +370,40 @@ type GroupOptions struct {
 	IngestConcurrency int
 }
 
+// LeaseTTL returns the configured message lease duration.
 func (o *Options) LeaseTTL() time.Duration {
 	return time.Second * time.Duration(o.LeaseTTLSeconds)
 }
 
+// RetryInterval returns the configured retry delay.
 func (o *Options) RetryInterval() time.Duration {
 	return time.Second * time.Duration(o.RetryIntervalSeconds)
 }
 
+// PumpInterval returns the configured storage polling interval.
 func (o *Options) PumpInterval() time.Duration {
 	return time.Second * (time.Duration(o.PumpIntervalSeconds))
 }
 
+// Retention returns the retention period for a terminal message status.
+func (o *Options) Retention(status enum.Status) time.Duration {
+	if status == enum.StatusSucceeded {
+		return time.Second * time.Duration(o.SucceededRetentionSeconds)
+	}
+	return time.Second * time.Duration(o.FailedRetentionSeconds)
+}
+
+// CleanupInterval returns the configured interval between cleanup cycles.
+func (o *Options) CleanupInterval() time.Duration {
+	return time.Second * time.Duration(o.CleanupIntervalSeconds)
+}
+
+// CleanupTimeout returns the time budget for one cleanup cycle.
+func (o *Options) CleanupTimeout() time.Duration {
+	return time.Second * time.Duration(o.CleanupTimeoutSeconds)
+}
+
+// UseDashboard enables the operational dashboard.
 func UseDashboard(opts ...shoot.Option[dashboard.Options, *dashboard.Options]) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		options := new(dashboard.Options).With(opts...)
@@ -360,6 +411,7 @@ func UseDashboard(opts ...shoot.Option[dashboard.Options, *dashboard.Options]) s
 	}
 }
 
+// Inject registers dependency values for generated handlers.
 func Inject(values ...any) shoot.Option[BrokerOptions, *BrokerOptions] {
 	return func(o *BrokerOptions) {
 		o.Dependencies = append(o.Dependencies, values...)

@@ -25,6 +25,7 @@ type Producer struct {
 	closeOnce sync.Once
 }
 
+// NewProducer creates a broker producer.
 func NewProducer(gapOpts *ingap.Options, opts *Options) (*Producer, error) {
 	ensurer, err := SingleEnsurer(opts)
 	if err != nil {

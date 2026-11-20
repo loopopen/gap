@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	// Data-plane claim pollers for published and received each hold one connection.
-	dataPlaneClaims = 2
+	// Published claims, received claims, and expired-message cleanup can each
+	// hold one data-plane connection.
+	dataPlaneWorkers = 3
 	// Spare slots for the one-shot startup repair and brief overlap.
 	dataPlaneHeadroom = 2
 	dataPlaneMaxIdle  = 4
@@ -53,6 +54,7 @@ type Registry struct {
 	pools sync.Map
 }
 
+// NewRegistry creates a SQL connection-pool registry.
 func NewRegistry(open Opener) *Registry {
 	return &Registry{open: open}
 }
@@ -183,8 +185,8 @@ func (p *Pool) EnsureSchema(schema string, init func() error) error {
 }
 
 // DataPlaneMaxOpen sizes the shared pool to the connections the pipeline can
-// hold at once: two claim transactions, publish updates, handler updates, and
-// a little headroom.
+// hold at once: two claim transactions, one cleanup batch, publish updates,
+// handler updates, and a little headroom.
 // A later subscriber raises the limit; it is never lowered.
 func DataPlaneMaxOpen(opts *ingap.Options) int {
 	publish := opts.MaxPublishConcurrency
@@ -195,5 +197,5 @@ func DataPlaneMaxOpen(opts *ingap.Options) int {
 	if handle < 1 {
 		handle = 1
 	}
-	return dataPlaneClaims + publish + handle + dataPlaneHeadroom
+	return dataPlaneWorkers + publish + handle + dataPlaneHeadroom
 }

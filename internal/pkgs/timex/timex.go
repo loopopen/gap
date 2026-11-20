@@ -9,10 +9,12 @@ type DateTime struct {
 	time.Time
 }
 
+// String returns the string representation of the receiver.
 func (dt DateTime) String() string {
 	return dt.Time.Format(time.DateTime)
 }
 
+// DateString formats a time as a date string.
 func (dt DateTime) DateString() string {
 	return dt.Time.Format(time.DateOnly)
 }
@@ -46,12 +48,14 @@ func (dt *DateTime) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// Now returns the current local time wrapper.
 func Now() DateTime {
 	return DateTime{
 		Time: time.Now().Truncate(time.Second),
 	}
 }
 
+// FromTime wraps a time value.
 func FromTime(t time.Time) DateTime {
 	return DateTime{
 		Time: t.Truncate(time.Second),

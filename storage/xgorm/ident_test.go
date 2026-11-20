@@ -3,23 +3,9 @@ package xgorm
 import (
 	"strings"
 	"testing"
+
+	"github.com/loopopen/gap/storage/xsql"
 )
-
-func TestQuoteIdent(t *testing.T) {
-	quoted, err := quoteIdent("gap")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if quoted != `"gap"` {
-		t.Fatalf("quoted = %s", quoted)
-	}
-
-	for _, name := range []string{"", "gap-schema", `gap";drop`, "1gap", "gap.published", strings.Repeat("a", 64)} {
-		if _, err := quoteIdent(name); err == nil {
-			t.Fatalf("accepted %q", name)
-		}
-	}
-}
 
 func TestPostgresSchemaSQL(t *testing.T) {
 	createSchema, createType, err := postgresSchemaSQL("gap")
@@ -65,7 +51,7 @@ func TestPostgresClaimIndexSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sql != `CREATE INDEX IF NOT EXISTS "idx_published_claim" ON "gap"."published" ("version", "status", "next_attempt_at", "lease_until", "retries")` {
+	if sql != `CREATE INDEX IF NOT EXISTS "idx_published_claim" ON "gap"."published" ("version", "status", "broker_name", "next_attempt_at", "lease_until", "retries")` {
 		t.Fatal(sql)
 	}
 	if _, err := postgresClaimIndexSQL(`gap.published"; drop`, "idx_published_claim"); err == nil {
@@ -74,7 +60,7 @@ func TestPostgresClaimIndexSQL(t *testing.T) {
 }
 
 func TestTableCommentSQL(t *testing.T) {
-	sql, err := tableCommentSQL("postgres", "gap.published", "it's ready")
+	sql, err := tableCommentSQL(xsql.Postgres, "gap.published", "it's ready")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +68,7 @@ func TestTableCommentSQL(t *testing.T) {
 		t.Fatal(sql)
 	}
 
-	sql, err = tableCommentSQL("mysql", "gap_published", "it's ready")
+	sql, err = tableCommentSQL(xsql.MySQL, "gap_published", "it's ready")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -32,6 +32,7 @@ type BoardSvc struct {
 	storage storage.Storage
 }
 
+// NewBoardSvc creates a dashboard service.
 func NewBoardSvc(gapOpts *ingap.Options, opts *dashboard.Options) *BoardSvc {
 	stor := plugin.MustGetDashboardStorage(gapOpts)
 
@@ -42,6 +43,7 @@ func NewBoardSvc(gapOpts *ingap.Options, opts *dashboard.Options) *BoardSvc {
 	}
 }
 
+// HandleSPA serves the dashboard single-page application.
 func (s *BoardSvc) HandleSPA() http.Handler {
 	sub := must(fs.Sub(StaticFiles, DistDir))
 

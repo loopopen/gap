@@ -11,6 +11,7 @@ import (
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
 	ingap "github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/storage/xsql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
@@ -52,11 +53,19 @@ func TestApplyMessageFilters(t *testing.T) {
 }
 
 func TestQuotedGroupColumn(t *testing.T) {
-	if got := quotedGroupColumn("mysql"); got != "`group`" {
-		t.Fatalf("mysql group column = %q", got)
+	mysql, err := quotedGroupColumn(xsql.MySQL)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := quotedGroupColumn("postgres"); got != `"group"` {
-		t.Fatalf("postgres group column = %q", got)
+	if mysql != "`group`" {
+		t.Fatalf("mysql group column = %q", mysql)
+	}
+	postgres, err := quotedGroupColumn(xsql.Postgres)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if postgres != `"group"` {
+		t.Fatalf("postgres group column = %q", postgres)
 	}
 }
 
@@ -75,32 +84,31 @@ func TestMessageOrderByID(t *testing.T) {
 func TestFailExhaustedWhere(t *testing.T) {
 	db, stor := openStorage(t)
 	stor.gapOpts.MaxRetries = 3
-	now := time.Now()
-	where := whereText(stor.exhaustedQuery(db, &Published{}, now, ""))
+	where := whereText(stor.exhaustedQuery(db, &Published{}, "", "orders"))
 	assertPendingDueWhere(t, where)
-	if !strings.Contains(where, "retries >= ?") {
-		t.Fatalf("fail exhausted WHERE %q does not contain retries >= ?", where)
+	if !strings.Contains(where, "retries >= ?") || !strings.Contains(where, "broker_name = ?") {
+		t.Fatalf("fail exhausted WHERE %q does not filter broker name and retries", where)
 	}
 }
 
 func TestClaimWhere(t *testing.T) {
 	db, stor := openStorage(t)
 	stor.gapOpts.MaxRetries = 3
-	where := whereText(stor.claimQuery(db, &Published{}, time.Now(), 10, ""))
+	where := whereText(stor.claimQuery(db, &Published{}, 10, "", "orders"))
 	assertPendingDueWhere(t, where)
-	if !strings.Contains(where, "retries < ?") {
-		t.Fatalf("claim WHERE %q does not contain retries < ?", where)
+	if !strings.Contains(where, "retries < ?") || !strings.Contains(where, "broker_name = ?") {
+		t.Fatalf("claim WHERE %q does not filter broker name and retries", where)
 	}
 	if strings.Contains(where, "retries >= ?") || strings.Contains(where, "`group`") {
 		t.Fatalf("published claim WHERE %q includes the wrong clause", where)
 	}
 
-	received := whereText(stor.claimQuery(db, &Received{}, time.Now(), 10, "billing"))
+	received := whereText(stor.claimQuery(db, &Received{}, 10, "billing", "orders"))
 	assertPendingDueWhere(t, received)
 	if !strings.Contains(received, "`group` = ?") {
 		t.Fatalf("received claim WHERE %q does not filter group", received)
 	}
-	exhausted := whereText(stor.exhaustedQuery(db, &Received{}, time.Now(), "billing"))
+	exhausted := whereText(stor.exhaustedQuery(db, &Received{}, "billing", "orders"))
 	if !strings.Contains(exhausted, "`group` = ?") || !strings.Contains(exhausted, "retries >= ?") {
 		t.Fatalf("received exhausted WHERE %q does not filter group", exhausted)
 	}
@@ -111,8 +119,8 @@ func assertPendingDueWhere(t *testing.T, where string) {
 	for _, condition := range []string{
 		"`version` = ?",
 		"status = ?",
-		"next_attempt_at <= ?",
-		"lease_until IS NULL OR lease_until <= ?",
+		"next_attempt_at <= CURRENT_TIMESTAMP(3)",
+		"lease_until IS NULL OR lease_until <= CURRENT_TIMESTAMP(3)",
 	} {
 		if !strings.Contains(where, condition) {
 			t.Fatalf("WHERE %q does not contain %q", where, condition)
@@ -121,13 +129,21 @@ func assertPendingDueWhere(t *testing.T, where string) {
 }
 
 func TestRetryUpdatesKeepStatus(t *testing.T) {
-	next := time.Date(2026, 11, 11, 8, 30, 0, 0, time.UTC)
-	updates := retryUpdates(next)
+	_, stor := openStorage(t)
+	stor.gapOpts.RetryIntervalSeconds = 10
+	updates := stor.retryUpdates()
 	if _, ok := updates["status"]; ok {
 		t.Fatal("retry update changes status")
 	}
-	if updates["next_attempt_at"] != next {
-		t.Fatalf("next attempt = %v, want %v", updates["next_attempt_at"], next)
+	expr, ok := updates["next_attempt_at"].(clause.Expr)
+	if !ok {
+		t.Fatalf("next attempt = %T, want clause.Expr", updates["next_attempt_at"])
+	}
+	if expr.SQL != "TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3))" {
+		t.Fatalf("next attempt SQL = %q", expr.SQL)
+	}
+	if len(expr.Vars) != 1 || expr.Vars[0] != int64(10) {
+		t.Fatalf("next attempt vars = %#v", expr.Vars)
 	}
 	if updates["lease_token"] != nil || updates["lease_until"] != nil {
 		t.Fatalf("retry update = %#v, want cleared lease", updates)
@@ -135,13 +151,45 @@ func TestRetryUpdatesKeepStatus(t *testing.T) {
 }
 
 func TestStatusUpdatesWriteStatusDirectly(t *testing.T) {
-	updates := statusUpdates(enum.StatusFailed)
+	expiredAt := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	updates := statusUpdates(enum.StatusFailed, expiredAt)
 	if updates["status"] != enum.StatusFailed {
 		t.Fatalf("status update = %v, want %v", updates["status"], enum.StatusFailed)
+	}
+	if updates["expired_at"] != expiredAt {
+		t.Fatalf("expiration = %v, want %v", updates["expired_at"], expiredAt)
 	}
 	for _, field := range []string{"retries", "next_attempt_at"} {
 		if _, ok := updates[field]; ok {
 			t.Fatalf("status update unexpectedly changes %s", field)
+		}
+	}
+}
+
+func TestTerminalExpirationUsesDatabaseClock(t *testing.T) {
+	_, stor := openStorage(t)
+	stor.gapOpts.SucceededRetentionSeconds = 3600
+	expr, ok := stor.terminalExpiration(enum.StatusSucceeded).(clause.Expr)
+	if !ok {
+		t.Fatalf("expiration = %T, want clause.Expr", stor.terminalExpiration(enum.StatusSucceeded))
+	}
+	if expr.SQL != "TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3))" {
+		t.Fatalf("expiration SQL = %q", expr.SQL)
+	}
+	if len(expr.Vars) != 1 || expr.Vars[0] != int64(3600) {
+		t.Fatalf("expiration vars = %#v", expr.Vars)
+	}
+}
+
+func TestCleanupSQLUsesTerminalStatusExpiryAndSkipLocked(t *testing.T) {
+	for _, sql := range []string{
+		mysqlDeleteExpiredSQL("`gap_published`"),
+		postgresDeleteExpiredSQL(`"gap"."published"`, `"gap"."status_enum"`),
+	} {
+		for _, condition := range []string{"expired_at", "status", "SKIP LOCKED"} {
+			if !strings.Contains(sql, condition) {
+				t.Fatalf("cleanup SQL %q does not contain %q", sql, condition)
+			}
 		}
 	}
 }
@@ -242,7 +290,7 @@ func openStorage(t *testing.T) (*gorm.DB, *Storage) {
 
 type nopDialector struct{}
 
-func (nopDialector) Name() string                    { return "mysql" }
+func (nopDialector) Name() string                    { return xsql.MySQL }
 func (nopDialector) Initialize(*gorm.DB) error       { return nil }
 func (nopDialector) Migrator(*gorm.DB) gorm.Migrator { return nil }
 func (nopDialector) DataTypeOf(*schema.Field) string { return "" }

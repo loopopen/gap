@@ -36,6 +36,7 @@ func WrapTx(tx *sql.Tx, logSQL bool) *Tx {
 	return &Tx{tx: tx, logOn: logSQL}
 }
 
+// BeginTx starts a database transaction.
 func (d *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
 	tx, err := d.db.BeginTx(ctx, opts)
 	if err != nil {
@@ -44,26 +45,31 @@ func (d *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
 	return &Tx{tx: tx, logOn: d.logOn}, nil
 }
 
+// Exec executes a SQL statement.
 func (d *DB) Exec(query string, args ...any) (sql.Result, error) {
 	return d.ExecContext(context.Background(), query, args...)
 }
 
+// ExecContext executes a SQL statement with context cancellation.
 func (d *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return execLogged(d.logOn, query, args, func() (sql.Result, error) {
 		return d.db.ExecContext(ctx, query, args...)
 	})
 }
 
+// QueryContext executes a SQL query with context cancellation.
 func (d *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return queryLogged(d.logOn, query, args, func() (*sql.Rows, error) {
 		return d.db.QueryContext(ctx, query, args...)
 	})
 }
 
+// QueryRow executes a SQL query expected to return one row.
 func (d *DB) QueryRow(query string, args ...any) *Row {
 	return d.QueryRowContext(context.Background(), query, args...)
 }
 
+// QueryRowContext executes a single-row SQL query with context cancellation.
 func (d *DB) QueryRowContext(ctx context.Context, query string, args ...any) *Row {
 	started := time.Now()
 	return &Row{
@@ -75,22 +81,27 @@ func (d *DB) QueryRowContext(ctx context.Context, query string, args ...any) *Ro
 	}
 }
 
+// Commit commits the SQL transaction.
 func (t *Tx) Commit() error { return t.tx.Commit() }
 
+// Rollback rolls back the transaction.
 func (t *Tx) Rollback() error { return t.tx.Rollback() }
 
+// ExecContext executes a SQL statement with context cancellation.
 func (t *Tx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return execLogged(t.logOn, query, args, func() (sql.Result, error) {
 		return t.tx.ExecContext(ctx, query, args...)
 	})
 }
 
+// QueryContext executes a SQL query with context cancellation.
 func (t *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return queryLogged(t.logOn, query, args, func() (*sql.Rows, error) {
 		return t.tx.QueryContext(ctx, query, args...)
 	})
 }
 
+// QueryRowContext executes a single-row SQL query with context cancellation.
 func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *Row {
 	return &Row{
 		row:     t.tx.QueryRowContext(ctx, query, args...),
@@ -110,6 +121,7 @@ type Row struct {
 	started time.Time
 }
 
+// Scan decodes a database value into the receiver.
 func (r *Row) Scan(dest ...any) error {
 	err := r.row.Scan(dest...)
 	if r.logOn {

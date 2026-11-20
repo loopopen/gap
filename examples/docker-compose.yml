@@ -49,6 +49,8 @@ services:
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: examples-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_VHOST: example
     ports:
         - 5672:5672
         - 15672:15672

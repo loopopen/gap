@@ -19,4 +19,5 @@ use (
 	./examples/kafka2-postgres-example-gin
 	./examples/kafka-gorm-postgres-example
 	./examples/rabbitmq-gorm-mysql-example
+	./storage/contracttest
 )

@@ -11,6 +11,7 @@ func publishedCreateSQL(table string) string {
 			"`created_at` datetime(3) NOT NULL,"+
 			"`version` varchar(16) NOT NULL,"+
 			"`topic` varchar(256) NOT NULL,"+
+			"`broker_name` varchar(128) NOT NULL,"+
 			"`status` "+statusColumnType+" NOT NULL,"+
 			"`headers` text,"+
 			"`payload` longtext,"+
@@ -32,6 +33,7 @@ func receivedCreateSQL(table string) string {
 			"`created_at` datetime(3) NOT NULL,"+
 			"`version` varchar(16) NOT NULL,"+
 			"`topic` varchar(256) NOT NULL,"+
+			"`broker_name` varchar(128) NOT NULL,"+
 			"`status` "+statusColumnType+" NOT NULL,"+
 			"`headers` text,"+
 			"`payload` longtext,"+

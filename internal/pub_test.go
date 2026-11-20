@@ -50,7 +50,7 @@ func (*brokerPluginStub) OpenConsumer(*ingap.Options, string) (broker.Consumer, 
 	return nil, nil
 }
 
-func TestPublishWritesStableBrokerRouteHeaders(t *testing.T) {
+func TestPublishRecordsBrokerNameAndTypeHeader(t *testing.T) {
 	entity.MustInitSnowflake(1)
 	producer := new(producerStub)
 	opts := &ingap.Options{
@@ -64,8 +64,8 @@ func TestPublishWritesStableBrokerRouteHeaders(t *testing.T) {
 	if err := pub.Publish(context.Background(), "created", "payload"); err != nil {
 		t.Fatal(err)
 	}
-	if got := producer.envelope.Headers[KeysBrokerName]; got != "orders" {
-		t.Fatalf("broker name header = %q, want orders", got)
+	if got := producer.envelope.BrokerName; got != "orders" {
+		t.Fatalf("broker name = %q, want orders", got)
 	}
 	if got := producer.envelope.Headers[KeysBrokerType]; got != "RabbitMQ" {
 		t.Fatalf("broker type header = %q, want RabbitMQ", got)

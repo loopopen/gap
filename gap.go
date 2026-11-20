@@ -9,7 +9,7 @@ import (
 	"github.com/loopopen/gap/internal/txer"
 )
 
-const version = "v1.0.0-beta.5"
+const version = "v1.0.0-beta.7"
 
 const (
 	KeysMessageID     = internal.KeysMessageID
@@ -20,6 +20,7 @@ const (
 	KeysBrokerType    = internal.KeysBrokerType
 )
 
+// Pair returns a two-value tuple for APIs that accept paired values.
 var Pair = internal.Pair
 
 type Txer = txer.Txer

@@ -53,10 +53,6 @@ func New(opts ...shoot.Option[Options, *Options]) *Gap {
 	return g
 }
 
-func (g *Gap) publisherOptions(opts ...shoot.Option[BrokerOptions, *BrokerOptions]) *BrokerOptions {
-	return new(BrokerOptions).With(opts...)
-}
-
 // Shutdown stops intake, drains accepted work, cancels work that exceeds ctx,
 // and closes runtime-owned resources. It is safe to call more than once.
 func (g *Gap) Shutdown(ctx context.Context) error {
@@ -96,6 +92,9 @@ func (g *Gap) shutdown(ctx context.Context) (err error) {
 			g.pump.Seal()
 		}
 		g.opts.CancelWork()
+		if g.pump != nil {
+			err = errors.Join(err, g.pump.StopRenewals(ctx))
+		}
 		err = errors.Join(err, g.opts.CloseResources(ctx))
 	}()
 
