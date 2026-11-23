@@ -35,11 +35,13 @@ STORAGE_COMPOSE := docker compose -f storage/contracttest/docker-compose.yml
 	tidy generate build-ui versions release tidy-modules gen-modules
 
 test:
+	@sh scripts/release_test.sh
 	@for dir in $(MODULES); do \
 		(cd $$dir && go test ./...) || exit 1; \
 	done
 
 test-isolated:
+	@sh scripts/release_test.sh
 	@GOWORK=off go test ./...
 	@for dir in $(PLUGIN_MODULES); do \
 		(cd $$dir && \
