@@ -18,10 +18,11 @@ import (
 	"github.com/loopopen/gap/internal/txer"
 	"github.com/loopopen/gap/internal/utility"
 	"github.com/loopopen/gap/storage"
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/storage/internal/xsql"
+	dbmodel "github.com/loopopen/gap/storage/xmysql/internal/model"
 )
 
-type Storage struct {
+type storageAdapter struct {
 	gapOpts *ingap.Options
 	opts    *Options
 	db      *xsql.DB
@@ -31,14 +32,14 @@ type Storage struct {
 	closeOnce sync.Once
 }
 
-func (s *Storage) execer() Execer {
+func (s *storageAdapter) execer() xsql.Execer {
 	if s.tx != nil {
 		return s.tx
 	}
 	return s.db
 }
 
-func (s *Storage) beginClaim(ctx context.Context) (tx *xsql.Tx, own bool, err error) {
+func (s *storageAdapter) beginClaim(ctx context.Context) (tx *xsql.Tx, own bool, err error) {
 	if s.tx != nil {
 		return s.tx, false, nil
 	}
@@ -50,12 +51,12 @@ func (s *Storage) beginClaim(ctx context.Context) (tx *xsql.Tx, own bool, err er
 }
 
 // Bind implements [storage.Storage].
-func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
+func (s *storageAdapter) Bind(txer txer.Txer) (storage.Storage, error) {
 	tx, ok := txer.Tx().(*sql.Tx)
 	if !ok {
 		return nil, errx.ErrInvalidSQLTx
 	}
-	newS := Storage{
+	newS := storageAdapter{
 		gapOpts: s.gapOpts,
 		opts:    s.opts,
 		db:      s.db,
@@ -65,16 +66,16 @@ func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
 }
 
 // InTx reports whether the storage is bound to a transaction.
-func (s *Storage) InTx() bool {
+func (s *storageAdapter) InTx() bool {
 	return s.tx != nil
 }
 
 // ClaimPublishedBatch implements [storage.Storage].
-func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, brokerName string) (es []*entity.Envelope, err error) {
+func (s *storageAdapter) ClaimPublishedBatch(ctx context.Context, batchSize int, brokerName string) (es []*entity.Envelope, err error) {
 	o := s.gapOpts
 	now := time.Now()
 
-	var pubs []*Published
+	var pubs []*dbmodel.Published
 	table, err := s.quotedTable("published")
 	if err != nil {
 		return nil, err
@@ -103,7 +104,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, broker
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var pub Published
+		var pub dbmodel.Published
 		err = rows.Scan(
 			&pub.ID,
 			&pub.CreatedAt,
@@ -146,7 +147,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, broker
 	if err != nil {
 		return nil, err
 	}
-	es, err = pubsToEntities(pubs)
+	es, err = dbmodel.PublishedToEntities(pubs)
 	if err != nil {
 		return nil, err
 	}
@@ -154,11 +155,11 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, broker
 }
 
 // ClaimReceivedBatch implements [storage.Storage].
-func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, brokerName string) (es []*entity.Envelope, err error) {
+func (s *storageAdapter) ClaimReceivedBatch(ctx context.Context, batchSize int, group, brokerName string) (es []*entity.Envelope, err error) {
 	o := s.gapOpts
 	now := time.Now()
 
-	var recs []*Received
+	var recs []*dbmodel.Received
 	table, err := s.quotedTable("received")
 	if err != nil {
 		return nil, err
@@ -187,7 +188,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var rec Received
+		var rec dbmodel.Received
 		err = rows.Scan(
 			&rec.ID,
 			&rec.CreatedAt,
@@ -231,21 +232,21 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 	if err != nil {
 		return nil, err
 	}
-	es, err = recsToEntities(recs)
+	es, err = dbmodel.ReceivedToEntities(recs)
 	if err != nil {
 		return nil, err
 	}
 	return es, nil
 }
 
-func (s *Storage) failExhaustedPublished(ctx context.Context, tx *xsql.Tx, table, brokerName string) error {
+func (s *storageAdapter) failExhaustedPublished(ctx context.Context, tx *xsql.Tx, table, brokerName string) error {
 	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
 	_, err := tx.ExecContext(ctx, failExhaustedPublishedSQL(table),
 		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, s.gapOpts.MaxRetries)...)
 	return err
 }
 
-func (s *Storage) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table, group, brokerName string) error {
+func (s *storageAdapter) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table, group, brokerName string) error {
 	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
 	_, err := tx.ExecContext(ctx, failExhaustedReceivedSQL(table),
 		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, s.gapOpts.MaxRetries, group)...)
@@ -323,15 +324,15 @@ func exhaustedArgs(failed enum.Status, retention int64, version, brokerName stri
 }
 
 // CreatePublished implements [storage.Storage].
-func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope) error {
+func (s *storageAdapter) CreatePublished(ctx context.Context, envelope *entity.Envelope) error {
 	if envelope == nil {
 		return errx.ErrParamIsNil("envelope")
 	}
 
 	envelope.WithLease(s.gapOpts.LeaseTTL())
-	pub := new(Published).FromEntity(envelope)
-	if pub.err != nil {
-		return pub.err
+	pub := new(dbmodel.Published).FromEntity(envelope)
+	if pub.Err() != nil {
+		return pub.Err()
 	}
 	table, err := s.quotedTable("published")
 	if err != nil {
@@ -364,15 +365,15 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 }
 
 // CreateReceived implements [storage.Storage].
-func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope) error {
+func (s *storageAdapter) CreateReceived(ctx context.Context, envelope *entity.Envelope) error {
 	if envelope == nil {
 		return errx.ErrParamIsNil("envelope")
 	}
 
 	envelope.WithLease(s.gapOpts.LeaseTTL())
-	rec := new(Received).FromEntity(envelope)
-	if rec.err != nil {
-		return rec.err
+	rec := new(dbmodel.Received).FromEntity(envelope)
+	if rec.Err() != nil {
+		return rec.Err()
 	}
 	table, err := s.quotedTable("received")
 	if err != nil {
@@ -405,7 +406,7 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 }
 
 // UpdateStatusPublished implements [storage.Storage].
-func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+func (s *storageAdapter) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
 	if status == enum.StatusPending {
 		return s.scheduleRetry(ctx, "published", id, leaseToken)
 	}
@@ -430,7 +431,7 @@ func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken
 }
 
 // UpdateStatusReceived implements [storage.Storage].
-func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+func (s *storageAdapter) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
 	if status == enum.StatusPending {
 		return s.scheduleRetry(ctx, "received", id, leaseToken)
 	}
@@ -454,12 +455,12 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken 
 	return nil
 }
 
-func (s *Storage) updateStatus(ctx context.Context, table string, id uint, leaseToken string, status enum.Status) (sql.Result, error) {
+func (s *storageAdapter) updateStatus(ctx context.Context, table string, id uint, leaseToken string, status enum.Status) (sql.Result, error) {
 	retentionSeconds := int64(s.gapOpts.Retention(status) / time.Second)
 	return s.execer().ExecContext(ctx, updateStatusSQL(table), status, retentionSeconds, id, enum.StatusPending, leaseToken)
 }
 
-func (s *Storage) scheduleRetry(ctx context.Context, base string, id uint, leaseToken string) error {
+func (s *storageAdapter) scheduleRetry(ctx context.Context, base string, id uint, leaseToken string) error {
 	table, err := s.quotedTable(base)
 	if err != nil {
 		return err
@@ -489,16 +490,16 @@ func updateStatusSQL(table string) string {
 }
 
 // DeleteExpiredPublishedBatch deletes one batch of expired terminal published messages.
-func (s *Storage) DeleteExpiredPublishedBatch(ctx context.Context, batchSize int) (int64, error) {
+func (s *storageAdapter) DeleteExpiredPublishedBatch(ctx context.Context, batchSize int) (int64, error) {
 	return s.deleteExpiredBatch(ctx, "published", batchSize)
 }
 
 // DeleteExpiredReceivedBatch deletes one batch of expired terminal received messages.
-func (s *Storage) DeleteExpiredReceivedBatch(ctx context.Context, batchSize int) (int64, error) {
+func (s *storageAdapter) DeleteExpiredReceivedBatch(ctx context.Context, batchSize int) (int64, error) {
 	return s.deleteExpiredBatch(ctx, "received", batchSize)
 }
 
-func (s *Storage) deleteExpiredBatch(ctx context.Context, base string, batchSize int) (int64, error) {
+func (s *storageAdapter) deleteExpiredBatch(ctx context.Context, base string, batchSize int) (int64, error) {
 	table, err := s.quotedTable(base)
 	if err != nil {
 		return 0, err
@@ -521,9 +522,9 @@ func logSQL(opts *Options) bool {
 	return opts != nil && opts.Log
 }
 
-// NewStorage creates a storage adapter.
-func NewStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *Storage {
-	s := &Storage{
+// newStorage creates a storage adapter.
+func newStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *storageAdapter {
+	s := &storageAdapter{
 		gapOpts: gapOpts,
 		opts:    opts,
 		db:      xsql.WrapDB(db, logSQL(opts)),
@@ -532,7 +533,7 @@ func NewStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *Storage {
 	return s
 }
 
-func (s *Storage) init() error {
+func (s *storageAdapter) init() error {
 	published, err := s.quotedTable("published")
 	if err != nil {
 		return err
@@ -568,7 +569,7 @@ func (s *Storage) init() error {
 	return s.ensureCleanupIndex(receivedName, "idx_received_cleanup")
 }
 
-func (s *Storage) ensureClaimIndex(table, index string) error {
+func (s *storageAdapter) ensureClaimIndex(table, index string) error {
 	var n int
 	err := s.db.QueryRow(
 		`SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
@@ -606,7 +607,7 @@ func claimIndexSQL(table, index string) (string, error) {
 	), nil
 }
 
-func (s *Storage) ensureCleanupIndex(table, index string) error {
+func (s *storageAdapter) ensureCleanupIndex(table, index string) error {
 	var n int
 	err := s.db.QueryRow(
 		`SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
@@ -641,7 +642,7 @@ func cleanupIndexSQL(table, index string) (string, error) {
 	return fmt.Sprintf("CREATE INDEX %s ON %s (`expired_at`, `id`)", quotedIndex, quotedTable), nil
 }
 
-func (s *Storage) tableName(base string) (string, error) {
+func (s *storageAdapter) tableName(base string) (string, error) {
 	name := s.opts.Schema + "_" + base
 	if _, err := xsql.Quote(xsql.MySQL, name); err != nil {
 		return "", fmt.Errorf("schema: %w", err)
@@ -649,7 +650,7 @@ func (s *Storage) tableName(base string) (string, error) {
 	return name, nil
 }
 
-func (s *Storage) quotedTable(base string) (string, error) {
+func (s *storageAdapter) quotedTable(base string) (string, error) {
 	name, err := s.tableName(base)
 	if err != nil {
 		return "", err

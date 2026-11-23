@@ -1,33 +1,14 @@
-package xsql
+package storage
 
 import (
 	"context"
 	"database/sql"
 
-	"github.com/loopopen/gap"
-	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/internal/txer"
 )
 
-type SqlTx struct {
-	*storage.TxerBase
-	tx *sql.Tx
-}
-
-func newTxer(tx *sql.Tx) *SqlTx {
-	txer := &SqlTx{
-		TxerBase: &storage.TxerBase{},
-		tx:       tx,
-	}
-	return txer
-}
-
-// Tx returns the underlying database transaction.
-func (tx *SqlTx) Tx() any {
-	return tx.tx
-}
-
 // DoInTx runs a callback inside a database transaction.
-func DoInTx(ctx context.Context, action func(context.Context, gap.Txer) error, db *sql.DB, opts ...*sql.TxOptions) (err error) {
+func DoInTx(ctx context.Context, action func(context.Context, txer.Txer) error, db *sql.DB, opts ...*sql.TxOptions) (err error) {
 	var sqlOpts *sql.TxOptions
 	if len(opts) > 0 {
 		sqlOpts = opts[0]
@@ -39,7 +20,7 @@ func DoInTx(ctx context.Context, action func(context.Context, gap.Txer) error, d
 		return
 	}
 
-	var txer gap.Txer = newTxer(tx)
+	var txer txer.Txer = newTxer(tx)
 
 	panicked := true
 	defer func() {
@@ -62,4 +43,22 @@ func DoInTx(ctx context.Context, action func(context.Context, gap.Txer) error, d
 	panicked = false
 	txer.Flush()
 	return
+}
+
+type sqlTx struct {
+	*TxerBase
+	tx *sql.Tx
+}
+
+func newTxer(tx *sql.Tx) *sqlTx {
+	txer := &sqlTx{
+		TxerBase: &TxerBase{},
+		tx:       tx,
+	}
+	return txer
+}
+
+// Tx returns the underlying database transaction.
+func (tx *sqlTx) Tx() any {
+	return tx.tx
 }

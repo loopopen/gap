@@ -9,7 +9,8 @@ import (
 	"time"
 
 	ingap "github.com/loopopen/gap/internal/gap"
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/storage/internal/xsql"
 )
 
 func TestIntegrationPoolOwnership(t *testing.T) {
@@ -50,21 +51,21 @@ func assertPoolOwnership(t *testing.T, dsn, schema string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	first, err := opts.OpenStorage(gapOpts, xsql.RoleData)
+	first, err := opts.OpenStorage(gapOpts, storage.RoleData)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := opts.OpenStorage(gapOpts, xsql.RoleData)
+	second, err := opts.OpenStorage(gapOpts, storage.RoleData)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dashboard, err := opts.OpenStorage(gapOpts, xsql.RoleDashboard)
+	dashboard, err := opts.OpenStorage(gapOpts, storage.RoleDashboard)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s1 := first.(*Storage)
-	s2 := second.(*Storage)
-	board := dashboard.(*Storage)
+	s1 := first.(*storageAdapter)
+	s2 := second.(*storageAdapter)
+	board := dashboard.(*storageAdapter)
 	if s1.pool.DB != s2.pool.DB {
 		t.Fatal("same dsn opened two data-plane pools")
 	}
@@ -89,13 +90,13 @@ func assertPoolOwnership(t *testing.T, dsn, schema string) {
 		t.Fatalf("last runtime close: %v", err)
 	}
 
-	reopened, err := opts.OpenStorage(gapOpts, xsql.RoleData)
+	reopened, err := opts.OpenStorage(gapOpts, storage.RoleData)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = reopened.(*Storage).Close() })
+	t.Cleanup(func() { _ = reopened.(*storageAdapter).Close() })
 	t.Cleanup(func() { _ = board.Close() })
-	again := reopened.(*Storage)
+	again := reopened.(*storageAdapter)
 	if again.pool.DB == s1.pool.DB {
 		t.Fatal("reopen reused a closed pool")
 	}

@@ -11,7 +11,8 @@ import (
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
 	ingap "github.com/loopopen/gap/internal/gap"
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/storage/internal/xsql"
+	dbmodel "github.com/loopopen/gap/storage/xgorm/internal/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
@@ -23,7 +24,7 @@ func TestApplyMessageFilters(t *testing.T) {
 	from := time.Date(2026, 10, 17, 9, 30, 0, 0, time.UTC)
 	to := from.Add(time.Hour)
 	id := uint(1844674407370955)
-	filtered := applyMessageFilters(db.Model(&Received{}), &entity.MessageFilter{
+	filtered := applyMessageFilters(db.Model(&dbmodel.Received{}), &entity.MessageFilter{
 		ID:          &id,
 		Status:      enum.StatusPending,
 		Topic:       "orders.created",
@@ -84,7 +85,7 @@ func TestMessageOrderByID(t *testing.T) {
 func TestFailExhaustedWhere(t *testing.T) {
 	db, stor := openStorage(t)
 	stor.gapOpts.MaxRetries = 3
-	where := whereText(stor.exhaustedQuery(db, &Published{}, "", "orders"))
+	where := whereText(stor.exhaustedQuery(db, &dbmodel.Published{}, "", "orders"))
 	assertPendingDueWhere(t, where)
 	if !strings.Contains(where, "retries >= ?") || !strings.Contains(where, "broker_name = ?") {
 		t.Fatalf("fail exhausted WHERE %q does not filter broker name and retries", where)
@@ -94,7 +95,7 @@ func TestFailExhaustedWhere(t *testing.T) {
 func TestClaimWhere(t *testing.T) {
 	db, stor := openStorage(t)
 	stor.gapOpts.MaxRetries = 3
-	where := whereText(stor.claimQuery(db, &Published{}, 10, "", "orders"))
+	where := whereText(stor.claimQuery(db, &dbmodel.Published{}, 10, "", "orders"))
 	assertPendingDueWhere(t, where)
 	if !strings.Contains(where, "retries < ?") || !strings.Contains(where, "broker_name = ?") {
 		t.Fatalf("claim WHERE %q does not filter broker name and retries", where)
@@ -103,12 +104,12 @@ func TestClaimWhere(t *testing.T) {
 		t.Fatalf("published claim WHERE %q includes the wrong clause", where)
 	}
 
-	received := whereText(stor.claimQuery(db, &Received{}, 10, "billing", "orders"))
-	assertPendingDueWhere(t, received)
-	if !strings.Contains(received, "`group` = ?") {
-		t.Fatalf("received claim WHERE %q does not filter group", received)
+	receivedWhere := whereText(stor.claimQuery(db, &dbmodel.Received{}, 10, "billing", "orders"))
+	assertPendingDueWhere(t, receivedWhere)
+	if !strings.Contains(receivedWhere, "`group` = ?") {
+		t.Fatalf("received claim WHERE %q does not filter group", receivedWhere)
 	}
-	exhausted := whereText(stor.exhaustedQuery(db, &Received{}, "billing", "orders"))
+	exhausted := whereText(stor.exhaustedQuery(db, &dbmodel.Received{}, "billing", "orders"))
 	if !strings.Contains(exhausted, "`group` = ?") || !strings.Contains(exhausted, "retries >= ?") {
 		t.Fatalf("received exhausted WHERE %q does not filter group", exhausted)
 	}
@@ -220,12 +221,12 @@ func TestSetDBSharedStatementLeaksCallerClause(t *testing.T) {
 	}
 }
 
-func storageSQL(t *testing.T, stor *Storage) string {
+func storageSQL(t *testing.T, stor *storageAdapter) string {
 	t.Helper()
 	var query *gorm.DB
 	sql := stor.db.ToSQL(func(tx *gorm.DB) *gorm.DB {
 		t.Logf("toSQL tx callbacks nil=%v clone=%v", callbacksNil(tx), cloneOf(tx))
-		query = tx.WithContext(context.Background()).Model(&Published{}).Find(&[]Published{})
+		query = tx.WithContext(context.Background()).Model(&dbmodel.Published{}).Find(&[]dbmodel.Published{})
 		t.Logf("inner sql=%q err=%v clauses=%v callbacks nil=%v dry=%v", query.Statement.SQL.String(), query.Error, clauseNames(query.Statement), callbacksNil(query), query.DryRun)
 		return query
 	})
@@ -273,7 +274,7 @@ func clauseNames(stmt *gorm.Statement) []string {
 	return names
 }
 
-func openStorage(t *testing.T) (*gorm.DB, *Storage) {
+func openStorage(t *testing.T) (*gorm.DB, *storageAdapter) {
 	t.Helper()
 	db, err := gorm.Open(nopDialector{}, &gorm.Config{
 		DisableAutomaticPing: true,
@@ -282,7 +283,7 @@ func openStorage(t *testing.T) (*gorm.DB, *Storage) {
 	if err != nil {
 		t.Fatalf("open gorm: %v", err)
 	}
-	stor := NewStorage(&ingap.Options{
+	stor := newStorage(&ingap.Options{
 		Version: "v1",
 	}, &Options{Schema: "gap"}, db)
 	return db, stor

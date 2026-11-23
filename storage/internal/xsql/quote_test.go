@@ -40,7 +40,7 @@ func TestQuote(t *testing.T) {
 		t.Fatal("postgres accepted a 64-character identifier")
 	}
 	if _, err := Quote("sqlite", "gap"); err == nil {
-		t.Fatal("accepted unknown dialector")
+		t.Fatal("accepted unknown dialect")
 	}
 }
 

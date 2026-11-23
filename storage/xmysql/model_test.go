@@ -7,6 +7,7 @@ import (
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
+	dbmodel "github.com/loopopen/gap/storage/xmysql/internal/model"
 )
 
 func TestClaimIndexSQL(t *testing.T) {
@@ -169,7 +170,7 @@ func TestPublishedCreateSQLIncludesLeaseColumns(t *testing.T) {
 }
 
 func TestQuotedTable(t *testing.T) {
-	s := &Storage{opts: &Options{Schema: "gap"}}
+	s := &storageAdapter{opts: &Options{Schema: "gap"}}
 	table, err := s.quotedTable("published")
 	if err != nil {
 		t.Fatal(err)
@@ -184,18 +185,18 @@ func TestQuotedTable(t *testing.T) {
 }
 
 func TestToEntityInvalidHeaders(t *testing.T) {
-	p := &Published{ID: 7, Headers: "{"}
+	p := &dbmodel.Published{ID: 7, Headers: "{"}
 	en := p.ToEntity()
-	if p.err == nil {
+	if p.Err() == nil {
 		t.Fatal("expected decode error")
 	}
 	if en.Headers != nil {
 		t.Fatalf("headers = %#v", en.Headers)
 	}
 
-	r := &Received{ID: 8, Headers: "{", Group: "g"}
+	r := &dbmodel.Received{ID: 8, Headers: "{", Group: "g"}
 	en = r.ToEntity()
-	if r.err == nil {
+	if r.Err() == nil {
 		t.Fatal("expected decode error")
 	}
 	if en.Headers != nil {
@@ -204,10 +205,10 @@ func TestToEntityInvalidHeaders(t *testing.T) {
 }
 
 func TestToEntityHeaders(t *testing.T) {
-	p := &Published{ID: 7, Headers: `{"k":"v"}`}
+	p := &dbmodel.Published{ID: 7, Headers: `{"k":"v"}`}
 	en := p.ToEntity()
-	if p.err != nil {
-		t.Fatal(p.err)
+	if p.Err() != nil {
+		t.Fatal(p.Err())
 	}
 	if en.Headers["k"] != "v" {
 		t.Fatalf("headers = %#v", en.Headers)
@@ -216,19 +217,19 @@ func TestToEntityHeaders(t *testing.T) {
 
 func TestFromEntityRejectsUnmarshalablePayload(t *testing.T) {
 	en := &entity.Envelope{ID: 3, Message: make(chan int)}
-	p := new(Published).FromEntity(en)
-	if p.err == nil {
+	p := new(dbmodel.Published).FromEntity(en)
+	if p.Err() == nil {
 		t.Fatal("expected encode error")
 	}
 	if p.Payload != "" {
 		t.Fatalf("payload = %q", p.Payload)
 	}
-	if !strings.Contains(p.err.Error(), "encode payload") {
-		t.Fatal(p.err)
+	if !strings.Contains(p.Err().Error(), "encode payload") {
+		t.Fatal(p.Err())
 	}
 
-	r := new(Received).FromEntity(en)
-	if r.err == nil {
+	r := new(dbmodel.Received).FromEntity(en)
+	if r.Err() == nil {
 		t.Fatal("expected encode error")
 	}
 	if r.Payload != "" {
@@ -247,9 +248,9 @@ func TestFromEntityPayloadAndHeaders(t *testing.T) {
 		LeaseUntil:    now.Add(time.Minute),
 		NextAttemptAt: now,
 	}
-	p := new(Published).FromEntity(en)
-	if p.err != nil {
-		t.Fatal(p.err)
+	p := new(dbmodel.Published).FromEntity(en)
+	if p.Err() != nil {
+		t.Fatal(p.Err())
 	}
 	if p.Payload != `{"a":"b"}` {
 		t.Fatalf("payload = %q", p.Payload)

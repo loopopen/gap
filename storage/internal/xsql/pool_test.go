@@ -233,7 +233,7 @@ func closedDB(err error) bool {
 }
 
 func TestOpenEmptyDSN(t *testing.T) {
-	db, err := Open(context.Background(), MySQL, " ")
+	db, err := Open(context.Background(), string(MySQL), " ")
 	if err == nil || db != nil {
 		t.Fatalf("db=%v err=%v", db, err)
 	}
@@ -244,7 +244,7 @@ func TestOpenEmptyDSN(t *testing.T) {
 
 func TestSetupConnectorSetsSQL(t *testing.T) {
 	conn := &fakeConn{}
-	got, err := (SetupConnector{Connector: fakeConnector{conn: conn}, SQL: "SET x"}).Connect(context.Background())
+	got, err := (setupConnector{Connector: fakeConnector{conn: conn}, sql: "SET x"}).Connect(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +261,7 @@ func TestSetupConnectorSetsSQL(t *testing.T) {
 
 func TestSetupConnectorClosesOnExecError(t *testing.T) {
 	conn := &fakeConn{execErr: errors.New("unknown variable")}
-	_, err := (SetupConnector{Connector: fakeConnector{conn: conn}, SQL: "SET x"}).Connect(context.Background())
+	_, err := (setupConnector{Connector: fakeConnector{conn: conn}, sql: "SET x"}).Connect(context.Background())
 	if err == nil {
 		t.Fatal("expected exec error")
 	}

@@ -16,18 +16,19 @@ import (
 	"github.com/loopopen/gap/internal/txer"
 	"github.com/loopopen/gap/internal/utility"
 	"github.com/loopopen/gap/storage"
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/storage/internal/xsql"
+	dbmodel "github.com/loopopen/gap/storage/xgorm/internal/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 )
 
-type TableCommenter interface {
+type tableCommenter interface {
 	TableComment() string
 }
 
-type Storage struct {
+type storageAdapter struct {
 	gapOpts *ingap.Options
 	opts    *Options
 	db      *gorm.DB
@@ -37,17 +38,17 @@ type Storage struct {
 }
 
 // CreatePublished implements [storage.Storage].
-func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope) error {
+func (s *storageAdapter) CreatePublished(ctx context.Context, envelope *entity.Envelope) error {
 	if envelope == nil {
 		return errx.ErrParamIsNil("envelope")
 	}
 
 	envelope.WithLease(s.gapOpts.LeaseTTL())
-	pub := new(Published).FromEntity(envelope)
-	if pub.err != nil {
-		return pub.err
+	pub := new(dbmodel.Published).FromEntity(envelope)
+	if pub.Err() != nil {
+		return pub.Err()
 	}
-	err := s.insertMessage(ctx, &Published{}, pub.Model, "")
+	err := s.insertMessage(ctx, &dbmodel.Published{}, pub.Model, "")
 	if err != nil {
 		return err
 	}
@@ -57,17 +58,17 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 }
 
 // CreateReceived persists a newly received message.
-func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope) error {
+func (s *storageAdapter) CreateReceived(ctx context.Context, envelope *entity.Envelope) error {
 	if envelope == nil {
 		return errx.ErrParamIsNil("envelope")
 	}
 
 	envelope.WithLease(s.gapOpts.LeaseTTL())
-	rec := new(Received).FromEntity(envelope)
-	if rec.err != nil {
-		return rec.err
+	rec := new(dbmodel.Received).FromEntity(envelope)
+	if rec.Err() != nil {
+		return rec.Err()
 	}
-	err := s.insertMessage(ctx, &Received{}, rec.Model, rec.Group)
+	err := s.insertMessage(ctx, &dbmodel.Received{}, rec.Model, rec.Group)
 	if err != nil {
 		return err
 	}
@@ -76,9 +77,9 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 	return nil
 }
 
-// NewStorage creates a storage adapter.
-func NewStorage(gapOpts *ingap.Options, opts *Options, db *gorm.DB) *Storage {
-	stor := &Storage{
+// newStorage creates a storage adapter.
+func newStorage(gapOpts *ingap.Options, opts *Options, db *gorm.DB) *storageAdapter {
+	stor := &storageAdapter{
 		gapOpts: gapOpts,
 		opts:    opts,
 	}
@@ -88,7 +89,7 @@ func NewStorage(gapOpts *ingap.Options, opts *Options, db *gorm.DB) *Storage {
 	return stor
 }
 
-func (s *Storage) setDB(db *gorm.DB) {
+func (s *storageAdapter) setDB(db *gorm.DB) {
 	conf := *db.Config
 	namer := schema.NamingStrategy{
 		SingularTable: true,
@@ -110,7 +111,7 @@ func (s *Storage) setDB(db *gorm.DB) {
 	s.db = dbClone
 }
 
-func (s *Storage) init() error {
+func (s *storageAdapter) init() error {
 	if _, err := xsql.Quote(s.db.Dialector.Name(), s.opts.Schema); err != nil {
 		return fmt.Errorf("schema: %w", err)
 	}
@@ -129,10 +130,10 @@ func (s *Storage) init() error {
 		}
 	}
 
-	return s.autoMigrate(&Published{}, &Received{})
+	return s.autoMigrate(&dbmodel.Published{}, &dbmodel.Received{})
 }
 
-func (s *Storage) autoMigrate(models ...any) error {
+func (s *storageAdapter) autoMigrate(models ...any) error {
 	dname := s.db.Dialector.Name()
 	for _, model := range models {
 		stmt := &gorm.Statement{DB: s.db}
@@ -147,7 +148,7 @@ func (s *Storage) autoMigrate(models ...any) error {
 
 		if dname == xsql.Postgres {
 			migrator := s.db.Table(tableName).Migrator()
-			if migrator.HasColumn(&Model{}, "status") {
+			if migrator.HasColumn(&dbmodel.Published{}, "status") {
 				sql, err := postgresStatusSQL(tableName, s.opts.Schema)
 				if err != nil {
 					return err
@@ -159,7 +160,7 @@ func (s *Storage) autoMigrate(models ...any) error {
 		}
 
 		var tableComment string
-		if tc, ok := model.(TableCommenter); ok {
+		if tc, ok := model.(tableCommenter); ok {
 			tableComment = tc.TableComment()
 		}
 
@@ -184,12 +185,12 @@ func (s *Storage) autoMigrate(models ...any) error {
 }
 
 // Bind binds the publisher or storage to the supplied transaction.
-func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
+func (s *storageAdapter) Bind(txer txer.Txer) (storage.Storage, error) {
 	db, ok := txer.Tx().(*gorm.DB)
 	if !ok {
 		return nil, errx.ErrInvalidGormTx
 	}
-	newStor := Storage{
+	newStor := storageAdapter{
 		gapOpts: s.gapOpts,
 		opts:    s.opts,
 	}
@@ -198,7 +199,7 @@ func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
 }
 
 // InTx reports whether the storage is bound to a transaction.
-func (s *Storage) InTx() bool {
+func (s *storageAdapter) InTx() bool {
 	if s.db == nil {
 		return false
 	}
@@ -206,7 +207,7 @@ func (s *Storage) InTx() bool {
 	return ok
 }
 
-func (s *Storage) retryUpdates() map[string]any {
+func (s *storageAdapter) retryUpdates() map[string]any {
 	return map[string]any{
 		"lease_token":     nil,
 		"lease_until":     nil,
@@ -215,11 +216,11 @@ func (s *Storage) retryUpdates() map[string]any {
 }
 
 // UpdateStatusPublished updates the state of a leased published message.
-func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+func (s *storageAdapter) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
 	if status == enum.StatusPending {
-		return s.scheduleRetry(ctx, &Published{}, "published", id, leaseToken)
+		return s.scheduleRetry(ctx, &dbmodel.Published{}, "published", id, leaseToken)
 	}
-	if err := s.updateStatus(ctx, &Published{}, id, leaseToken, status); err != nil {
+	if err := s.updateStatus(ctx, &dbmodel.Published{}, id, leaseToken, status); err != nil {
 		return err
 	}
 
@@ -229,7 +230,7 @@ func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken
 	return nil
 }
 
-func (s *Storage) scheduleRetry(ctx context.Context, model any, kind string, id uint, leaseToken string) error {
+func (s *storageAdapter) scheduleRetry(ctx context.Context, model any, kind string, id uint, leaseToken string) error {
 	result := s.db.WithContext(ctx).
 		Model(model).
 		Where("id = ? AND status = ? AND lease_token = ?", id, enum.StatusPending, leaseToken).
@@ -247,18 +248,18 @@ func (s *Storage) scheduleRetry(ctx context.Context, model any, kind string, id 
 }
 
 // ClaimPublishedBatch claims a batch of due published messages.
-func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, brokerName string) ([]*entity.Envelope, error) {
+func (s *storageAdapter) ClaimPublishedBatch(ctx context.Context, batchSize int, brokerName string) ([]*entity.Envelope, error) {
 	o := s.gapOpts
 	now := time.Now()
 
-	var pubs []*Published
+	var pubs []*dbmodel.Published
 	var es []*entity.Envelope
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if result := s.failExhausted(tx, &Published{}, "", brokerName); result.Error != nil {
+		if result := s.failExhausted(tx, &dbmodel.Published{}, "", brokerName); result.Error != nil {
 			return result.Error
 		}
 
-		err := s.claimQuery(tx, &Published{}, batchSize, "", brokerName).Scan(&pubs).Error
+		err := s.claimQuery(tx, &dbmodel.Published{}, batchSize, "", brokerName).Scan(&pubs).Error
 		if err != nil {
 			return err
 		}
@@ -275,7 +276,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, broker
 			p.LeaseUntil = sql.Null[time.Time]{V: leaseUntil, Valid: true}
 		}
 		if err := tx.
-			Model(&Published{}).
+			Model(&dbmodel.Published{}).
 			Where(clause.IN{
 				Column: "id",
 				Values: ids,
@@ -288,7 +289,7 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, broker
 			return err
 		}
 		var convErr error
-		es, convErr = pubsToEntities(pubs)
+		es, convErr = dbmodel.PublishedToEntities(pubs)
 		return convErr
 	})
 	if err != nil {
@@ -298,17 +299,17 @@ func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, broker
 }
 
 // ClaimReceivedBatch claims a batch of due received messages for a consumer group.
-func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, brokerName string) ([]*entity.Envelope, error) {
+func (s *storageAdapter) ClaimReceivedBatch(ctx context.Context, batchSize int, group, brokerName string) ([]*entity.Envelope, error) {
 	o := s.gapOpts
 	now := time.Now()
 
-	var recs []*Received
+	var recs []*dbmodel.Received
 	var es []*entity.Envelope
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if result := s.failExhausted(tx, &Received{}, group, brokerName); result.Error != nil {
+		if result := s.failExhausted(tx, &dbmodel.Received{}, group, brokerName); result.Error != nil {
 			return result.Error
 		}
-		err := s.claimQuery(tx, &Received{}, batchSize, group, brokerName).Scan(&recs).Error
+		err := s.claimQuery(tx, &dbmodel.Received{}, batchSize, group, brokerName).Scan(&recs).Error
 		if err != nil {
 			return err
 		}
@@ -325,7 +326,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 			p.LeaseUntil = sql.Null[time.Time]{V: leaseUntil, Valid: true}
 		}
 		if err := tx.
-			Model(&Received{}).
+			Model(&dbmodel.Received{}).
 			Where(clause.IN{
 				Column: "id",
 				Values: ids,
@@ -338,7 +339,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 			return err
 		}
 		var convErr error
-		es, convErr = recsToEntities(recs)
+		es, convErr = dbmodel.ReceivedToEntities(recs)
 		return convErr
 	})
 	if err != nil {
@@ -347,7 +348,7 @@ func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, 
 	return es, nil
 }
 
-func (s *Storage) failExhausted(tx *gorm.DB, model any, group, brokerName string) *gorm.DB {
+func (s *storageAdapter) failExhausted(tx *gorm.DB, model any, group, brokerName string) *gorm.DB {
 	return s.exhaustedQuery(tx, model, group, brokerName).
 		Updates(map[string]any{
 			"status":      enum.StatusFailed,
@@ -358,42 +359,42 @@ func (s *Storage) failExhausted(tx *gorm.DB, model any, group, brokerName string
 }
 
 // pendingDueQuery selects this version's pending messages that are due and have no live lease.
-func (s *Storage) pendingDueQuery(tx *gorm.DB, model any) *gorm.DB {
+func (s *storageAdapter) pendingDueQuery(tx *gorm.DB, model any) *gorm.DB {
 	return tx.
 		Model(model).
-		Where(&Model{Version: s.gapOpts.Version}).
+		Where(&dbmodel.Model{Version: s.gapOpts.Version}).
 		Where("status = ? AND next_attempt_at <= "+s.databaseNow()+" AND (lease_until IS NULL OR lease_until <= "+s.databaseNow()+")", enum.StatusPending)
 }
 
-func (s *Storage) claimQuery(tx *gorm.DB, model any, batchSize int, group, brokerName string) *gorm.DB {
+func (s *storageAdapter) claimQuery(tx *gorm.DB, model any, batchSize int, group, brokerName string) *gorm.DB {
 	return s.withBrokerName(s.withReceivedGroup(s.pendingDueQuery(tx, model), model, group), brokerName).
 		Where("retries < ?", s.gapOpts.MaxRetries).
 		Limit(batchSize).
 		Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"})
 }
 
-func (s *Storage) exhaustedQuery(tx *gorm.DB, model any, group, brokerName string) *gorm.DB {
+func (s *storageAdapter) exhaustedQuery(tx *gorm.DB, model any, group, brokerName string) *gorm.DB {
 	return s.withBrokerName(s.withReceivedGroup(s.pendingDueQuery(tx, model), model, group), brokerName).
 		Where("retries >= ?", s.gapOpts.MaxRetries)
 }
 
-func (s *Storage) withBrokerName(tx *gorm.DB, brokerName string) *gorm.DB {
+func (s *storageAdapter) withBrokerName(tx *gorm.DB, brokerName string) *gorm.DB {
 	return tx.Where("broker_name = ?", brokerName)
 }
 
-func (s *Storage) withReceivedGroup(tx *gorm.DB, model any, group string) *gorm.DB {
-	if _, ok := model.(*Received); !ok {
+func (s *storageAdapter) withReceivedGroup(tx *gorm.DB, model any, group string) *gorm.DB {
+	if _, ok := model.(*dbmodel.Received); !ok {
 		return tx
 	}
 	return tx.Where(clause.Eq{Column: clause.Column{Name: "group"}, Value: group})
 }
 
 // UpdateStatusReceived updates the state of a leased received message.
-func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+func (s *storageAdapter) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
 	if status == enum.StatusPending {
-		return s.scheduleRetry(ctx, &Received{}, "received", id, leaseToken)
+		return s.scheduleRetry(ctx, &dbmodel.Received{}, "received", id, leaseToken)
 	}
-	if err := s.updateStatus(ctx, &Received{}, id, leaseToken, status); err != nil {
+	if err := s.updateStatus(ctx, &dbmodel.Received{}, id, leaseToken, status); err != nil {
 		return err
 	}
 
@@ -403,7 +404,7 @@ func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken 
 	return nil
 }
 
-func (s *Storage) updateStatus(ctx context.Context, model any, id uint, leaseToken string, status enum.Status) error {
+func (s *storageAdapter) updateStatus(ctx context.Context, model any, id uint, leaseToken string, status enum.Status) error {
 	result := s.db.WithContext(ctx).
 		Model(model).
 		Where("id = ? AND status = ? AND lease_token = ?", id, enum.StatusPending, leaseToken).
@@ -426,18 +427,18 @@ func statusUpdates(status enum.Status, expiredAt any) map[string]any {
 	}
 }
 
-func (s *Storage) terminalExpiration(status enum.Status) any {
+func (s *storageAdapter) terminalExpiration(status enum.Status) any {
 	return s.databaseAfter(int64(s.gapOpts.Retention(status) / time.Second))
 }
 
-func (s *Storage) databaseNow() string {
+func (s *storageAdapter) databaseNow() string {
 	if s.db != nil && s.db.Dialector != nil && s.db.Dialector.Name() == xsql.MySQL {
 		return "CURRENT_TIMESTAMP(3)"
 	}
 	return "CURRENT_TIMESTAMP"
 }
 
-func (s *Storage) databaseAfter(seconds int64) any {
+func (s *storageAdapter) databaseAfter(seconds int64) any {
 	switch {
 	case s.db != nil && s.db.Dialector != nil && s.db.Dialector.Name() == xsql.MySQL:
 		return clause.Expr{SQL: "TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(3))", Vars: []any{seconds}}
@@ -448,7 +449,7 @@ func (s *Storage) databaseAfter(seconds int64) any {
 	}
 }
 
-func (s *Storage) insertMessage(ctx context.Context, model any, row Model, group string) error {
+func (s *storageAdapter) insertMessage(ctx context.Context, model any, row dbmodel.Model, group string) error {
 	values := map[string]any{
 		"id":              row.ID,
 		"created_at":      row.CreatedAt,
@@ -471,21 +472,21 @@ func (s *Storage) insertMessage(ctx context.Context, model any, row Model, group
 }
 
 func modelIsReceived(model any) bool {
-	_, ok := model.(*Received)
+	_, ok := model.(*dbmodel.Received)
 	return ok
 }
 
 // DeleteExpiredPublishedBatch deletes one batch of expired terminal published messages.
-func (s *Storage) DeleteExpiredPublishedBatch(ctx context.Context, batchSize int) (int64, error) {
-	return s.deleteExpiredBatch(ctx, &Published{}, batchSize)
+func (s *storageAdapter) DeleteExpiredPublishedBatch(ctx context.Context, batchSize int) (int64, error) {
+	return s.deleteExpiredBatch(ctx, &dbmodel.Published{}, batchSize)
 }
 
 // DeleteExpiredReceivedBatch deletes one batch of expired terminal received messages.
-func (s *Storage) DeleteExpiredReceivedBatch(ctx context.Context, batchSize int) (int64, error) {
-	return s.deleteExpiredBatch(ctx, &Received{}, batchSize)
+func (s *storageAdapter) DeleteExpiredReceivedBatch(ctx context.Context, batchSize int) (int64, error) {
+	return s.deleteExpiredBatch(ctx, &dbmodel.Received{}, batchSize)
 }
 
-func (s *Storage) deleteExpiredBatch(ctx context.Context, model any, batchSize int) (int64, error) {
+func (s *storageAdapter) deleteExpiredBatch(ctx context.Context, model any, batchSize int) (int64, error) {
 	stmt := &gorm.Statement{DB: s.db}
 	if err := stmt.Parse(model); err != nil {
 		return 0, err
@@ -555,9 +556,9 @@ func postgresDeleteExpiredSQL(table, statusType string) string {
 
 func claimIndexName(model any) string {
 	switch model.(type) {
-	case *Published:
+	case *dbmodel.Published:
 		return "idx_published_claim"
-	case *Received:
+	case *dbmodel.Received:
 		return "idx_received_claim"
 	default:
 		return ""
@@ -566,16 +567,16 @@ func claimIndexName(model any) string {
 
 func cleanupIndexName(model any) string {
 	switch model.(type) {
-	case *Published:
+	case *dbmodel.Published:
 		return "idx_published_cleanup"
-	case *Received:
+	case *dbmodel.Received:
 		return "idx_received_cleanup"
 	default:
 		return ""
 	}
 }
 
-func (s *Storage) ensureCleanupIndex(dialect xsql.Dialector, table, index string) error {
+func (s *storageAdapter) ensureCleanupIndex(dialect xsql.Dialect, table, index string) error {
 	if index == "" {
 		return fmt.Errorf("cleanup index name is empty")
 	}
@@ -636,7 +637,7 @@ func postgresCleanupIndexSQL(table, index string) (string, error) {
 	), nil
 }
 
-func (s *Storage) ensureClaimIndex(dialect xsql.Dialector, table, index string) error {
+func (s *storageAdapter) ensureClaimIndex(dialect xsql.Dialect, table, index string) error {
 	if index == "" {
 		return fmt.Errorf("claim index name is empty")
 	}
@@ -650,7 +651,7 @@ func (s *Storage) ensureClaimIndex(dialect xsql.Dialector, table, index string) 
 	}
 }
 
-func (s *Storage) ensureMySQLClaimIndex(table, index string) error {
+func (s *storageAdapter) ensureMySQLClaimIndex(table, index string) error {
 	var n int
 	err := s.db.Raw(
 		`SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
@@ -673,7 +674,7 @@ func (s *Storage) ensureMySQLClaimIndex(table, index string) error {
 	return err
 }
 
-func (s *Storage) ensurePostgresClaimIndex(table, index string) error {
+func (s *storageAdapter) ensurePostgresClaimIndex(table, index string) error {
 	sql, err := postgresClaimIndexSQL(table, index)
 	if err != nil {
 		return err
@@ -749,7 +750,7 @@ ALTER COLUMN "status" TYPE %s."status_enum"
 USING "status"::%s."status_enum";`, table, quotedSchema, quotedSchema), nil
 }
 
-func tableCommentSQL(dialect xsql.Dialector, tableName, comment string) (string, error) {
+func tableCommentSQL(dialect xsql.Dialect, tableName, comment string) (string, error) {
 	literal := strings.ReplaceAll(comment, `'`, `''`)
 	switch dialect {
 	case xsql.MySQL:

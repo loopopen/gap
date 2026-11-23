@@ -6,12 +6,13 @@ import (
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
+	dbmodel "github.com/loopopen/gap/storage/xpostgres/internal/model"
 )
 
 func TestToEntityInvalidHeaders(t *testing.T) {
-	p := &Published{ID: 7, Headers: "{"}
+	p := &dbmodel.Published{ID: 7, Headers: "{"}
 	en := p.ToEntity()
-	if p.err == nil {
+	if p.Err() == nil {
 		t.Fatal("expected decode error")
 	}
 	if en.Headers != nil {
@@ -30,9 +31,9 @@ func TestFromEntityPayloadAndHeaders(t *testing.T) {
 		LeaseUntil:    now.Add(time.Minute),
 		NextAttemptAt: now,
 	}
-	p := new(Published).FromEntity(en)
-	if p.err != nil {
-		t.Fatal(p.err)
+	p := new(dbmodel.Published).FromEntity(en)
+	if p.Err() != nil {
+		t.Fatal(p.Err())
 	}
 	if p.Payload != `{"a":"b"}` {
 		t.Fatalf("payload = %q", p.Payload)

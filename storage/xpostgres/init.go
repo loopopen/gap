@@ -8,7 +8,7 @@ import (
 	"github.com/loopopen/gap/internal/enum"
 	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/storage"
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/storage/internal/xsql"
 )
 
 // OpenStorage opens and initializes the configured storage.
@@ -19,7 +19,7 @@ func (o *Options) OpenStorage(gapOpts *ingap.Options, role storage.Role) (storag
 		return nil, err
 	}
 
-	stor := NewStorage(gapOpts, o, pool.DB)
+	stor := newStorage(gapOpts, o, pool.DB)
 	stor.pool = pool
 	if err = pool.EnsureSchema(o.Schema, stor.init); err != nil {
 		slog.Error("failed to init storage", slog.Any("err", err))
@@ -31,7 +31,7 @@ func (o *Options) OpenStorage(gapOpts *ingap.Options, role storage.Role) (storag
 
 // Close returns this storage's borrow of the shared pool.
 // The last borrow closes the pool. A second call does nothing.
-func (s *Storage) Close() error {
+func (s *storageAdapter) Close() error {
 	if s == nil || s.pool == nil {
 		return nil
 	}

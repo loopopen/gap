@@ -9,13 +9,13 @@ import (
 	"gorm.io/gorm"
 )
 
-type Txer struct {
+type gormTx struct {
 	*storage.TxerBase
 	db *gorm.DB
 }
 
-func newTxer(db *gorm.DB) *Txer {
-	txer := &Txer{
+func newTxer(db *gorm.DB) *gormTx {
+	txer := &gormTx{
 		TxerBase: &storage.TxerBase{},
 		db:       db,
 	}
@@ -23,30 +23,8 @@ func newTxer(db *gorm.DB) *Txer {
 }
 
 // Tx returns the underlying database transaction.
-func (tx *Txer) Tx() any {
+func (tx *gormTx) Tx() any {
 	return tx.db
-}
-
-type wappter struct {
-	db  *gorm.DB
-	opt *sql.TxOptions
-}
-
-// With wraps db with optional SQL transaction settings.
-func With(db *gorm.DB, opts ...*sql.TxOptions) *wappter {
-	var opt *sql.TxOptions
-	if len(opts) > 0 {
-		opt = opts[0]
-	}
-	return &wappter{
-		db:  db,
-		opt: opt,
-	}
-}
-
-// DoInTx runs a callback inside a database transaction.
-func (w wappter) DoInTx(ctx context.Context, action func(context.Context, gap.Txer) error) error {
-	return DoInTx(ctx, action, w.db, w.opt)
 }
 
 // DoInTx runs a callback inside a database transaction.

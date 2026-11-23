@@ -1,4 +1,4 @@
-package xmysql
+package model
 
 import (
 	"database/sql"
@@ -12,7 +12,7 @@ import (
 	"github.com/loopopen/gap/internal/utility"
 )
 
-//go:generate go tool shoot map -path=../../internal/entity -to=Envelope,Envelope -type=Published,Received
+//go:generate go tool shoot map -path=../../../../internal/entity -to=Envelope,Envelope -type=Published,Received
 
 type Published struct {
 	utility.Mapper
@@ -24,13 +24,15 @@ type Published struct {
 	Status        enum.Status         // Message status.
 	Headers       string              // Message metadata.
 	Payload       string              // Serialized payload.
-	Retries       int                 // Attempt count.
+	Retries       int                 // Retry count.
 	LeaseToken    string              // Current lease token.
 	LeaseUntil    sql.Null[time.Time] // Lease expiry time.
 	NextAttemptAt time.Time           // Next eligible attempt time.
 	ExpiredAt     sql.Null[time.Time] // Terminal record cleanup deadline.
 	err           error
 }
+
+func (p *Published) Err() error { return p.err }
 
 func (p *Published) writeEntity(e *entity.Envelope) {
 	p.err = nil
@@ -89,6 +91,8 @@ type Received struct {
 	err           error
 }
 
+func (r *Received) Err() error { return r.err }
+
 func (r *Received) writeEntity(e *entity.Envelope) {
 	r.err = nil
 	if r.Headers != "" {
@@ -126,26 +130,26 @@ func (r *Received) readEntity(e *entity.Envelope) {
 	r.Headers = string(headers)
 }
 
-func pubsToEntities(pubs []*Published) ([]*entity.Envelope, error) {
-	es := make([]*entity.Envelope, 0, len(pubs))
-	for _, p := range pubs {
-		en := p.ToEntity()
-		if p.err != nil {
-			return nil, p.err
+func PublishedToEntities(rows []*Published) ([]*entity.Envelope, error) {
+	result := make([]*entity.Envelope, 0, len(rows))
+	for _, row := range rows {
+		envelope := row.ToEntity()
+		if row.err != nil {
+			return nil, row.err
 		}
-		es = append(es, en)
+		result = append(result, envelope)
 	}
-	return es, nil
+	return result, nil
 }
 
-func recsToEntities(recs []*Received) ([]*entity.Envelope, error) {
-	es := make([]*entity.Envelope, 0, len(recs))
-	for _, r := range recs {
-		en := r.ToEntity()
-		if r.err != nil {
-			return nil, r.err
+func ReceivedToEntities(rows []*Received) ([]*entity.Envelope, error) {
+	result := make([]*entity.Envelope, 0, len(rows))
+	for _, row := range rows {
+		envelope := row.ToEntity()
+		if row.err != nil {
+			return nil, row.err
 		}
-		es = append(es, en)
+		result = append(result, envelope)
 	}
-	return es, nil
+	return result, nil
 }

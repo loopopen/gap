@@ -1,10 +1,10 @@
-package xgorm
+package model
 
 import (
 	"database/sql/driver"
 
 	"github.com/loopopen/gap/internal/enum"
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/storage/internal/xsql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 )
@@ -13,33 +13,27 @@ const mysqlStatusType = "ENUM('Pending','Succeeded','Failed')"
 
 type Status enum.Status
 
-// String returns the string representation of the receiver.
 func (s Status) String() string {
 	return enum.Status(s).String()
 }
 
-// Value returns the value represented by the receiver.
 func (s Status) Value() (driver.Value, error) {
 	return enum.Status(s).Value()
 }
 
-// Scan decodes a database value into the receiver.
 func (s *Status) Scan(value any) error {
-	var status enum.Status
-	if err := status.Scan(value); err != nil {
+	var scanned enum.Status
+	if err := scanned.Scan(value); err != nil {
 		return err
 	}
-	*s = Status(status)
+	*s = Status(scanned)
 	return nil
 }
 
-// GormDataType tells GORM that Status is stored as a string value.
 func (Status) GormDataType() string {
 	return "string"
 }
 
-// GormDBDataType supplies the native MySQL enum type. PostgreSQL stores the
-// value as text during AutoMigrate, then init sets the column to status_enum.
 func (Status) GormDBDataType(db *gorm.DB, _ *schema.Field) string {
 	if db != nil && db.Dialector != nil && db.Dialector.Name() == xsql.MySQL {
 		return mysqlStatusType

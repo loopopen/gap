@@ -11,16 +11,16 @@ import (
 )
 
 // RenewPublishedLeases implements [storage.Storage].
-func (s *Storage) RenewPublishedLeases(ctx context.Context, leases []storage.Lease) ([]uint, error) {
+func (s *storageAdapter) RenewPublishedLeases(ctx context.Context, leases []storage.Lease) ([]uint, error) {
 	return s.renewLeases(ctx, "published", leases)
 }
 
 // RenewReceivedLeases implements [storage.Storage].
-func (s *Storage) RenewReceivedLeases(ctx context.Context, leases []storage.Lease) ([]uint, error) {
+func (s *storageAdapter) RenewReceivedLeases(ctx context.Context, leases []storage.Lease) ([]uint, error) {
 	return s.renewLeases(ctx, "received", leases)
 }
 
-func (s *Storage) renewLeases(ctx context.Context, base string, leases []storage.Lease) ([]uint, error) {
+func (s *storageAdapter) renewLeases(ctx context.Context, base string, leases []storage.Lease) ([]uint, error) {
 	leases = ownedLeases(leases)
 	if len(leases) == 0 {
 		return nil, nil
@@ -34,7 +34,7 @@ func (s *Storage) renewLeases(ctx context.Context, base string, leases []storage
 		return nil, err
 	}
 	query, args := renewLeaseSQL(table, statusType, int64(s.gapOpts.LeaseTTL()/time.Second), enum.StatusPending, leases)
-	rows, err := s.queryer().QueryContext(ctx, query, args...)
+	rows, err := s.execer().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

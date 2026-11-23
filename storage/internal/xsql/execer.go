@@ -1,4 +1,4 @@
-package xmysql
+package xsql
 
 import (
 	"context"
@@ -7,4 +7,8 @@ import (
 
 type Execer interface {
 	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+}
+
+type RowQueryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }

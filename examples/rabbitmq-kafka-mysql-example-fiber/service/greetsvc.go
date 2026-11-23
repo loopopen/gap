@@ -8,7 +8,7 @@ import (
 	"log/slog"
 
 	"github.com/loopopen/gap"
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/storage"
 )
 
 type GreetSvc struct {
@@ -26,7 +26,7 @@ func NewGreetSvc(db *sql.DB, pubR, pubK gap.EventPublisher) *GreetSvc {
 }
 
 func (svc *GreetSvc) Greet(ctx context.Context, name string) error {
-	err := xsql.DoInTx(ctx, func(ctx context.Context, txer gap.Txer) error {
+	err := storage.DoInTx(ctx, func(ctx context.Context, txer gap.Txer) error {
 		pubR := must(svc.pubR.Bind(txer))
 		pubK := must(svc.pubK.Bind(txer))
 

@@ -53,7 +53,7 @@ func OpenWithSetup(ctx context.Context, driverName, dsn, setupSQL string) (*sql.
 	if err != nil {
 		return nil, err
 	}
-	db := sql.OpenDB(SetupConnector{Connector: base, SQL: setupSQL})
+	db := sql.OpenDB(setupConnector{Connector: base, sql: setupSQL})
 	if err = db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -61,14 +61,13 @@ func OpenWithSetup(ctx context.Context, driverName, dsn, setupSQL string) (*sql.
 	return db, nil
 }
 
-// SetupConnector runs SQL once on each new connection before it joins the pool.
-type SetupConnector struct {
+// setupConnector runs SQL once on each new connection before it joins the pool.
+type setupConnector struct {
 	driver.Connector
-	SQL string
+	sql string
 }
 
-// Connect opens and verifies a SQL database connection.
-func (c SetupConnector) Connect(ctx context.Context) (driver.Conn, error) {
+func (c setupConnector) Connect(ctx context.Context) (driver.Conn, error) {
 	conn, err := c.Connector.Connect(ctx)
 	if err != nil {
 		return nil, err
@@ -78,7 +77,7 @@ func (c SetupConnector) Connect(ctx context.Context) (driver.Conn, error) {
 		_ = conn.Close()
 		return nil, errors.New("connection cannot run session setup")
 	}
-	if _, err = execer.ExecContext(ctx, c.SQL, nil); err != nil {
+	if _, err = execer.ExecContext(ctx, c.sql, nil); err != nil {
 		_ = conn.Close()
 		return nil, err
 	}

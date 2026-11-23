@@ -54,7 +54,7 @@ test-isolated:
 	done
 
 test-race:
-	go test -race -count=1 . ./internal/pump/ ./storage/xsql/
+	go test -race -count=1 . ./internal/pump/ ./storage/internal/xsql/
 	@for dir in broker/xrabbitmq storage/xmysql storage/xpostgres storage/xgorm; do \
 		(cd $$dir && go test -race -count=1 ./...) || exit 1; \
 	done

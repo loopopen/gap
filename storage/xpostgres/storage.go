@@ -16,10 +16,11 @@ import (
 	"github.com/loopopen/gap/internal/txer"
 	"github.com/loopopen/gap/internal/utility"
 	"github.com/loopopen/gap/storage"
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/storage/internal/xsql"
+	dbmodel "github.com/loopopen/gap/storage/xpostgres/internal/model"
 )
 
-type Storage struct {
+type storageAdapter struct {
 	gapOpts *ingap.Options
 	opts    *Options
 	db      *xsql.DB
@@ -29,21 +30,17 @@ type Storage struct {
 	closeOnce sync.Once
 }
 
-func (s *Storage) execer() Execer {
+func (s *storageAdapter) execer() interface {
+	xsql.Execer
+	xsql.RowQueryer
+} {
 	if s.tx != nil {
 		return s.tx
 	}
 	return s.db
 }
 
-func (s *Storage) queryer() rowQueryer {
-	if s.tx != nil {
-		return s.tx
-	}
-	return s.db
-}
-
-func (s *Storage) beginClaim(ctx context.Context) (tx *xsql.Tx, own bool, err error) {
+func (s *storageAdapter) beginClaim(ctx context.Context) (tx *xsql.Tx, own bool, err error) {
 	if s.tx != nil {
 		return s.tx, false, nil
 	}
@@ -55,12 +52,12 @@ func (s *Storage) beginClaim(ctx context.Context) (tx *xsql.Tx, own bool, err er
 }
 
 // Bind implements [storage.Storage].
-func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
+func (s *storageAdapter) Bind(txer txer.Txer) (storage.Storage, error) {
 	tx, ok := txer.Tx().(*sql.Tx)
 	if !ok {
 		return nil, errx.ErrInvalidSQLTx
 	}
-	newS := Storage{
+	newS := storageAdapter{
 		gapOpts: s.gapOpts,
 		opts:    s.opts,
 		db:      s.db,
@@ -70,21 +67,21 @@ func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
 }
 
 // InTx reports whether the storage is bound to a transaction.
-func (s *Storage) InTx() bool {
+func (s *storageAdapter) InTx() bool {
 	return s.tx != nil
 }
 
 // ClaimPublishedBatch implements [storage.Storage].
-func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int, brokerName string) (es []*entity.Envelope, err error) {
+func (s *storageAdapter) ClaimPublishedBatch(ctx context.Context, batchSize int, brokerName string) (es []*entity.Envelope, err error) {
 	return s.claimBatch(ctx, batchSize, "published", "", brokerName)
 }
 
 // ClaimReceivedBatch implements [storage.Storage].
-func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int, group, brokerName string) (es []*entity.Envelope, err error) {
+func (s *storageAdapter) ClaimReceivedBatch(ctx context.Context, batchSize int, group, brokerName string) (es []*entity.Envelope, err error) {
 	return s.claimBatch(ctx, batchSize, "received", group, brokerName)
 }
 
-func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group, brokerName string) (es []*entity.Envelope, err error) {
+func (s *storageAdapter) claimBatch(ctx context.Context, batchSize int, base, group, brokerName string) (es []*entity.Envelope, err error) {
 	o := s.gapOpts
 	now := time.Now()
 	table, err := s.quotedTable(base)
@@ -96,7 +93,7 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group, br
 		return nil, err
 	}
 
-	received := base == "received"
+	isReceived := base == "received"
 
 	tx, own, err := s.beginClaim(ctx)
 	if err != nil {
@@ -112,7 +109,7 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group, br
 		}()
 	}
 	var rows *sql.Rows
-	if received {
+	if isReceived {
 		if err = s.failExhaustedReceived(ctx, tx, table, statusType, group, brokerName); err != nil {
 			return nil, err
 		}
@@ -132,11 +129,11 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group, br
 	}
 	defer rows.Close()
 
-	var pubs []*Published
-	var recs []*Received
+	var pubs []*dbmodel.Published
+	var recs []*dbmodel.Received
 	for rows.Next() {
-		if received {
-			var rec Received
+		if isReceived {
+			var rec dbmodel.Received
 			err = rows.Scan(
 				&rec.ID,
 				&rec.CreatedAt,
@@ -156,7 +153,7 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group, br
 			recs = append(recs, &rec)
 			continue
 		}
-		var pub Published
+		var pub dbmodel.Published
 		err = rows.Scan(
 			&pub.ID,
 			&pub.CreatedAt,
@@ -179,7 +176,7 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group, br
 	}
 
 	ids := make([]any, 0)
-	if received {
+	if isReceived {
 		if len(recs) == 0 {
 			return nil, nil
 		}
@@ -218,20 +215,20 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base, group, br
 	if _, err = tx.ExecContext(ctx, script2, params...); err != nil {
 		return nil, err
 	}
-	if received {
-		return recsToEntities(recs)
+	if isReceived {
+		return dbmodel.ReceivedToEntities(recs)
 	}
-	return pubsToEntities(pubs)
+	return dbmodel.PublishedToEntities(pubs)
 }
 
-func (s *Storage) failExhaustedPublished(ctx context.Context, tx *xsql.Tx, table, statusType, brokerName string) error {
+func (s *storageAdapter) failExhaustedPublished(ctx context.Context, tx *xsql.Tx, table, statusType, brokerName string) error {
 	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
 	_, err := tx.ExecContext(ctx, failExhaustedPublishedSQL(table, statusType),
 		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, s.gapOpts.MaxRetries)...)
 	return err
 }
 
-func (s *Storage) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table, statusType, group, brokerName string) error {
+func (s *storageAdapter) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table, statusType, group, brokerName string) error {
 	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
 	_, err := tx.ExecContext(ctx, failExhaustedReceivedSQL(table, statusType),
 		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, s.gapOpts.MaxRetries, group)...)
@@ -305,14 +302,14 @@ func exhaustedArgs(failed enum.Status, retention int64, version, brokerName stri
 }
 
 // CreatePublished implements [storage.Storage].
-func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope) error {
+func (s *storageAdapter) CreatePublished(ctx context.Context, envelope *entity.Envelope) error {
 	if envelope == nil {
 		return errx.ErrParamIsNil("envelope")
 	}
 	envelope.WithLease(s.gapOpts.LeaseTTL())
-	pub := new(Published).FromEntity(envelope)
-	if pub.err != nil {
-		return pub.err
+	pub := new(dbmodel.Published).FromEntity(envelope)
+	if pub.Err() != nil {
+		return pub.Err()
 	}
 	table, err := s.quotedTable("published")
 	if err != nil {
@@ -347,14 +344,14 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 }
 
 // CreateReceived implements [storage.Storage].
-func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope) error {
+func (s *storageAdapter) CreateReceived(ctx context.Context, envelope *entity.Envelope) error {
 	if envelope == nil {
 		return errx.ErrParamIsNil("envelope")
 	}
 	envelope.WithLease(s.gapOpts.LeaseTTL())
-	rec := new(Received).FromEntity(envelope)
-	if rec.err != nil {
-		return rec.err
+	rec := new(dbmodel.Received).FromEntity(envelope)
+	if rec.Err() != nil {
+		return rec.Err()
 	}
 	table, err := s.quotedTable("received")
 	if err != nil {
@@ -390,7 +387,7 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 }
 
 // UpdateStatusPublished implements [storage.Storage].
-func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+func (s *storageAdapter) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
 	if status == enum.StatusPending {
 		return s.scheduleRetry(ctx, "published", id, leaseToken)
 	}
@@ -398,14 +395,14 @@ func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken
 }
 
 // UpdateStatusReceived implements [storage.Storage].
-func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+func (s *storageAdapter) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
 	if status == enum.StatusPending {
 		return s.scheduleRetry(ctx, "received", id, leaseToken)
 	}
 	return s.updateStatus(ctx, "received", id, leaseToken, status)
 }
 
-func (s *Storage) updateStatus(ctx context.Context, base string, id uint, leaseToken string, status enum.Status) error {
+func (s *storageAdapter) updateStatus(ctx context.Context, base string, id uint, leaseToken string, status enum.Status) error {
 	table, err := s.quotedTable(base)
 	if err != nil {
 		return err
@@ -435,16 +432,16 @@ func updateStatusSQL(table, statusType string) string {
 }
 
 // DeleteExpiredPublishedBatch deletes one batch of expired terminal published messages.
-func (s *Storage) DeleteExpiredPublishedBatch(ctx context.Context, batchSize int) (int64, error) {
+func (s *storageAdapter) DeleteExpiredPublishedBatch(ctx context.Context, batchSize int) (int64, error) {
 	return s.deleteExpiredBatch(ctx, "published", batchSize)
 }
 
 // DeleteExpiredReceivedBatch deletes one batch of expired terminal received messages.
-func (s *Storage) DeleteExpiredReceivedBatch(ctx context.Context, batchSize int) (int64, error) {
+func (s *storageAdapter) DeleteExpiredReceivedBatch(ctx context.Context, batchSize int) (int64, error) {
 	return s.deleteExpiredBatch(ctx, "received", batchSize)
 }
 
-func (s *Storage) deleteExpiredBatch(ctx context.Context, base string, batchSize int) (int64, error) {
+func (s *storageAdapter) deleteExpiredBatch(ctx context.Context, base string, batchSize int) (int64, error) {
 	table, err := s.quotedTable(base)
 	if err != nil {
 		return 0, err
@@ -468,7 +465,7 @@ func deleteExpiredSQL(table, statusType string) string {
 		`) DELETE FROM ` + table + ` AS target USING expired WHERE target."id" = expired."id"`
 }
 
-func (s *Storage) scheduleRetry(ctx context.Context, base string, id uint, leaseToken string) error {
+func (s *storageAdapter) scheduleRetry(ctx context.Context, base string, id uint, leaseToken string) error {
 	table, err := s.quotedTable(base)
 	if err != nil {
 		return err
@@ -501,9 +498,9 @@ func logSQL(opts *Options) bool {
 	return opts != nil && opts.Log
 }
 
-// NewStorage creates a storage adapter.
-func NewStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *Storage {
-	s := &Storage{
+// newStorage creates a storage adapter.
+func newStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *storageAdapter {
+	s := &storageAdapter{
 		gapOpts: gapOpts,
 		opts:    opts,
 		db:      xsql.WrapDB(db, logSQL(opts)),
@@ -512,7 +509,7 @@ func NewStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *Storage {
 	return s
 }
 
-func (s *Storage) init() error {
+func (s *storageAdapter) init() error {
 	quotedSchema, err := xsql.Quote(xsql.Postgres, s.opts.Schema)
 	if err != nil {
 		return fmt.Errorf("schema: %w", err)
@@ -572,7 +569,7 @@ func (s *Storage) init() error {
 	return err
 }
 
-func (s *Storage) statusType() (string, error) {
+func (s *storageAdapter) statusType() (string, error) {
 	schema, err := xsql.Quote(xsql.Postgres, s.opts.Schema)
 	if err != nil {
 		return "", fmt.Errorf("schema: %w", err)
@@ -580,7 +577,7 @@ func (s *Storage) statusType() (string, error) {
 	return schema + `."status_enum"`, nil
 }
 
-func (s *Storage) quotedTable(base string) (string, error) {
+func (s *storageAdapter) quotedTable(base string) (string, error) {
 	schema, err := xsql.Quote(xsql.Postgres, s.opts.Schema)
 	if err != nil {
 		return "", fmt.Errorf("schema: %w", err)

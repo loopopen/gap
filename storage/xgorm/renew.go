@@ -6,21 +6,22 @@ import (
 
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/storage"
+	dbmodel "github.com/loopopen/gap/storage/xgorm/internal/model"
 )
 
 // RenewPublishedLeases extends the lease of pending published rows that are
 // still owned by the given tokens.
-func (s *Storage) RenewPublishedLeases(ctx context.Context, leases []storage.Lease) ([]uint, error) {
-	return s.renewLeases(ctx, &Published{}, leases)
+func (s *storageAdapter) RenewPublishedLeases(ctx context.Context, leases []storage.Lease) ([]uint, error) {
+	return s.renewLeases(ctx, &dbmodel.Published{}, leases)
 }
 
 // RenewReceivedLeases extends the lease of pending received rows that are
 // still owned by the given tokens.
-func (s *Storage) RenewReceivedLeases(ctx context.Context, leases []storage.Lease) ([]uint, error) {
-	return s.renewLeases(ctx, &Received{}, leases)
+func (s *storageAdapter) RenewReceivedLeases(ctx context.Context, leases []storage.Lease) ([]uint, error) {
+	return s.renewLeases(ctx, &dbmodel.Received{}, leases)
 }
 
-func (s *Storage) renewLeases(ctx context.Context, model any, leases []storage.Lease) ([]uint, error) {
+func (s *storageAdapter) renewLeases(ctx context.Context, model any, leases []storage.Lease) ([]uint, error) {
 	if len(leases) == 0 {
 		return nil, nil
 	}

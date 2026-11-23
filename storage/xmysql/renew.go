@@ -9,16 +9,16 @@ import (
 )
 
 // RenewPublishedLeases implements [storage.Storage].
-func (s *Storage) RenewPublishedLeases(ctx context.Context, leases []storage.Lease) ([]uint, error) {
+func (s *storageAdapter) RenewPublishedLeases(ctx context.Context, leases []storage.Lease) ([]uint, error) {
 	return s.renewLeases(ctx, "published", leases)
 }
 
 // RenewReceivedLeases implements [storage.Storage].
-func (s *Storage) RenewReceivedLeases(ctx context.Context, leases []storage.Lease) ([]uint, error) {
+func (s *storageAdapter) RenewReceivedLeases(ctx context.Context, leases []storage.Lease) ([]uint, error) {
 	return s.renewLeases(ctx, "received", leases)
 }
 
-func (s *Storage) renewLeases(ctx context.Context, base string, leases []storage.Lease) ([]uint, error) {
+func (s *storageAdapter) renewLeases(ctx context.Context, base string, leases []storage.Lease) ([]uint, error) {
 	if len(leases) == 0 {
 		return nil, nil
 	}

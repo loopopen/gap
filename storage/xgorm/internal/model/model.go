@@ -1,4 +1,4 @@
-package xgorm
+package model
 
 import (
 	"database/sql"
@@ -21,7 +21,7 @@ type Model struct {
 	Status        Status              `gorm:"not null"`
 	Headers       string              `gorm:"type:text"`
 	Payload       Payload             ``
-	Retries       int                 `gorm:"default:0"`
+	Retries       int                 `gorm:"not null;default:0"`
 	LeaseToken    string              `gorm:"size:32"`
 	LeaseUntil    sql.Null[time.Time] ``
 	NextAttemptAt time.Time           `gorm:"not null"`
@@ -29,7 +29,11 @@ type Model struct {
 	err           error               `gorm:"-"`
 }
 
-//go:generate go tool shoot map -path=../../internal/entity -to=Envelope,Envelope -type=Published,Received
+func (m *Model) Err() error {
+	return m.err
+}
+
+//go:generate go tool shoot map -path=../../../../internal/entity -to=Envelope,Envelope -type=Published,Received
 
 type Published struct {
 	utility.Mapper `gorm:"-"`
@@ -57,12 +61,12 @@ func (p *Published) readEntity(e *entity.Envelope) {
 	if p.CreatedAt.IsZero() {
 		p.CreatedAt = time.Now()
 	}
-	payload, err := e.PayloadBytes()
+	serialized, err := e.PayloadBytes()
 	if err != nil {
 		p.err = fmt.Errorf("encode payload for id %d: %w", e.ID, err)
 		return
 	}
-	p.Payload = Payload(payload)
+	p.Payload = Payload(serialized)
 	if p.Status == 0 {
 		p.Status = Status(enum.StatusPending)
 	}
@@ -100,12 +104,12 @@ func (r *Received) readEntity(e *entity.Envelope) {
 	if r.CreatedAt.IsZero() {
 		r.CreatedAt = time.Now()
 	}
-	payload, err := e.PayloadBytes()
+	serialized, err := e.PayloadBytes()
 	if err != nil {
 		r.err = fmt.Errorf("encode payload for id %d: %w", e.ID, err)
 		return
 	}
-	r.Payload = Payload(payload)
+	r.Payload = Payload(serialized)
 	if r.Status == 0 {
 		r.Status = Status(enum.StatusPending)
 	}
@@ -117,26 +121,26 @@ func (r *Received) readEntity(e *entity.Envelope) {
 	r.Headers = string(headers)
 }
 
-func pubsToEntities(pubs []*Published) ([]*entity.Envelope, error) {
-	es := make([]*entity.Envelope, 0, len(pubs))
-	for _, p := range pubs {
-		en := p.ToEntity()
-		if p.err != nil {
-			return nil, p.err
+func PublishedToEntities(rows []*Published) ([]*entity.Envelope, error) {
+	result := make([]*entity.Envelope, 0, len(rows))
+	for _, row := range rows {
+		envelope := row.ToEntity()
+		if row.err != nil {
+			return nil, row.err
 		}
-		es = append(es, en)
+		result = append(result, envelope)
 	}
-	return es, nil
+	return result, nil
 }
 
-func recsToEntities(recs []*Received) ([]*entity.Envelope, error) {
-	es := make([]*entity.Envelope, 0, len(recs))
-	for _, r := range recs {
-		en := r.ToEntity()
-		if r.err != nil {
-			return nil, r.err
+func ReceivedToEntities(rows []*Received) ([]*entity.Envelope, error) {
+	result := make([]*entity.Envelope, 0, len(rows))
+	for _, row := range rows {
+		envelope := row.ToEntity()
+		if row.err != nil {
+			return nil, row.err
 		}
-		es = append(es, en)
+		result = append(result, envelope)
 	}
-	return es, nil
+	return result, nil
 }

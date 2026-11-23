@@ -9,7 +9,7 @@ import (
 	"time"
 
 	ingap "github.com/loopopen/gap/internal/gap"
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/storage"
 )
 
 func TestOpenPostgresEmptyDSN(t *testing.T) {
@@ -37,7 +37,7 @@ func TestCreateStorageEmptyDSN(t *testing.T) {
 	storOpts := &Options{Schema: "gap"}
 	opts := &ingap.Options{StorageOptions: storOpts}
 	opts.InitRuntime()
-	_, err := storOpts.OpenStorage(opts, xsql.RoleData)
+	_, err := storOpts.OpenStorage(opts, storage.RoleData)
 	if err == nil || !strings.Contains(err.Error(), "empty") {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestCreateStorageReleasesPoolWhenInitFails(t *testing.T) {
 
 	var opens atomic.Int32
 	var opened []*sql.DB
-	openPoolDB = func(context.Context, string, xsql.Role) (*sql.DB, error) {
+	openPoolDB = func(context.Context, string, storage.Role) (*sql.DB, error) {
 		opens.Add(1)
 		db, err := sql.Open("pgx", "postgres://postgres@127.0.0.1:1/gap?sslmode=disable&connect_timeout=1")
 		opened = append(opened, db)
@@ -70,7 +70,7 @@ func TestCreateStorageReleasesPoolWhenInitFails(t *testing.T) {
 	opts := &ingap.Options{StorageOptions: storOpts}
 	opts.InitRuntime()
 	for range 2 {
-		_, err := storOpts.OpenStorage(opts, xsql.RoleData)
+		_, err := storOpts.OpenStorage(opts, storage.RoleData)
 		if err == nil {
 			t.Fatal("expected init to fail")
 		}

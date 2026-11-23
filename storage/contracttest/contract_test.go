@@ -13,7 +13,6 @@ import (
 	"github.com/loopopen/gap/storage/xgorm"
 	"github.com/loopopen/gap/storage/xmysql"
 	"github.com/loopopen/gap/storage/xpostgres"
-	"github.com/loopopen/gap/storage/xsql"
 	mysqldriver "gorm.io/driver/mysql"
 	postgresdriver "gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -76,7 +75,7 @@ func sqlFactory(driver, dsn string, openStorage openSQLStorage) storagetest.Fact
 		return storagetest.Harness{
 			Storage: stor,
 			Transact: func(ctx context.Context, action func(storage.Storage) error) error {
-				return xsql.DoInTx(ctx, func(_ context.Context, tx gap.Txer) error {
+				return storage.DoInTx(ctx, func(_ context.Context, tx gap.Txer) error {
 					bound, err := stor.Bind(tx)
 					if err != nil {
 						return err

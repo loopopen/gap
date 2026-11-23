@@ -3,7 +3,7 @@ package xpostgres
 import (
 	"fmt"
 
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/storage/internal/xsql"
 )
 
 func statusTypeSQL(schema, quotedSchema string) string {

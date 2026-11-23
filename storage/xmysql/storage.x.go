@@ -9,12 +9,14 @@ import (
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/storage/internal/xsql"
+	dbmodel "github.com/loopopen/gap/storage/xmysql/internal/model"
 )
 
-var _ storage.StorageX = (*Storage)(nil)
+var _ storage.StorageX = (*storageAdapter)(nil)
 
 // DashboardStats returns aggregate delivery statistics for the dashboard.
-func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, error) {
+func (s *storageAdapter) DashboardStats(ctx context.Context) (*entity.DashboardStats, error) {
 	published, err := s.messageStats(ctx, "published")
 	if err != nil {
 		return nil, err
@@ -30,7 +32,7 @@ func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, e
 	return &entity.DashboardStats{Published: published, Received: received, Groups: groups}, nil
 }
 
-func (s *Storage) messageStats(ctx context.Context, name string) (entity.MessageStats, error) {
+func (s *storageAdapter) messageStats(ctx context.Context, name string) (entity.MessageStats, error) {
 	table, err := s.quotedTable(name)
 	if err != nil {
 		return entity.MessageStats{}, err
@@ -69,7 +71,7 @@ func (s *Storage) messageStats(ctx context.Context, name string) (entity.Message
 	return stats, nil
 }
 
-func (s *Storage) receivedGroupStats(ctx context.Context) ([]entity.GroupMessageStats, error) {
+func (s *storageAdapter) receivedGroupStats(ctx context.Context) ([]entity.GroupMessageStats, error) {
 	table, err := s.quotedTable("received")
 	if err != nil {
 		return nil, err
@@ -126,7 +128,7 @@ func (s *Storage) receivedGroupStats(ctx context.Context) ([]entity.GroupMessage
 }
 
 // GetPublishedByID returns a published message by ID.
-func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
+func (s *storageAdapter) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
 	table, err := s.quotedTable("published")
 	if err != nil {
 		return nil, err
@@ -137,7 +139,7 @@ func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelo
 	if row == nil {
 		return nil, nil
 	}
-	var pub Published
+	var pub dbmodel.Published
 	err = row.Scan(
 		&pub.ID,
 		&pub.CreatedAt,
@@ -157,16 +159,16 @@ func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelo
 		return nil, err
 	}
 	en := pub.ToEntity()
-	if pub.err != nil {
-		return nil, pub.err
+	if pub.Err() != nil {
+		return nil, pub.Err()
 	}
 	return en, nil
 }
 
 // QueryPublished implements [storage.StorageX].
-func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
-	var pubs []*Published
-	wh := NewWhereHelper()
+func (s *storageAdapter) QueryPublished(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
+	var pubs []*dbmodel.Published
+	wh := xsql.NewWhereBuilder(xsql.MySQL)
 	addMessageFilters(wh, filter, false)
 
 	table, err := s.quotedTable("published")
@@ -193,7 +195,7 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var pub Published
+		var pub dbmodel.Published
 		err = rows.Scan(
 			&pub.ID,
 			&pub.CreatedAt,
@@ -215,7 +217,7 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 		return nil, nil, err
 	}
 
-	es, err := pubsToEntities(pubs)
+	es, err := dbmodel.PublishedToEntities(pubs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -226,9 +228,9 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 // func (s *Storage)
 
 // QueryReceived implements [storage.StorageX].
-func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
-	var recs []*Received
-	h := NewWhereHelper()
+func (s *storageAdapter) QueryReceived(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
+	var recs []*dbmodel.Received
+	h := xsql.NewWhereBuilder(xsql.MySQL)
 	addMessageFilters(h, filter, true)
 
 	table, err := s.quotedTable("received")
@@ -253,7 +255,7 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var rec Received
+		var rec dbmodel.Received
 		err = rows.Scan(
 			&rec.ID,
 			&rec.CreatedAt,
@@ -276,7 +278,7 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 		return nil, nil, err
 	}
 
-	es, err := recsToEntities(recs)
+	es, err := dbmodel.ReceivedToEntities(recs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -291,29 +293,29 @@ func messageOrder(filter *entity.MessageFilter) string {
 	return "ASC"
 }
 
-func addMessageFilters(h *WhereHelper, filter *entity.MessageFilter, includeGroup bool) {
+func addMessageFilters(h *xsql.WhereBuilder, filter *entity.MessageFilter, includeGroup bool) {
 	if filter == nil {
 		return
 	}
 	if filter.ID != nil {
-		Add(h, "`id` = ?", *filter.ID)
+		xsql.Add(h, "`id` = ?", *filter.ID)
 	}
-	AddIfNotZero(h, "`status` = ?", filter.Status)
-	AddIfNotZero(h, "`topic` = ?", filter.Topic)
+	xsql.AddIfNotZero(h, "`status` = ?", filter.Status)
+	xsql.AddIfNotZero(h, "`topic` = ?", filter.Topic)
 	if includeGroup {
-		AddIfNotZero(h, "`group` = ?", filter.Group)
+		xsql.AddIfNotZero(h, "`group` = ?", filter.Group)
 	}
 	if filter.CreatedFrom != nil {
-		Add(h, "`created_at` >= ?", *filter.CreatedFrom)
+		xsql.Add(h, "`created_at` >= ?", *filter.CreatedFrom)
 	}
 	if filter.CreatedTo != nil {
-		Add(h, "`created_at` <= ?", *filter.CreatedTo)
+		xsql.Add(h, "`created_at` <= ?", *filter.CreatedTo)
 	}
 	if pattern := filter.HeaderLikePattern(); pattern != "" {
-		Add(h, "`headers` LIKE ? ESCAPE '!'", pattern)
+		xsql.Add(h, "`headers` LIKE ? ESCAPE '!'", pattern)
 	}
 	if filter.Payload != "" {
-		Add(h, "`payload` LIKE ?", "%"+filter.Payload+"%")
+		xsql.Add(h, "`payload` LIKE ?", "%"+filter.Payload+"%")
 	}
 }
 

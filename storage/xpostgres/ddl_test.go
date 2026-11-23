@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/storage/internal/xsql"
 )
 
 func TestQuotedTable(t *testing.T) {
-	s := &Storage{opts: &Options{Schema: "gap"}}
+	s := &storageAdapter{opts: &Options{Schema: "gap"}}
 	table, err := s.quotedTable("published")
 	if err != nil {
 		t.Fatal(err)
@@ -210,10 +211,10 @@ func TestStatusTypeSQL(t *testing.T) {
 }
 
 func TestWherePlaceholders(t *testing.T) {
-	h := NewWhereHelper()
-	Add(h, `"status" = ?`, enum.StatusFailed)
-	Add(h, `"topic" = ?`, "orders")
-	Add(h, `"headers" LIKE ? ESCAPE '!'`, `%"tenant-id":"customer-42"%`)
+	h := xsql.NewWhereBuilder(xsql.Postgres)
+	xsql.Add(h, `"status" = ?`, enum.StatusFailed)
+	xsql.Add(h, `"topic" = ?`, "orders")
+	xsql.Add(h, `"headers" LIKE ? ESCAPE '!'`, `%"tenant-id":"customer-42"%`)
 	if h.String() != `WHERE "status" = $1 AND "topic" = $2 AND "headers" LIKE $3 ESCAPE '!'` {
 		t.Fatal(h.String())
 	}

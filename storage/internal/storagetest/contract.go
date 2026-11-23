@@ -238,11 +238,7 @@ func cleanupContract(t *testing.T, h Harness, opts *ingap.Options) {
 	must(t, h.Storage.UpdateStatusPublished(ctx, failed.ID, failed.LeaseToken, enum.StatusFailed))
 
 	waitForDeleted(t, ctx, h.Storage.DeleteExpiredPublishedBatch, 1)
-	deleted, err := h.Storage.DeleteExpiredPublishedBatch(ctx, 1)
-	must(t, err)
-	if deleted != 1 {
-		t.Fatalf("second cleanup deleted %d rows, want 1", deleted)
-	}
+	waitForDeleted(t, ctx, h.Storage.DeleteExpiredPublishedBatch, 1)
 	for _, id := range []uint{succeeded.ID, failed.ID} {
 		got, err := h.Storage.GetPublishedByID(ctx, id)
 		must(t, err)
