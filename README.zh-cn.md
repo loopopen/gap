@@ -201,6 +201,7 @@ go run .
 
 ### 发布者
 
+- `gap.SetWorkerID(id) error`：设置本进程用于生成消息 ID 的 Snowflake 节点。最后一次成功调用为准。未调用时，第一次 `gap.New` 用 MAC 地址推导节点；没有可用 MAC 时随机生成，并且只生成一次
 - `gap.New(opts...) *Gap`：创建应用级 Gap 实例
 - `gap.NewPublisher[T](g, opts...) Publisher[T]`（Go 1.24+）：创建类型化发布者
 - `g.NewPublisher[T](opts...) Publisher[T]`（Go 1.27+）：从 Gap 实例创建类型化发布者

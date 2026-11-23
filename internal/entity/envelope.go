@@ -2,13 +2,10 @@ package entity
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"strconv"
-	"sync"
 	"time"
 
-	"github.com/bwmarrin/snowflake"
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/errx"
 	"github.com/loopopen/gap/internal/utility"
@@ -18,21 +15,6 @@ const (
 	BrokerNameHeader = "gap-broker-name"
 	BrokerTypeHeader = "gap-broker-type"
 )
-
-var sfNode *snowflake.Node
-var initOnce sync.Once
-
-// MustInitSnowflake initializes the process-wide Snowflake ID generator or panics.
-func MustInitSnowflake(node int64) {
-	initOnce.Do(func() {
-		slog.Debug(fmt.Sprintf("snowflake picks node %d", node))
-		var err error
-		sfNode, err = snowflake.NewNode(node)
-		if err != nil {
-			panic(err)
-		}
-	})
-}
 
 type Envelope struct {
 	ID            uint              // Unique envelope ID.
@@ -56,7 +38,11 @@ type Envelope struct {
 
 // NewEnvelope creates a message envelope with a new ID.
 func NewEnvelope(version string, topic string, msg any) *Envelope {
-	id := sfNode.Generate().Int64()
+	node := sfNode.Load()
+	if node == nil {
+		panic("gap: snowflake worker id is not initialized")
+	}
+	id := node.Generate().Int64()
 	return &Envelope{
 		ID:      uint(id),
 		Version: version,

@@ -65,7 +65,9 @@ func (f *fakeKafkaReader) snapshot() (commits []kafka.Message, closeCount int) {
 }
 
 func testConsumer(fake *fakeKafkaReader) *Consumer {
-	entity.MustInitSnowflake(1)
+	if err := entity.InitSnowflake(1); err != nil {
+		panic(err)
+	}
 	gapOpts := &ingap.Options{Version: "v-test"}
 	gapOpts.InitRuntime()
 	return &Consumer{

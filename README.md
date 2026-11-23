@@ -208,6 +208,7 @@ go run .
 
 ### Publishers
 
+- `gap.SetWorkerID(id) error`: Set the process-wide Snowflake node used for message IDs. The latest successful call wins. When unset, the first `gap.New` derives the node once from a MAC address, or at random when no MAC address is available
 - `gap.New(opts...) *Gap`: Create an application-scoped Gap instance
 - `gap.NewPublisher[T](g, opts...) Publisher[T]` (Go 1.24+): Create a typed publisher
 - `g.NewPublisher[T](opts...) Publisher[T]` (Go 1.27+): Create a typed publisher from a Gap instance

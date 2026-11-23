@@ -12,8 +12,6 @@ var (
 	ServiceName = ingap.ServiceName
 	// DefaultGroup sets the consumer group used when a handler does not specify one.
 	DefaultGroup = ingap.DefaultGroup
-	// WorkerID sets the Snowflake worker identifier used to generate message IDs.
-	WorkerID = ingap.WorkerID
 	// ClaimBatchSize sets the maximum number of messages claimed in one polling batch.
 	ClaimBatchSize = ingap.ClaimBatchSize
 	// MaxRetries sets the maximum number of delivery attempts before a message is failed.
@@ -44,10 +42,16 @@ var (
 	WorkConcurrencyFactor = ingap.WorkConcurrencyFactor
 	// UseDashboard enables the operational dashboard with optional configuration.
 	UseDashboard = ingap.UseDashboard
+)
+
+var (
 	// Inject registers dependency values used to construct generated handlers.
 	Inject = ingap.Inject
 	// BrokerName sets the stable logical identity of a broker configuration.
 	BrokerName = ingap.BrokerName
+)
+
+var (
 	// ErrRuntimeStopping is returned when new work is submitted during shutdown.
 	ErrRuntimeStopping = ingap.ErrRuntimeStopping
 )

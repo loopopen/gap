@@ -9,7 +9,7 @@ import (
 )
 
 // NewOptions constructs a new instance of type Options
-func NewOptions(serviceName string, version string, defaultGroup string, claimBatchSize int, maxRetries int, leaseTtlSeconds int, retryIntervalSeconds int, pumpIntervalSeconds int, cleanupEnabled bool, succeededRetentionSeconds int, failedRetentionSeconds int, cleanupIntervalSeconds int, cleanupBatchSize int, cleanupTimeoutSeconds int, maxPublishConcurrency int, workerId int64, publishBufferSize int, workConcurrencyFactor int) *Options {
+func NewOptions(serviceName string, version string, defaultGroup string, claimBatchSize int, maxRetries int, leaseTtlSeconds int, retryIntervalSeconds int, pumpIntervalSeconds int, cleanupEnabled bool, succeededRetentionSeconds int, failedRetentionSeconds int, cleanupIntervalSeconds int, cleanupBatchSize int, cleanupTimeoutSeconds int, maxPublishConcurrency int, publishBufferSize int, workConcurrencyFactor int) *Options {
 	return &Options{
 		ServiceName:               serviceName,
 		Version:                   version,
@@ -26,7 +26,6 @@ func NewOptions(serviceName string, version string, defaultGroup string, claimBa
 		CleanupBatchSize:          cleanupBatchSize,
 		CleanupTimeoutSeconds:     cleanupTimeoutSeconds,
 		MaxPublishConcurrency:     maxPublishConcurrency,
-		WorkerID:                  workerId,
 		PublishBufferSize:         publishBufferSize,
 		WorkConcurrencyFactor:     workConcurrencyFactor,
 	}
@@ -146,13 +145,6 @@ func MaxPublishConcurrency(maxPublishConcurrency_ int) shoot.Option[Options, *Op
 	}
 }
 
-// WorkerID is a configuration for the filed WorkerID
-func WorkerID(workerID_ int64) shoot.Option[Options, *Options] {
-	return func(o *Options) {
-		o.WorkerID = workerID_
-	}
-}
-
 // PublishBufferSize is a configuration for the filed PublishBufferSize
 func PublishBufferSize(publishBufferSize_ int) shoot.Option[Options, *Options] {
 	return func(o *Options) {
@@ -182,7 +174,6 @@ func (o *Options) SetDefault() {
 	o.CleanupIntervalSeconds = 300
 	o.CleanupBatchSize = 1000
 	o.CleanupTimeoutSeconds = 30
-	o.WorkerID = -1
 	o.PublishBufferSize = runtime.GOMAXPROCS(0) * 512
 	o.WorkConcurrencyFactor = 1
 }

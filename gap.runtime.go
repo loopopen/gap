@@ -33,11 +33,12 @@ func New(opts ...shoot.Option[Options, *Options]) *Gap {
 	if err := gapOpts.Validate(); err != nil {
 		panic(err)
 	}
+	if err := ensureSnowflake(); err != nil {
+		panic(err)
+	}
 	gapOpts.RuntimeIdentity()
 	gapOpts.InitRuntime()
 	stor := plugin.MustGetStorage(gapOpts)
-
-	initSnowflake(gapOpts.WorkerID)
 
 	g := &Gap{
 		opts:         gapOpts,

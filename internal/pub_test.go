@@ -51,7 +51,9 @@ func (*brokerPluginStub) OpenConsumer(*ingap.Options, string) (broker.Consumer, 
 }
 
 func TestPublishRecordsBrokerNameAndTypeHeader(t *testing.T) {
-	entity.MustInitSnowflake(1)
+	if err := entity.InitSnowflake(1); err != nil {
+		t.Fatal(err)
+	}
 	producer := new(producerStub)
 	opts := &ingap.Options{
 		Version: "v1",

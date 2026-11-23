@@ -10,12 +10,27 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bwmarrin/snowflake"
 	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
 	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/shoot"
 )
+
+func TestSetWorkerIDUsesTheLatestCall(t *testing.T) {
+	if err := SetWorkerID(4); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetWorkerID(5); err != nil {
+		t.Fatal(err)
+	}
+	g := New()
+	t.Cleanup(func() { _ = g.Shutdown(context.Background()) })
+	if got := snowflake.ParseInt64(int64(entity.NewEnvelope("v", "topic", "msg").ID)).Node(); got != 5 {
+		t.Fatalf("generated node = %d, want 5", got)
+	}
+}
 
 func TestNewRejectsInvalidStateMachineOptions(t *testing.T) {
 	tests := []struct {

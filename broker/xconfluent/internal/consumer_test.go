@@ -101,7 +101,9 @@ func (f *blockingReadConsumer) Close() error {
 }
 
 func testConsumer(client consumerClient) *Consumer {
-	entity.MustInitSnowflake(1)
+	if err := entity.InitSnowflake(1); err != nil {
+		panic(err)
+	}
 	gapOpts := &gap.Options{Version: "test"}
 	gapOpts.InitRuntime()
 	consumer := &Consumer{

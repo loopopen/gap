@@ -61,9 +61,6 @@ type Options struct {
 
 	MaxPublishConcurrency int
 
-	//@def=-1
-	WorkerID int64
-
 	//@def=runtime.GOMAXPROCS(0)*512
 	PublishBufferSize int
 
