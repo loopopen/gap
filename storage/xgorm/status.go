@@ -11,6 +11,8 @@ import (
 
 const mysqlStatusType = "ENUM('Pending','Succeeded','Failed')"
 
+type Status enum.Status
+
 // String returns the string representation of the receiver.
 func (s Status) String() string {
 	return enum.Status(s).String()

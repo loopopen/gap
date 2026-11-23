@@ -12,8 +12,6 @@ import (
 	"github.com/loopopen/gap/internal/utility"
 )
 
-type Status enum.Status
-
 type Model struct {
 	ID            uint                `gorm:"primarykey"`
 	CreatedAt     time.Time           `gorm:"not null"`
@@ -22,7 +20,7 @@ type Model struct {
 	BrokerName    string              `gorm:"not null;size:128"`
 	Status        Status              `gorm:"not null"`
 	Headers       string              `gorm:"type:text"`
-	Payload       string              ``
+	Payload       Payload             ``
 	Retries       int                 `gorm:"default:0"`
 	LeaseToken    string              `gorm:"size:32"`
 	LeaseUntil    sql.Null[time.Time] ``
@@ -64,7 +62,7 @@ func (p *Published) readEntity(e *entity.Envelope) {
 		p.err = fmt.Errorf("encode payload for id %d: %w", e.ID, err)
 		return
 	}
-	p.Payload = string(payload)
+	p.Payload = Payload(payload)
 	if p.Status == 0 {
 		p.Status = Status(enum.StatusPending)
 	}
@@ -107,7 +105,7 @@ func (r *Received) readEntity(e *entity.Envelope) {
 		r.err = fmt.Errorf("encode payload for id %d: %w", e.ID, err)
 		return
 	}
-	r.Payload = string(payload)
+	r.Payload = Payload(payload)
 	if r.Status == 0 {
 		r.Status = Status(enum.StatusPending)
 	}

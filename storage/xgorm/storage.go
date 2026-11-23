@@ -23,7 +23,7 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-type TableCommentter interface {
+type TableCommenter interface {
 	TableComment() string
 }
 
@@ -159,7 +159,7 @@ func (s *Storage) autoMigrate(models ...any) error {
 		}
 
 		var tableComment string
-		if tc, ok := model.(TableCommentter); ok {
+		if tc, ok := model.(TableCommenter); ok {
 			tableComment = tc.TableComment()
 		}
 
