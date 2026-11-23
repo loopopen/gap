@@ -49,22 +49,22 @@ func resetPools(t *testing.T) {
 	t.Cleanup(registry.Reset)
 }
 
-func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
+func TestCreateStorageReleasesPoolWhenInitFails(t *testing.T) {
 	resetPools(t)
 	orig := openPoolDB
 	t.Cleanup(func() { openPoolDB = orig })
 
 	var opens atomic.Int32
-	var opened *sql.DB
+	var opened []*sql.DB
 	openPoolDB = func(context.Context, string, xsql.Role) (*sql.DB, error) {
 		opens.Add(1)
 		db, err := sql.Open(xsql.MySQL, "root:@tcp(127.0.0.1:1)/gap?timeout=1s")
-		opened = db
+		opened = append(opened, db)
 		return db, err
 	}
 
 	storOpts := &Options{
-		Schema: "gap",
+		Schema: "bad-schema",
 		DSN:    "dsn-init-fail",
 	}
 	opts := &ingap.Options{StorageOptions: storOpts}
@@ -75,13 +75,15 @@ func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
 			t.Fatal("expected init to fail")
 		}
 	}
-	if got := opens.Load(); got != 1 {
+	if got := opens.Load(); got != 2 {
 		t.Fatalf("opens = %d", got)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	err := opened.PingContext(ctx)
-	if err != nil && strings.Contains(err.Error(), "database is closed") {
-		t.Fatal(err)
+	for _, db := range opened {
+		err := db.PingContext(ctx)
+		if err == nil || !strings.Contains(err.Error(), "database is closed") {
+			t.Fatalf("pool left open: %v", err)
+		}
 	}
 }

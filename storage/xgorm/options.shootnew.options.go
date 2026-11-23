@@ -4,16 +4,14 @@ package xgorm
 
 import (
 	"github.com/loopopen/shoot"
-	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
 // NewOptions constructs a new instance of type Options
-func NewOptions(schema string, logLevel logger.LogLevel, db *gorm.DB) *Options {
+func NewOptions(schema string, logLevel logger.LogLevel) *Options {
 	return &Options{
 		Schema:   schema,
 		LogLevel: logLevel,
-		DB:       db,
 	}
 }
 
@@ -37,13 +35,6 @@ func Schema(schema_ string) shoot.Option[Options, *Options] {
 func LogLevel(logLevel_ logger.LogLevel) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		o.LogLevel = logLevel_
-	}
-}
-
-// DB is a configuration for the filed DB
-func DB(db_ *gorm.DB) shoot.Option[Options, *Options] {
-	return func(o *Options) {
-		o.DB = db_
 	}
 }
 

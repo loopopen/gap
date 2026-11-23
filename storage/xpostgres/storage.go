@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loopopen/gap/internal/entity"
@@ -23,6 +24,9 @@ type Storage struct {
 	opts    *Options
 	db      *xsql.DB
 	tx      *xsql.Tx
+
+	pool      *xsql.Pool
+	closeOnce sync.Once
 }
 
 func (s *Storage) execer() Execer {

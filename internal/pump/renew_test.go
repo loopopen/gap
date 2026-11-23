@@ -281,7 +281,7 @@ func TestSendClaimedRenewsUntilEachSendReturns(t *testing.T) {
 	second := leasedEnvelope(2)
 	done := make(chan struct{})
 	go func() {
-		p.publishedClaimed(context.Background(), context.Background(), []*entity.Envelope{first, second})
+		p.publishedClaimed(context.Background(), []*entity.Envelope{first, second})
 		close(done)
 	}()
 	if id := <-sender.started; id != first.ID {
@@ -322,7 +322,7 @@ func TestSendClaimedSkipsMessageAfterLeaseLoss(t *testing.T) {
 	lost := leasedEnvelope(2)
 	done := make(chan struct{})
 	go func() {
-		p.publishedClaimed(context.Background(), context.Background(), []*entity.Envelope{first, lost})
+		p.publishedClaimed(context.Background(), []*entity.Envelope{first, lost})
 		close(done)
 	}()
 	if id := <-sender.started; id != first.ID {
@@ -382,7 +382,7 @@ func TestHandleClaimedSkipsMessageAfterLeaseLoss(t *testing.T) {
 	lost.Group = "billing"
 	done := make(chan struct{})
 	go func() {
-		p.receivedClaimed(context.Background(), context.Background(), []*entity.Envelope{first, lost})
+		p.receivedClaimed(context.Background(), []*entity.Envelope{first, lost})
 		close(done)
 	}()
 	if id := <-handler.started; id != first.ID {

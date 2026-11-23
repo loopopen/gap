@@ -187,6 +187,51 @@ func TestConcurrentPoolOpen(t *testing.T) {
 	}
 }
 
+func TestPoolReleaseClosesOnLastBorrower(t *testing.T) {
+	reg := NewRegistry(stubOpener(t))
+	ctx := context.Background()
+	first, err := reg.Open(ctx, "dsn-ref", RoleData, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := reg.Open(ctx, "dsn-ref", RoleData, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.DB != second.DB {
+		t.Fatal("same dsn opened two pools")
+	}
+	if err := first.Release(); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.DB.PingContext(ctx); closedDB(err) {
+		t.Fatal(err)
+	}
+	if err := second.Release(); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Release(); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.DB.PingContext(ctx); !closedDB(err) {
+		t.Fatalf("last release: %v", err)
+	}
+	third, err := reg.Open(ctx, "dsn-ref", RoleData, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third.DB == second.DB {
+		t.Fatal("reopen reused a closed pool")
+	}
+	if err := third.Release(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func closedDB(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "database is closed")
+}
+
 func TestOpenEmptyDSN(t *testing.T) {
 	db, err := Open(context.Background(), MySQL, " ")
 	if err == nil || db != nil {

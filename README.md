@@ -92,7 +92,7 @@ func main() {
     g := gap.New(
         gap.ServiceName("my-service.worker"),
         xgorm.UseGorm(
-            xgorm.DB(db),
+            xgorm.DSN(dsn, mysql.Open),
         ),
     )
 

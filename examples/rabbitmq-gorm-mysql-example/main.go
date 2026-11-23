@@ -29,7 +29,7 @@ func main() {
 
 	g := gap.New(
 		xgorm.UseGorm(
-			xgorm.DB(db),
+			xgorm.DSN(dsn, mysql.Open),
 		),
 	)
 	pub := g.NewEventPublisher(

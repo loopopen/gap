@@ -20,8 +20,6 @@ type Options struct {
 
 	LogLevel logger.LogLevel
 
-	DB *gorm.DB
-
 	dsn       string           `new:"-"`
 	dialector DialectorFactory `new:"-"`
 }
@@ -41,6 +39,7 @@ func UseGorm(opts ...shoot.Option[Options, *Options]) shoot.Option[ingap.Options
 }
 
 // DSN configures GORM storage from a DSN and dialector.
+// GAP opens that pool itself. Business transactions keep using the application's *gorm.DB.
 func DSN(dsn string, dialector DialectorFactory) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		o.dsn = dsn

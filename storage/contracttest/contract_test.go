@@ -39,13 +39,13 @@ func TestPostgresContract(t *testing.T) {
 func TestGormMySQLContract(t *testing.T) {
 	dsn := storagetest.RequireDSN(t, "GAP_TEST_MYSQL_DSN")
 	t.Parallel()
-	runGormContract(t, "xgorm_mysql", func() gorm.Dialector { return mysqldriver.Open(dsn) })
+	runGormContract(t, "xgorm_mysql", dsn, func() gorm.Dialector { return mysqldriver.Open(dsn) })
 }
 
 func TestGormPostgresContract(t *testing.T) {
 	dsn := storagetest.RequireDSN(t, "GAP_TEST_POSTGRES_DSN")
 	t.Parallel()
-	runGormContract(t, "xgorm_postgres", func() gorm.Dialector { return postgresdriver.Open(dsn) })
+	runGormContract(t, "xgorm_postgres", dsn, func() gorm.Dialector { return postgresdriver.Open(dsn) })
 }
 
 type openSQLStorage func(*ingap.Options, string) (storage.Storage, error)
@@ -69,6 +69,7 @@ func sqlFactory(driver, dsn string, openStorage openSQLStorage) storagetest.Fact
 		}
 		t.Cleanup(func() {
 			dropSQLStorage(t, db, driver, schema)
+			closeStorage(stor)
 			_ = db.Close()
 		})
 
@@ -87,7 +88,7 @@ func sqlFactory(driver, dsn string, openStorage openSQLStorage) storagetest.Fact
 	}
 }
 
-func runGormContract(t *testing.T, prefix string, dialector func() gorm.Dialector) {
+func runGormContract(t *testing.T, prefix, dsn string, dialector func() gorm.Dialector) {
 	storagetest.Run(t, func(t *testing.T, gapOpts *ingap.Options) storagetest.Harness {
 		db, err := gorm.Open(dialector(), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 		if err != nil {
@@ -103,13 +104,18 @@ func runGormContract(t *testing.T, prefix string, dialector func() gorm.Dialecto
 		}
 
 		schema := storagetest.Schema(prefix)
-		stor, err := (&xgorm.Options{Schema: schema, DB: db}).OpenStorage(gapOpts, storage.RoleData)
+		opts := new(xgorm.Options).With(
+			xgorm.Schema(schema),
+			xgorm.DSN(dsn, func(string) gorm.Dialector { return dialector() }),
+		)
+		stor, err := opts.OpenStorage(gapOpts, storage.RoleData)
 		if err != nil {
 			_ = sqlDB.Close()
 			t.Fatal(err)
 		}
 		t.Cleanup(func() {
 			dropSQLStorage(t, sqlDB, db.Dialector.Name(), schema)
+			closeStorage(stor)
 			_ = sqlDB.Close()
 		})
 
@@ -126,6 +132,12 @@ func runGormContract(t *testing.T, prefix string, dialector func() gorm.Dialecto
 			},
 		}
 	})
+}
+
+func closeStorage(stor storage.Storage) {
+	if c, ok := stor.(interface{ Close() error }); ok {
+		_ = c.Close()
+	}
 }
 
 func dropSQLStorage(t *testing.T, db *sql.DB, driver, schema string) {

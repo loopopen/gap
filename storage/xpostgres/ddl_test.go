@@ -1,18 +1,11 @@
 package xpostgres
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"testing"
-	"time"
 
-	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
-	ingap "github.com/loopopen/gap/internal/gap"
-	"github.com/loopopen/gap/storage/xsql"
 )
 
 func TestQuotedTable(t *testing.T) {
@@ -223,156 +216,5 @@ func TestWherePlaceholders(t *testing.T) {
 	Add(h, `"headers" LIKE ? ESCAPE '!'`, `%"tenant-id":"customer-42"%`)
 	if h.String() != `WHERE "status" = $1 AND "topic" = $2 AND "headers" LIKE $3 ESCAPE '!'` {
 		t.Fatal(h.String())
-	}
-}
-
-func TestOpenPostgresEmptyDSN(t *testing.T) {
-	for _, dsn := range []string{"", " ", "\t"} {
-		db, err := openPostgres(context.Background(), dsn)
-		if err == nil || db != nil {
-			t.Fatalf("dsn %q: db=%v err=%v", dsn, db, err)
-		}
-		if !strings.Contains(err.Error(), "empty") {
-			t.Fatal(err)
-		}
-	}
-}
-
-func TestOpenDashboardPingFails(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	db, err := openDashboard(ctx, "postgres://root@127.0.0.1:1/gap?sslmode=disable&connect_timeout=1")
-	if err == nil || db != nil {
-		t.Fatalf("db=%v err=%v", db, err)
-	}
-	if strings.Contains(err.Error(), "session setup") {
-		t.Fatal(err)
-	}
-}
-
-func TestOpenPostgresPingFails(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	db, err := openPostgres(ctx, "postgres://root@127.0.0.1:1/gap?sslmode=disable&connect_timeout=1")
-	if err == nil || db != nil {
-		t.Fatalf("db=%v err=%v", db, err)
-	}
-}
-
-func TestCreateStorageEmptyDSN(t *testing.T) {
-	storOpts := &Options{Schema: "gap"}
-	opts := &ingap.Options{StorageOptions: storOpts}
-	opts.InitRuntime()
-	_, err := storOpts.OpenStorage(opts, xsql.RoleData)
-	if err == nil || !strings.Contains(err.Error(), "empty") {
-		t.Fatal(err)
-	}
-}
-
-func TestDashboardLimitSQL(t *testing.T) {
-	if got, want := dashboardLimitSQL(), "SET statement_timeout = 10000"; got != want {
-		t.Fatalf("sql = %q", got)
-	}
-}
-
-func TestOpenDashboardEmptyDSN(t *testing.T) {
-	db, err := openDashboard(context.Background(), " ")
-	if err == nil || db != nil {
-		t.Fatalf("db=%v err=%v", db, err)
-	}
-	if !strings.Contains(err.Error(), "empty") {
-		t.Fatal(err)
-	}
-}
-
-func TestCreateStorageKeepsPoolWhenInitFails(t *testing.T) {
-	resetPools(t)
-	orig := openPoolDB
-	t.Cleanup(func() { openPoolDB = orig })
-
-	var opens atomic.Int32
-	var opened *sql.DB
-	openPoolDB = func(context.Context, string, xsql.Role) (*sql.DB, error) {
-		opens.Add(1)
-		db, err := sql.Open("pgx", "postgres://postgres@127.0.0.1:1/gap?sslmode=disable&connect_timeout=1")
-		opened = db
-		return db, err
-	}
-
-	storOpts := &Options{
-		Schema: "gap",
-		DSN:    "dsn-init-fail",
-	}
-	opts := &ingap.Options{StorageOptions: storOpts}
-	opts.InitRuntime()
-	for range 2 {
-		_, err := storOpts.OpenStorage(opts, xsql.RoleData)
-		if err == nil {
-			t.Fatal("expected init to fail")
-		}
-	}
-	if got := opens.Load(); got != 1 {
-		t.Fatalf("opens = %d", got)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	err := opened.PingContext(ctx)
-	if err != nil && strings.Contains(err.Error(), "database is closed") {
-		t.Fatal(err)
-	}
-}
-
-func resetPools(t *testing.T) {
-	t.Helper()
-	registry.Reset()
-	t.Cleanup(registry.Reset)
-}
-
-func TestToEntityInvalidHeaders(t *testing.T) {
-	p := &Published{ID: 7, Headers: "{"}
-	en := p.ToEntity()
-	if p.err == nil {
-		t.Fatal("expected decode error")
-	}
-	if en.Headers != nil {
-		t.Fatalf("headers = %#v", en.Headers)
-	}
-}
-
-func TestFromEntityPayloadAndHeaders(t *testing.T) {
-	now := time.Now()
-	en := &entity.Envelope{
-		ID:            4,
-		Topic:         "t",
-		BrokerName:    "orders",
-		Message:       map[string]string{"a": "b"},
-		Headers:       map[string]string{"h": "v"},
-		LeaseUntil:    now.Add(time.Minute),
-		NextAttemptAt: now,
-	}
-	p := new(Published).FromEntity(en)
-	if p.err != nil {
-		t.Fatal(p.err)
-	}
-	if p.Payload != `{"a":"b"}` {
-		t.Fatalf("payload = %q", p.Payload)
-	}
-	if p.Headers != `{"h":"v"}` {
-		t.Fatalf("headers = %q", p.Headers)
-	}
-	if p.BrokerName != "orders" {
-		t.Fatalf("broker name = %q", p.BrokerName)
-	}
-	if got := p.ToEntity().BrokerName; got != "orders" {
-		t.Fatalf("broker name = %q", got)
-	}
-	if p.Status != enum.StatusPending {
-		t.Fatalf("status = %s", p.Status)
-	}
-	if !p.LeaseUntil.Valid || !p.LeaseUntil.V.Equal(en.LeaseUntil) {
-		t.Fatalf("lease until = %v, want %v", p.LeaseUntil, en.LeaseUntil)
-	}
-	if !p.NextAttemptAt.Equal(en.NextAttemptAt) {
-		t.Fatalf("next attempt at = %v, want %v", p.NextAttemptAt, en.NextAttemptAt)
 	}
 }

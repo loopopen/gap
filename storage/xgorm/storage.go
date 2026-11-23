@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loopopen/gap/internal/entity"
@@ -30,6 +31,9 @@ type Storage struct {
 	gapOpts *ingap.Options
 	opts    *Options
 	db      *gorm.DB
+
+	pool      *xsql.Pool
+	closeOnce sync.Once
 }
 
 // CreatePublished implements [storage.Storage].

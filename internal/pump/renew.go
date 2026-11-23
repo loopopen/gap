@@ -303,29 +303,27 @@ func (p *Pump) receivedLeaseHeld(envelope *entity.Envelope) bool {
 	return leaseTracked(p.receivedRenewals, envelope)
 }
 
-func (p *Pump) renewClaimed(ctx, workCtx context.Context, renewals *leaseRenewer, envelopes []*entity.Envelope, run func(context.Context, *entity.Envelope) error, skip string) {
+func (p *Pump) renewClaimed(workCtx context.Context, renewals *leaseRenewer, envelopes []*entity.Envelope, run func(context.Context, *entity.Envelope) error) {
 	for _, envelope := range envelopes {
 		trackLease(renewals, envelope, true)
 	}
 	for _, envelope := range envelopes {
 		if !leaseTracked(renewals, envelope) {
-			envelope.Log().Warn(skip)
+			envelope.Log().Warn("skipping claimed message after lease loss")
 			continue
 		}
-		if err := run(workCtx, envelope); err != nil && ctx.Err() == nil {
-			wait(ctx, 10*time.Second)
-		}
+		_ = run(workCtx, envelope)
 	}
 }
 
 // publishedClaimed mounts every claimed published message, then sends the ones whose
 // lease is still held. A lease dropped by renewal is not produced again.
-func (p *Pump) publishedClaimed(ctx, workCtx context.Context, envelopes []*entity.Envelope) {
-	p.renewClaimed(ctx, workCtx, p.publishedRenewals, envelopes, p.send, "skipping claimed published message after lease loss")
+func (p *Pump) publishedClaimed(workCtx context.Context, envelopes []*entity.Envelope) {
+	p.renewClaimed(workCtx, p.publishedRenewals, envelopes, p.send)
 }
 
 // receivedClaimed mounts every claimed received message, then handles the ones
 // whose lease is still held. A lease dropped by renewal is not handled again.
-func (p *Pump) receivedClaimed(ctx, workCtx context.Context, envelopes []*entity.Envelope) {
-	p.renewClaimed(ctx, workCtx, p.receivedRenewals, envelopes, p.handle, "skipping claimed received message after lease loss")
+func (p *Pump) receivedClaimed(workCtx context.Context, envelopes []*entity.Envelope) {
+	p.renewClaimed(workCtx, p.receivedRenewals, envelopes, p.handle)
 }

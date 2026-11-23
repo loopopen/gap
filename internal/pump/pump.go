@@ -327,11 +327,10 @@ func (p *Pump) pollingSend(ctx context.Context) {
 			ps, err := p.storage.ClaimPublishedBatch(ctx, p.gapOpts.ClaimBatchSize, brokerName)
 			if err != nil {
 				slog.Error("failed to claim published messages", slog.Any("err", err))
-				wait(ctx, 10*time.Second)
 				continue
 			}
 
-			p.publishedClaimed(ctx, workCtx, ps)
+			p.publishedClaimed(workCtx, ps)
 		}
 	}
 }
@@ -469,11 +468,10 @@ func (p *Pump) pollingHandle(ctx context.Context) {
 			rs, err := p.storage.ClaimReceivedBatch(ctx, p.gapOpts.ClaimBatchSize, group, brokerName)
 			if err != nil {
 				slog.Error("failed to claim received messages", slog.Any("err", err))
-				wait(ctx, 10*time.Second)
 				continue
 			}
 
-			p.receivedClaimed(ctx, workCtx, rs)
+			p.receivedClaimed(workCtx, rs)
 		}
 	}
 }
@@ -626,13 +624,6 @@ func groupFromHandlerKey(key string) string {
 
 func (p *Pump) handler(envelope *entity.Envelope) (any, bool) {
 	return p.handlers.Load(handlerKey(envelope.BrokerName, envelope.Group))
-}
-
-func wait(ctx context.Context, duration time.Duration) {
-	select {
-	case <-time.After(duration):
-	case <-ctx.Done():
-	}
 }
 
 // StopSources waits for pump input sources to stop.

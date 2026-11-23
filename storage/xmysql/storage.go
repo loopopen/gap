@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -25,6 +26,9 @@ type Storage struct {
 	opts    *Options
 	db      *xsql.DB
 	tx      *xsql.Tx
+
+	pool      *xsql.Pool
+	closeOnce sync.Once
 }
 
 func (s *Storage) execer() Execer {
