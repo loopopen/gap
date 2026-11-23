@@ -76,31 +76,35 @@ init_repo() {
 
 test_main_matches_origin() {
 	init_repo
-	require_main
+	require_branch
 }
 
-test_rejects_other_branch() {
+test_allows_other_branch() {
 	init_repo
 	git checkout -q -b feature
-	require_main
+	require_branch
+	if [ "$branch" != feature ]; then
+		echo "branch is $branch, want feature" >&2
+		exit 1
+	fi
 }
 
 test_rejects_detached_head() {
 	init_repo
 	git checkout -q --detach
-	require_main
+	require_branch
 }
 
-test_rejects_main_ahead_of_origin() {
+test_allows_main_ahead_of_origin() {
 	init_repo
 	git commit -q --allow-empty -m ahead
-	require_main
+	require_branch
 }
 
-test_rejects_missing_origin_main() {
+test_allows_missing_origin_main() {
 	init_repo
 	git update-ref -d refs/remotes/origin/main
-	require_main
+	require_branch
 }
 
 test_rollback_removes_release_commit_and_new_tags() {
@@ -185,10 +189,10 @@ do
 done
 
 expect_status 0 main-matches-origin test_main_matches_origin
-expect_status 1 other-branch test_rejects_other_branch
+expect_status 0 other-branch test_allows_other_branch
 expect_status 1 detached-head test_rejects_detached_head
-expect_status 1 main-ahead test_rejects_main_ahead_of_origin
-expect_status 1 missing-origin-main test_rejects_missing_origin_main
+expect_status 0 main-ahead test_allows_main_ahead_of_origin
+expect_status 0 missing-origin-main test_allows_missing_origin_main
 expect_status 0 rollback test_rollback_removes_release_commit_and_new_tags
 
 if [ "$fail" -ne 0 ]; then

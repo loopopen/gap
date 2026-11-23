@@ -70,25 +70,11 @@ require_clean_tree() {
 	fi
 }
 
-require_main() {
+require_branch() {
 	branch=$(git symbolic-ref --quiet --short HEAD) || {
-		echo "release requires branch main" >&2
+		echo "release requires a branch" >&2
 		exit 1
 	}
-	if [ "$branch" != main ]; then
-		echo "release requires branch main, current branch is $branch" >&2
-		exit 1
-	fi
-	if ! git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null; then
-		echo "origin/main is missing; fetch origin before releasing" >&2
-		exit 1
-	fi
-	local_main=$(git rev-parse refs/heads/main)
-	origin_main=$(git rev-parse refs/remotes/origin/main)
-	if [ "$local_main" != "$origin_main" ]; then
-		echo "local main ($local_main) does not match origin/main ($origin_main)" >&2
-		exit 1
-	fi
 }
 
 record_baseline() {
@@ -230,7 +216,7 @@ tag_release() {
 release() {
 	trap release_exit EXIT
 	validate_version
-	require_main
+	require_branch
 	require_clean_tree "working tree must be clean before releasing"
 
 	for module_dir in . $plugin_modules; do

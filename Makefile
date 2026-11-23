@@ -106,4 +106,4 @@ versions:
 	@./scripts/release.sh versions $(PLUGIN_MODULES)
 
 release:
-	@./scripts/release.sh release "$(VERSION)" $(PLUGIN_MODULES)
+	@./scripts/release.sh release "$(or $(TAG),$(VERSION))" $(PLUGIN_MODULES)
