@@ -9,11 +9,14 @@ import (
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/storage/internal/xsql"
+	dbmodel "github.com/loopopen/gap/storage/xpostgres/internal/model"
 )
 
-var _ storage.StorageX = (*Storage)(nil)
+var _ storage.StorageX = (*storageAdapter)(nil)
 
-func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, error) {
+// DashboardStats returns aggregate delivery statistics for the dashboard.
+func (s *storageAdapter) DashboardStats(ctx context.Context) (*entity.DashboardStats, error) {
 	published, err := s.messageStats(ctx, "published")
 	if err != nil {
 		return nil, err
@@ -22,10 +25,14 @@ func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, e
 	if err != nil {
 		return nil, err
 	}
-	return &entity.DashboardStats{Published: published, Received: received}, nil
+	groups, err := s.receivedGroupStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &entity.DashboardStats{Published: published, Received: received, Groups: groups}, nil
 }
 
-func (s *Storage) messageStats(ctx context.Context, name string) (entity.MessageStats, error) {
+func (s *storageAdapter) messageStats(ctx context.Context, name string) (entity.MessageStats, error) {
 	table, err := s.quotedTable(name)
 	if err != nil {
 		return entity.MessageStats{}, err
@@ -64,19 +71,77 @@ func (s *Storage) messageStats(ctx context.Context, name string) (entity.Message
 	return stats, nil
 }
 
-func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
+func (s *storageAdapter) receivedGroupStats(ctx context.Context) ([]entity.GroupMessageStats, error) {
+	table, err := s.quotedTable("received")
+	if err != nil {
+		return nil, err
+	}
+	script := `SELECT
+		"group",
+		COUNT(*),
+		COALESCE(SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN status = 'Succeeded' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(retries), 0),
+		MAX(created_at),
+		MIN(CASE WHEN status = 'Pending' THEN created_at END)
+		FROM ` + table + `
+		GROUP BY "group"
+		ORDER BY "group"`
+
+	rows, err := s.db.QueryContext(ctx, script)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	groups := make([]entity.GroupMessageStats, 0)
+	for rows.Next() {
+		var item entity.GroupMessageStats
+		var lastActivity sql.NullTime
+		var oldestBacklog sql.NullTime
+		err = rows.Scan(
+			&item.Group,
+			&item.Total,
+			&item.Pending,
+			&item.Succeeded,
+			&item.Failed,
+			&item.Retries,
+			&lastActivity,
+			&oldestBacklog,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if lastActivity.Valid {
+			item.LastActivity = &lastActivity.Time
+		}
+		if oldestBacklog.Valid {
+			item.OldestBacklog = &oldestBacklog.Time
+		}
+		groups = append(groups, item)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return groups, nil
+}
+
+// GetPublishedByID returns a published message by ID.
+func (s *storageAdapter) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
 	table, err := s.quotedTable("published")
 	if err != nil {
 		return nil, err
 	}
-	script := `SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at" FROM ` +
+	script := `SELECT "id","created_at","version","topic","broker_name","status","headers","payload","retries","expired_at" FROM ` +
 		table + ` WHERE "id" = $1`
-	var pub Published
+	var pub dbmodel.Published
 	err = s.db.QueryRowContext(ctx, script, id).Scan(
 		&pub.ID,
 		&pub.CreatedAt,
 		&pub.Version,
 		&pub.Topic,
+		&pub.BrokerName,
 		&pub.Status,
 		&pub.Headers,
 		&pub.Payload,
@@ -90,22 +155,22 @@ func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelo
 		return nil, err
 	}
 	en := pub.ToEntity()
-	if pub.err != nil {
-		return nil, pub.err
+	if pub.Err() != nil {
+		return nil, pub.Err()
 	}
 	return en, nil
 }
 
 // QueryPublished implements [storage.StorageX].
-func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
-	wh := NewWhereHelper()
+func (s *storageAdapter) QueryPublished(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
+	wh := xsql.NewWhereBuilder(xsql.Postgres)
 	if err := s.addMessageFilters(wh, filter, false); err != nil {
 		return nil, nil, err
 	}
 	return s.queryPublished(ctx, wh, filter, page)
 }
 
-func (s *Storage) queryPublished(ctx context.Context, wh *WhereHelper, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
+func (s *storageAdapter) queryPublished(ctx context.Context, wh *xsql.WhereBuilder, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
 	table, err := s.quotedTable("published")
 	if err != nil {
 		return nil, nil, err
@@ -117,7 +182,7 @@ func (s *Storage) queryPublished(ctx context.Context, wh *WhereHelper, filter *e
 	}
 
 	pg := page.Normalize()
-	script := `SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at" FROM ` +
+	script := `SELECT "id","created_at","version","topic","broker_name","status","headers","payload","retries","expired_at" FROM ` +
 		table + " " + wh.String() + ` ORDER BY "id" ` + messageOrder(filter) + " " + paginate(pg)
 	rows, err := s.db.QueryContext(ctx, script, wh.Params()...)
 	if err != nil {
@@ -125,14 +190,15 @@ func (s *Storage) queryPublished(ctx context.Context, wh *WhereHelper, filter *e
 	}
 	defer rows.Close()
 
-	var pubs []*Published
+	var pubs []*dbmodel.Published
 	for rows.Next() {
-		var pub Published
+		var pub dbmodel.Published
 		err = rows.Scan(
 			&pub.ID,
 			&pub.CreatedAt,
 			&pub.Version,
 			&pub.Topic,
+			&pub.BrokerName,
 			&pub.Status,
 			&pub.Headers,
 			&pub.Payload,
@@ -147,7 +213,7 @@ func (s *Storage) queryPublished(ctx context.Context, wh *WhereHelper, filter *e
 	if err = rows.Err(); err != nil {
 		return nil, nil, err
 	}
-	es, err := pubsToEntities(pubs)
+	es, err := dbmodel.PublishedToEntities(pubs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -156,8 +222,8 @@ func (s *Storage) queryPublished(ctx context.Context, wh *WhereHelper, filter *e
 }
 
 // QueryReceived implements [storage.StorageX].
-func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
-	h := NewWhereHelper()
+func (s *storageAdapter) QueryReceived(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
+	h := xsql.NewWhereBuilder(xsql.Postgres)
 	if err := s.addMessageFilters(h, filter, true); err != nil {
 		return nil, nil, err
 	}
@@ -173,7 +239,7 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 	}
 
 	pg := page.Normalize()
-	script := `SELECT "id","created_at","version","topic","status","headers","payload","retries","expired_at","group" FROM ` +
+	script := `SELECT "id","created_at","version","topic","broker_name","status","headers","payload","retries","expired_at","group" FROM ` +
 		table + " " + h.String() + ` ORDER BY "id" ` + messageOrder(filter) + " " + paginate(pg)
 	rows, err := s.db.QueryContext(ctx, script, h.Params()...)
 	if err != nil {
@@ -181,14 +247,15 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 	}
 	defer rows.Close()
 
-	var recs []*Received
+	var recs []*dbmodel.Received
 	for rows.Next() {
-		var rec Received
+		var rec dbmodel.Received
 		err = rows.Scan(
 			&rec.ID,
 			&rec.CreatedAt,
 			&rec.Version,
 			&rec.Topic,
+			&rec.BrokerName,
 			&rec.Status,
 			&rec.Headers,
 			&rec.Payload,
@@ -204,7 +271,7 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 	if err = rows.Err(); err != nil {
 		return nil, nil, err
 	}
-	es, err := recsToEntities(recs)
+	es, err := dbmodel.ReceivedToEntities(recs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -219,7 +286,7 @@ func messageOrder(filter *entity.MessageFilter) string {
 	return "ASC"
 }
 
-func (s *Storage) addMessageFilters(h *WhereHelper, filter *entity.MessageFilter, includeGroup bool) error {
+func (s *storageAdapter) addMessageFilters(h *xsql.WhereBuilder, filter *entity.MessageFilter, includeGroup bool) error {
 	if filter == nil {
 		return nil
 	}
@@ -228,26 +295,26 @@ func (s *Storage) addMessageFilters(h *WhereHelper, filter *entity.MessageFilter
 		return err
 	}
 	if filter.ID != nil {
-		Add(h, `"id" = ?`, *filter.ID)
+		xsql.Add(h, `"id" = ?`, *filter.ID)
 	}
 	if filter.Status != 0 {
-		Add(h, `"status" = ?::`+statusType, filter.Status)
+		xsql.Add(h, `"status" = ?::`+statusType, filter.Status)
 	}
-	AddIfNotZero(h, `"topic" = ?`, filter.Topic)
+	xsql.AddIfNotZero(h, `"topic" = ?`, filter.Topic)
 	if includeGroup {
-		AddIfNotZero(h, `"group" = ?`, filter.Group)
+		xsql.AddIfNotZero(h, `"group" = ?`, filter.Group)
 	}
 	if filter.CreatedFrom != nil {
-		Add(h, `"created_at" >= ?`, *filter.CreatedFrom)
+		xsql.Add(h, `"created_at" >= ?`, *filter.CreatedFrom)
 	}
 	if filter.CreatedTo != nil {
-		Add(h, `"created_at" <= ?`, *filter.CreatedTo)
+		xsql.Add(h, `"created_at" <= ?`, *filter.CreatedTo)
 	}
 	if pattern := filter.HeaderLikePattern(); pattern != "" {
-		Add(h, `"headers" LIKE ? ESCAPE '!'`, pattern)
+		xsql.Add(h, `"headers" LIKE ? ESCAPE '!'`, pattern)
 	}
 	if filter.Payload != "" {
-		Add(h, `"payload" LIKE ?`, "%"+filter.Payload+"%")
+		xsql.Add(h, `"payload" LIKE ?`, "%"+filter.Payload+"%")
 	}
 	return nil
 }

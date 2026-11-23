@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/loopopen/gap/internal"
-	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/internal/plugin"
 	"github.com/loopopen/gap/internal/pump"
 	"github.com/loopopen/gap/storage"
@@ -14,7 +13,8 @@ import (
 )
 
 // Gap owns the shared storage, pump, dashboard, subscriptions, and lifecycle
-// of an application. Broker-specific configuration belongs to publishers.
+// of an application. Publishers and subscribers supply their broker-specific
+// configuration independently.
 type Gap struct {
 	opts    *Options
 	storage storage.Storage
@@ -30,11 +30,15 @@ type Gap struct {
 // New creates an application-scoped Gap instance.
 func New(opts ...shoot.Option[Options, *Options]) *Gap {
 	gapOpts := new(Options).With(opts...)
+	if err := gapOpts.Validate(); err != nil {
+		panic(err)
+	}
+	if err := ensureSnowflake(); err != nil {
+		panic(err)
+	}
 	gapOpts.RuntimeIdentity()
-	gapOpts.InitializeRuntime()
+	gapOpts.InitRuntime()
 	stor := plugin.MustGetStorage(gapOpts)
-
-	initSnowflake(gapOpts.WorkerID)
 
 	g := &Gap{
 		opts:         gapOpts,
@@ -48,26 +52,6 @@ func New(opts ...shoot.Option[Options, *Options]) *Gap {
 		g.pump = pump.New(gapOpts, stor)
 	}
 	return g
-}
-
-func (g *Gap) publisherOptions(opts ...shoot.Option[BrokerOptions, *BrokerOptions]) *BrokerOptions {
-	return new(BrokerOptions).With(opts...)
-}
-
-func (g *Gap) subscriberOptions(opts ...shoot.Option[Options, *Options]) *Options {
-	result := cloneOptions(g.opts)
-	for _, opt := range opts {
-		opt(result)
-	}
-	return result
-}
-
-func cloneOptions(source *Options) *Options {
-	result := *source
-	result.HandlerOptsLst = append([]ingap.HandlerOptions(nil), source.HandlerOptsLst...)
-	result.DependencyOptsLst = append([]ingap.DependencyOptions(nil), source.DependencyOptsLst...)
-	result.Dependencies = append([]any(nil), source.Dependencies...)
-	return &result
 }
 
 // Shutdown stops intake, drains accepted work, cancels work that exceeds ctx,
@@ -109,7 +93,10 @@ func (g *Gap) shutdown(ctx context.Context) (err error) {
 			g.pump.Seal()
 		}
 		g.opts.CancelWork()
-		err = errors.Join(err, g.opts.CloseResources())
+		if g.pump != nil {
+			err = errors.Join(err, g.pump.StopRenewals(ctx))
+		}
+		err = errors.Join(err, g.opts.CloseResources(ctx))
 	}()
 
 	// All public operations admitted before shutdown must finish before their

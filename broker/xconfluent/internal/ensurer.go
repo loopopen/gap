@@ -52,6 +52,7 @@ var (
 	ensurerMap = map[string]*Ensurer{}
 )
 
+// SingleEnsurer returns the shared topic-ensurer instance.
 func SingleEnsurer(opts *Options) (*Ensurer, error) {
 	key := opts.connectionKey()
 	ensurerMu.Lock()

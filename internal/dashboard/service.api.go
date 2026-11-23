@@ -17,10 +17,12 @@ import (
 
 var metas []*dto.Meta
 
+// AddMeta registers plugin metadata for the dashboard.
 func AddMeta(metaType enum.PluginKind, pluginType enum.Plugin, version string) {
 	metas = append(metas, dto.NewMeta(metaType, pluginType, version))
 }
 
+// HandleAPIs registers all dashboard API routes.
 func (s *BoardSvc) HandleAPIs() []RouteRecord {
 	s.Get("/api/metas", s.QueryMetas())
 	s.Get("/api/stats", s.QueryDashboardStats())
@@ -30,6 +32,7 @@ func (s *BoardSvc) HandleAPIs() []RouteRecord {
 	return s.routes
 }
 
+// QueryDashboardStats returns an HTTP handler for dashboard statistics.
 func (s *BoardSvc) QueryDashboardStats() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		stats, err := s.storage.DashboardStats(r.Context())
@@ -44,6 +47,7 @@ func (s *BoardSvc) QueryDashboardStats() http.Handler {
 	})
 }
 
+// QueryMetas returns an HTTP handler for registered plugin metadata.
 func (s *BoardSvc) QueryMetas() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(ContentType, ContentTypeJSON)
@@ -56,6 +60,7 @@ func (s *BoardSvc) QueryMetas() http.Handler {
 	})
 }
 
+// QueryPublished returns one filtered page of published messages.
 func (s *BoardSvc) QueryPublished() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var page, perPage int
@@ -88,6 +93,7 @@ func (s *BoardSvc) QueryPublished() http.Handler {
 	})
 }
 
+// GetPublishedByID returns a published message by ID.
 func (s *BoardSvc) GetPublishedByID() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		idStr := r.PathValue("id")
@@ -112,6 +118,7 @@ func (s *BoardSvc) GetPublishedByID() http.Handler {
 	})
 }
 
+// QueryReceived returns one filtered page of received messages.
 func (s *BoardSvc) QueryReceived() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var page, perPage int

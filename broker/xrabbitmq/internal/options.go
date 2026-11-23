@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -50,7 +51,7 @@ type Options struct {
 	//@def=new(QueueOptions).With()
 	QueueOpts *QueueOptions
 
-	runtimeRegistry *runtimeRegistry
+	runtimeRegistry *runtimeRegistry `new:"-"`
 }
 
 type runtimeResourceRef struct {
@@ -65,6 +66,7 @@ type runtimeRegistry struct {
 
 var runtimeRegistryInitMu sync.Mutex
 
+// PluginType returns the plugin type implemented by the receiver.
 func (o *Options) PluginType() enum.Plugin {
 	return enum.PluginRabbitMQ
 }
@@ -78,6 +80,7 @@ type QueueOptions struct {
 	AutoDelete bool
 }
 
+// AmqpURL returns the configured AMQP connection URL.
 func (o *Options) AmqpURL() string {
 	if o.URL != "" {
 		return o.URL
@@ -97,11 +100,12 @@ func (o *Options) producerKey() string {
 	}, "\x00")
 }
 
-func (o *Options) ConfigIdentity() string {
-	return broker.ConfigIdentity("xrabbitmq", o.producerKey())
+// ConfigID returns the stable identity of the configuration.
+func (o *Options) ConfigID() string {
+	return broker.ConfigID("xrabbitmq", o.producerKey())
 }
 
-func (o *Options) acquireRuntime(gapOpts *ingap.Options) (*runtimeResources, func() error) {
+func (o *Options) acquireRuntime(gapOpts *ingap.Options) (*runtimeResources, func(context.Context) error) {
 	registry := o.registry()
 	runtimeID := gapOpts.RuntimeIdentity()
 	registry.mu.Lock()
@@ -120,7 +124,7 @@ func (o *Options) acquireRuntime(gapOpts *ingap.Options) (*runtimeResources, fun
 
 	var once sync.Once
 	var closeErr error
-	return ref.resources, func() error {
+	return ref.resources, func(ctx context.Context) error {
 		once.Do(func() {
 			registry.mu.Lock()
 			current := registry.runtimes[runtimeID]
@@ -135,7 +139,7 @@ func (o *Options) acquireRuntime(gapOpts *ingap.Options) (*runtimeResources, fun
 			}
 			delete(registry.runtimes, runtimeID)
 			registry.mu.Unlock()
-			closeErr = ref.resources.Close()
+			closeErr = ref.resources.CloseContext(ctx)
 		})
 		return closeErr
 	}
@@ -150,6 +154,7 @@ func (o *Options) registry() *runtimeRegistry {
 	return o.runtimeRegistry
 }
 
+// ConfigQueue declares and binds the configured RabbitMQ queue.
 func ConfigQueue(opts ...shoot.Option[QueueOptions, *QueueOptions]) shoot.Option[Options, *Options] {
 	return func(o *Options) {
 		options := new(QueueOptions).With(opts...)
@@ -157,12 +162,14 @@ func ConfigQueue(opts ...shoot.Option[QueueOptions, *QueueOptions]) shoot.Option
 	}
 }
 
+// UseRabbitMQ configures GAP to use RabbitMQ.
 func UseRabbitMQ(opts ...shoot.Option[Options, *Options]) shoot.Option[ingap.BrokerOptions, *ingap.BrokerOptions] {
 	return func(o *ingap.BrokerOptions) {
 		o.Plugin = new(Options).With(opts...)
 	}
 }
 
+// OpenProducer opens a producer for the configured broker.
 func (o *Options) OpenProducer(gapOpts *ingap.Options) (broker.Producer, error) {
 	producer := NewProducer(gapOpts, o)
 	if err := producer.init(); err != nil {
@@ -173,6 +180,7 @@ func (o *Options) OpenProducer(gapOpts *ingap.Options) (broker.Producer, error) 
 	return producer, nil
 }
 
+// OpenConsumer opens a consumer for the configured broker.
 func (o *Options) OpenConsumer(gapOpts *ingap.Options, group string) (broker.Consumer, error) {
 	consumer := NewConsumer(gapOpts, o, group)
 	if err := consumer.init(); err != nil {

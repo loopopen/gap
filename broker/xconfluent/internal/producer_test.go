@@ -22,7 +22,9 @@ func (f *fakeProducer) Produce(message *kafka.Message, delivery chan kafka.Event
 func (f *fakeProducer) Close() { f.closes++ }
 
 func TestProduceWaitsForDeliveryAndPreservesHeaders(t *testing.T) {
-	entity.MustInitSnowflake(1)
+	if err := entity.InitSnowflake(1); err != nil {
+		t.Fatal(err)
+	}
 	client := new(fakeProducer)
 	producer := &Producer{
 		producer: client,

@@ -41,9 +41,14 @@ export interface MessageStats {
   oldestBacklog: string | null;
 }
 
+export interface GroupMessageStats extends MessageStats {
+  group: string;
+}
+
 export interface DashboardStats {
   published: MessageStats;
   received: MessageStats;
+  groups?: GroupMessageStats[];
 }
 
 export interface Msg {

@@ -2,19 +2,9 @@ package xpostgres
 
 import (
 	"fmt"
-	"regexp"
+
+	"github.com/loopopen/gap/storage/internal/xsql"
 )
-
-const maxIdentLen = 63
-
-var identRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-
-func quoteIdent(name string) (string, error) {
-	if len(name) == 0 || len(name) > maxIdentLen || !identRE.MatchString(name) {
-		return "", fmt.Errorf("invalid identifier %q", name)
-	}
-	return `"` + name + `"`, nil
-}
 
 func statusTypeSQL(schema, quotedSchema string) string {
 	return fmt.Sprintf(`
@@ -40,6 +30,7 @@ func publishedCreateSQL(table, statusType string) string {
 			`"created_at" timestamptz NOT NULL,`+
 			`"version" varchar(16) NOT NULL,`+
 			`"topic" varchar(256) NOT NULL,`+
+			`"broker_name" varchar(128) NOT NULL,`+
 			`"status" %s NOT NULL,`+
 			`"headers" text,`+
 			`"payload" text,`+
@@ -61,6 +52,7 @@ func receivedCreateSQL(table, statusType string) string {
 			`"created_at" timestamptz NOT NULL,`+
 			`"version" varchar(16) NOT NULL,`+
 			`"topic" varchar(256) NOT NULL,`+
+			`"broker_name" varchar(128) NOT NULL,`+
 			`"status" %s NOT NULL,`+
 			`"headers" text,`+
 			`"payload" text,`+
@@ -77,12 +69,23 @@ func receivedCreateSQL(table, statusType string) string {
 }
 
 func claimIndexSQL(quotedTable, index string) (string, error) {
-	quotedIndex, err := quoteIdent(index)
+	quotedIndex, err := xsql.Quote(xsql.Postgres, index)
 	if err != nil {
 		return "", err
 	}
 	return fmt.Sprintf(
-		`CREATE INDEX IF NOT EXISTS %s ON %s ("version", "status", "next_attempt_at", "lease_until", "retries")`,
+		`CREATE INDEX IF NOT EXISTS %s ON %s ("version", "status", "broker_name", "next_attempt_at", "lease_until", "retries")`,
+		quotedIndex, quotedTable,
+	), nil
+}
+
+func cleanupIndexSQL(quotedTable, index string) (string, error) {
+	quotedIndex, err := xsql.Quote(xsql.Postgres, index)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(
+		`CREATE INDEX IF NOT EXISTS %s ON %s ("expired_at", "id") WHERE "expired_at" IS NOT NULL`,
 		quotedIndex, quotedTable,
 	), nil
 }

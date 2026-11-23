@@ -47,8 +47,8 @@ const About = () => {
             align="center"
             css={{ p: '$3', borderBottom: '1px solid $colors$tableRowBorder' }}
           >
-            {item.type === 'Self' ? (
-              <Badge variant="blue">GAP</Badge>
+            {item.type === 'Gap' ? (
+              <Badge variant="blue">Gap</Badge>
             ) : (
               <Badge variant="green">{`${item.type} / ${item.plugin}`}</Badge>
             )}

@@ -25,6 +25,7 @@ type Producer struct {
 	closeOnce sync.Once
 }
 
+// NewProducer creates a broker producer.
 func NewProducer(gapOpts *ingap.Options, opts *Options) (*Producer, error) {
 	ensurer, err := SingleEnsurer(opts)
 	if err != nil {
@@ -34,7 +35,7 @@ func NewProducer(gapOpts *ingap.Options, opts *Options) (*Producer, error) {
 }
 
 func (p *Producer) init() error {
-	if err := p.ensurer.ensure(p.gapOpts.Context); err != nil {
+	if err := p.ensurer.ensure(p.gapOpts.IntakeContext()); err != nil {
 		return err
 	}
 	config := clientConfig(p.opts)
@@ -49,17 +50,17 @@ func (p *Producer) init() error {
 // Produce implements [broker.Producer].
 func (p *Producer) Produce(ctx context.Context, envelope *entity.Envelope) error {
 	if envelope == nil {
-		return errx.ErrParamIsNil("envelope")
+		return errx.Permanent(errx.ErrParamIsNil("envelope"))
 	}
 	if envelope.Topic == "" {
-		return errx.ErrEmptyTopic
+		return errx.Permanent(errx.ErrEmptyTopic)
 	}
 	body, err := envelope.PayloadBytes()
 	if err != nil {
-		return err
+		return errx.Permanent(err)
 	}
 	if len(body) == 0 {
-		return errx.ErrNilPayload
+		return errx.Permanent(errx.ErrNilPayload)
 	}
 	if err := p.ensurer.ensureTopic(ctx, envelope.Topic); err != nil {
 		return err

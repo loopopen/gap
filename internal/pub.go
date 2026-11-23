@@ -18,37 +18,38 @@ import (
 )
 
 type Pub[T any] struct {
-	opts           *ingap.Options
-	brokerOpts     *ingap.BrokerOptions
-	storage        storage.Storage
-	producer       broker.Producer
-	pump           *pump.Pump
-	txer           txer.Txer
-	brokerName     string
-	brokerType     string
-	configIdentity string
+	opts       *ingap.Options
+	brokerOpts *ingap.BrokerOptions
+	storage    storage.Storage
+	producer   broker.Producer
+	pump       *pump.Pump
+	txer       txer.Txer
+	brokerName string
+	brokerType string
+	configID   string
 }
 
+// NewPub creates a publisher backed by the supplied broker and storage.
 func NewPub[T any](opts *ingap.Options, brokerOpts *ingap.BrokerOptions, producer broker.Producer, storage storage.Storage, messagePump *pump.Pump) *Pub[T] {
 	if producer == nil {
 		panic(errx.ErrNoBroker)
 	}
 
 	pub := &Pub[T]{
-		opts:           opts,
-		brokerOpts:     brokerOpts,
-		storage:        storage,
-		producer:       producer,
-		brokerName:     plugin.BrokerName(brokerOpts),
-		brokerType:     plugin.BrokerType(brokerOpts),
-		configIdentity: plugin.BrokerConfigIdentity(brokerOpts),
+		opts:       opts,
+		brokerOpts: brokerOpts,
+		storage:    storage,
+		producer:   producer,
+		brokerName: plugin.BrokerName(brokerOpts),
+		brokerType: plugin.BrokerType(brokerOpts),
+		configID:   plugin.BrokerConfigID(brokerOpts),
 	}
 
 	if storage != nil {
 		if messagePump == nil {
 			panic("message pump must not be nil when storage is configured")
 		}
-		if err := messagePump.SetSender(pub.brokerType, pub.brokerName, pub.configIdentity, pub); err != nil {
+		if err := messagePump.SetSender(pub.brokerName, pub.configID, pub); err != nil {
 			panic(err)
 		}
 		pub.pump = messagePump
@@ -78,18 +79,18 @@ func (p *Pub[T]) bind(txer txer.Txer) (*Pub[T], error) {
 		return nil, err
 	}
 	pub := &Pub[T]{
-		opts:           p.opts,
-		brokerOpts:     p.brokerOpts,
-		storage:        stor,
-		producer:       p.producer,
-		pump:           p.pump,
-		txer:           txer,
-		brokerName:     p.brokerName,
-		brokerType:     p.brokerType,
-		configIdentity: p.configIdentity,
+		opts:       p.opts,
+		brokerOpts: p.brokerOpts,
+		storage:    stor,
+		producer:   p.producer,
+		pump:       p.pump,
+		txer:       txer,
+		brokerName: p.brokerName,
+		brokerType: p.brokerType,
+		configID:   p.configID,
 	}
 	txer.SetFlushHandler(func(e *entity.Envelope) {
-		pub.dispatch(pub.opts.DrainContext, e)
+		pub.dispatch(pub.opts.WorkContext(), e)
 	})
 	return pub, nil
 }
@@ -120,7 +121,7 @@ func (p *Pub[T]) Publish(ctx context.Context, topic string, msg T, args ...any) 
 	for k, v := range headers {
 		en.AddHeader(k, v)
 	}
-	en.AddHeader(KeysBrokerName, p.brokerName)
+	en.BrokerName = p.brokerName
 	en.AddHeader(KeysBrokerType, p.brokerType)
 	if err = en.Verify(); err != nil {
 		return err
@@ -156,16 +157,12 @@ func (p *Pub[T]) dispatch(ctx context.Context, envelope *entity.Envelope) {
 	}
 }
 
+// SendAndUpdate delivers an envelope and persists the resulting state.
 func (p *Pub[T]) SendAndUpdate(ctx context.Context, envelope *entity.Envelope) error {
 	err := p.producer.Produce(ctx, envelope)
 	if err != nil {
 		envelope.Log().Debug("failed to send message", slog.Any("err", err))
-
-		if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, envelope.LeaseToken, enum.StatusFailed); err != nil {
-			envelope.Log().Error("failed to set published status to Failed", slog.Any("err", err))
-			return err
-		}
-		return err
+		return p.failOrRetryPublished(ctx, envelope, err)
 	}
 	if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, envelope.LeaseToken, enum.StatusSucceeded); err != nil {
 		envelope.Log().Debug("failed to set published status to Succeeded", slog.Any("err", err))
@@ -174,10 +171,27 @@ func (p *Pub[T]) SendAndUpdate(ctx context.Context, envelope *entity.Envelope) e
 	return nil
 }
 
+func (p *Pub[T]) failOrRetryPublished(ctx context.Context, envelope *entity.Envelope, cause error) error {
+	status := enum.StatusPending
+	if envelope.Retries >= p.opts.MaxRetries || errx.IsPermanent(cause) {
+		status = enum.StatusFailed
+	}
+	if err := p.storage.UpdateStatusPublished(ctx, envelope.ID, envelope.LeaseToken, status); err != nil {
+		envelope.Log().Error("failed to update published status", slog.String("status", status.String()), slog.Any("err", err))
+		return err
+	}
+	if status == enum.StatusPending {
+		envelope.Log().Debug("scheduled published retry", slog.Int("retries", envelope.Retries))
+	}
+	return cause
+}
+
+// Options returns the publisher's runtime options.
 func (p *Pub[T]) Options() *ingap.Options {
 	return p.opts
 }
 
+// BrokerOptions returns the publisher's broker options.
 func (p *Pub[T]) BrokerOptions() *ingap.BrokerOptions {
 	return p.brokerOpts
 }
@@ -186,6 +200,7 @@ type EventPub struct {
 	*Pub[Event]
 }
 
+// Bind binds the publisher or storage to the supplied transaction.
 func (e *EventPub) Bind(txer txer.Txer) (EventPublisher, error) {
 	p, err := e.Pub.bind(txer)
 	if err != nil {
@@ -194,6 +209,7 @@ func (e *EventPub) Bind(txer txer.Txer) (EventPublisher, error) {
 	return &EventPub{Pub: p}, nil
 }
 
+// Publish persists and dispatches a message for delivery.
 func (p *EventPub) Publish(ctx context.Context, event Event, args ...any) error {
 	return p.Pub.Publish(ctx, event.Topic(), event, args...)
 }

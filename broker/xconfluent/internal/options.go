@@ -40,24 +40,29 @@ type TopicOptions struct {
 	ReplicationFactor int `yaml:"replicationFactor"`
 }
 
+// PluginType returns the plugin type implemented by the receiver.
 func (o *Options) PluginType() enum.Plugin {
 	return enum.PluginKafka
 }
 
+// ClientConfig returns the Confluent client configuration.
 func ClientConfig(config kafka.ConfigMap) shoot.Option[Options, *Options] {
 	return func(o *Options) { o.Config = config }
 }
 
+// ConfigTopic ensures that the configured Kafka topic exists.
 func ConfigTopic(opts ...shoot.Option[TopicOptions, *TopicOptions]) shoot.Option[Options, *Options] {
 	return func(o *Options) { o.TopicOpts = new(TopicOptions).With(opts...) }
 }
 
+// UseKafka configures GAP to use Kafka through the receiver.
 func UseKafka(opts ...shoot.Option[Options, *Options]) shoot.Option[ingap.BrokerOptions, *ingap.BrokerOptions] {
 	return func(o *ingap.BrokerOptions) {
 		o.Plugin = new(Options).With(opts...)
 	}
 }
 
+// OpenProducer opens a producer for the configured broker.
 func (o *Options) OpenProducer(gapOpts *ingap.Options) (broker.Producer, error) {
 	producer, err := NewProducer(gapOpts, o)
 	if err != nil {
@@ -70,6 +75,7 @@ func (o *Options) OpenProducer(gapOpts *ingap.Options) (broker.Producer, error) 
 	return producer, nil
 }
 
+// OpenConsumer opens a consumer for the configured broker.
 func (o *Options) OpenConsumer(gapOpts *ingap.Options, group string) (broker.Consumer, error) {
 	consumer, err := NewConsumer(gapOpts, o, group)
 	if err != nil {

@@ -42,7 +42,7 @@ func NewProducer(gapOpts *ingap.Options, opts *Options) *Producer {
 }
 
 func (p *Producer) init() error {
-	err := p.ensurer.ensure(p.gapOpts.Context)
+	err := p.ensurer.ensure(p.gapOpts.IntakeContext())
 	if err != nil {
 		return err
 	}
@@ -65,17 +65,17 @@ func newKafkaWriter(opts *Options, transport *kafka.Transport) *kafka.Writer {
 // Produce implements [broker.Producer].
 func (p *Producer) Produce(ctx context.Context, envelope *entity.Envelope) error {
 	if envelope == nil {
-		return errx.ErrParamIsNil("envelope")
+		return errx.Permanent(errx.ErrParamIsNil("envelope"))
 	}
 	if envelope.Topic == "" {
-		return errx.ErrEmptyTopic
+		return errx.Permanent(errx.ErrEmptyTopic)
 	}
 	body, err := envelope.PayloadBytes()
 	if err != nil {
-		return err
+		return errx.Permanent(err)
 	}
 	if len(body) == 0 {
-		return errx.ErrNilPayload
+		return errx.Permanent(errx.ErrNilPayload)
 	}
 
 	if err := p.ensurer.ensureTopic(ctx, envelope.Topic); err != nil {

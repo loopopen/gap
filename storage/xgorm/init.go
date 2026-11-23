@@ -1,10 +1,11 @@
 package xgorm
 
 import (
+	"context"
+	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
-	"maps"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -12,175 +13,147 @@ import (
 	"github.com/loopopen/gap/internal/enum"
 	ingap "github.com/loopopen/gap/internal/gap"
 	"github.com/loopopen/gap/storage"
-	"github.com/loopopen/gap/storage/xsql"
+	"github.com/loopopen/gap/storage/internal/xsql"
 	"gorm.io/gorm"
 )
 
-type gormPools struct {
-	dataOnce sync.Once
-	dataDB   *gorm.DB
-	dataErr  error
+var (
+	registry           = xsql.NewRegistry(openGormSQL)
+	dialectorFactories sync.Map
+)
 
-	dashboardOnce sync.Once
-	dashboardDB   *gorm.DB
-}
-
-var gormPoolCache sync.Map
-
-type gormPoolKey struct {
-	dsn string
-	db  *gorm.DB
-}
-
+// OpenStorage opens and initializes the configured storage.
 func (o *Options) OpenStorage(gapOpts *ingap.Options, role storage.Role) (storage.Storage, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
 	}
-	pools := poolsFor(o)
-	dataDB, err := pools.loadData(gapOpts, o)
+	dsn := strings.TrimSpace(o.dsn)
+	rememberDialector(dsn, o.dialector)
+
+	pool, err := registry.Open(gapOpts.IntakeContext(), dsn, role, xsql.DataPlaneMaxOpen(gapOpts))
 	if err != nil {
+		slog.Error("failed to connect gorm database", slog.Any("err", err))
 		return nil, err
 	}
-	if role != storage.RoleDashboard {
-		return createStorage(gapOpts, o, dataDB)
-	}
-
-	pools.dashboardOnce.Do(func() {
-		var openErr error
-		pools.dashboardDB, _, openErr = openDashboardDB(o, dataDB)
-		if openErr != nil {
-			slog.Warn("dashboard is sharing the data-plane gorm pool", slog.Any("err", openErr))
-			pools.dashboardDB = dataDB
-		}
-	})
-	return createStorage(gapOpts, o, pools.dashboardDB)
-}
-
-func poolsFor(opts *Options) *gormPools {
-	key := gormPoolKey{dsn: strings.TrimSpace(opts.dsn)}
-	if opts.DB != nil {
-		key = gormPoolKey{db: opts.DB}
-	}
-	value, _ := gormPoolCache.LoadOrStore(key, new(gormPools))
-	return value.(*gormPools)
-}
-
-func (p *gormPools) loadData(gapOpts *ingap.Options, opts *Options) (*gorm.DB, error) {
-	p.dataOnce.Do(func() {
-		if opts.DB != nil {
-			p.dataDB = opts.DB
-			return
-		}
-		dialector := opts.dialector(opts.dsn)
-		if dialector == nil {
-			p.dataErr = errors.New("gorm dialector is nil")
-			return
-		}
-		p.dataDB, p.dataErr = gorm.Open(dialector)
-		if p.dataErr != nil {
-			p.dataErr = fmt.Errorf("open data-plane gorm db: %w", p.dataErr)
-			return
-		}
-		sqlDB, err := p.dataDB.DB()
-		if err != nil {
-			p.dataErr = fmt.Errorf("get data-plane sql db: %w", err)
-			return
-		}
-		xsql.ConfigureDataPool(sqlDB, xsql.DataPlaneMaxOpen(gapOpts))
-	})
-	if p.dataErr != nil || p.dataDB == nil {
-		return p.dataDB, p.dataErr
-	}
-	if opts.DB != nil {
-		return p.dataDB, nil
-	}
-	sqlDB, err := p.dataDB.DB()
+	dialector, err := dialectorFor(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("get data-plane sql db: %w", err)
+		_ = pool.Release()
+		return nil, err
 	}
-	if maxOpen := xsql.DataPlaneMaxOpen(gapOpts); sqlDB.Stats().MaxOpenConnections < maxOpen {
-		xsql.ConfigureDataPool(sqlDB, maxOpen)
+	db, err := openOnPool(dialector, pool.DB)
+	if err != nil {
+		_ = pool.Release()
+		slog.Error("failed to open gorm database", slog.Any("err", err))
+		return nil, err
 	}
-	return p.dataDB, nil
-}
 
-func createStorage(gapOpts *ingap.Options, opts *Options, db *gorm.DB) (storage.Storage, error) {
-	stor := NewStorage(gapOpts, opts, db)
-	if err := stor.init(); err != nil {
+	stor := newStorage(gapOpts, o, db)
+	stor.pool = pool
+	if err = pool.EnsureSchema(o.Schema, stor.init); err != nil {
 		slog.Error("failed to init storage", slog.Any("err", err))
+		_ = stor.Close()
 		return nil, err
 	}
 	return stor, nil
 }
 
-func (o *Options) validate() error {
-	hasDB := o.DB != nil
-	hasDSN := strings.TrimSpace(o.dsn) != ""
-	hasDialector := o.dialector != nil
-	if hasDSN != hasDialector {
-		return errors.New("gorm dsn and dialector must be configured together")
+// Close returns this storage's borrow of the shared pool.
+// The last borrow closes the pool. A second call does nothing.
+func (s *storageAdapter) Close() error {
+	if s == nil || s.pool == nil {
+		return nil
 	}
-	if hasDB == hasDSN {
-		return errors.New("configure either gorm db or dsn with dialector")
+	var err error
+	s.closeOnce.Do(func() {
+		err = s.pool.Release()
+	})
+	return err
+}
+
+func (o *Options) validate() error {
+	if strings.TrimSpace(o.dsn) == "" || o.dialector == nil {
+		return errors.New("gorm dsn and dialector must be configured together")
 	}
 	return nil
 }
 
-func openDashboardDB(opts *Options, dataDB *gorm.DB) (*gorm.DB, bool, error) {
-	dataSQLDB, err := dataDB.DB()
-	if err != nil {
-		return nil, false, fmt.Errorf("get data-plane sql db: %w", err)
-	}
-
-	dialector := dataDB.Dialector
-	if opts.dialector != nil {
-		dialector = opts.dialector(opts.dsn)
-	}
-	if dialector == nil {
-		return nil, false, errors.New("dashboard gorm dialector is nil")
-	}
-
-	dashboardDB, err := gorm.Open(dialector, cloneGormConfig(dataDB.Config))
-	if err != nil {
-		return nil, false, fmt.Errorf("open dashboard gorm db: %w", err)
-	}
-	dashboardSQLDB, err := dashboardDB.DB()
-	if err != nil {
-		return nil, false, fmt.Errorf("get dashboard sql db: %w", err)
-	}
-	if dashboardSQLDB == dataSQLDB {
-		return dataDB, false, errors.New("gorm dialector reused the data-plane sql db")
-	}
-
-	xsql.ConfigureDashboardPool(dashboardSQLDB)
-	return dashboardDB, true, nil
+func rememberDialector(dsn string, factory DialectorFactory) {
+	dialectorFactories.Store(dsn, factory)
 }
 
-func cloneGormConfig(src *gorm.Config) *gorm.Config {
-	return &gorm.Config{
-		SkipDefaultTransaction:                   src.SkipDefaultTransaction,
-		DefaultTransactionTimeout:                src.DefaultTransactionTimeout,
-		DefaultContextTimeout:                    src.DefaultContextTimeout,
-		NamingStrategy:                           src.NamingStrategy,
-		FullSaveAssociations:                     src.FullSaveAssociations,
-		Logger:                                   src.Logger,
-		NowFunc:                                  src.NowFunc,
-		DryRun:                                   src.DryRun,
-		PrepareStmt:                              src.PrepareStmt,
-		PrepareStmtMaxSize:                       src.PrepareStmtMaxSize,
-		PrepareStmtTTL:                           src.PrepareStmtTTL,
-		DisableAutomaticPing:                     src.DisableAutomaticPing,
-		DisableForeignKeyConstraintWhenMigrating: src.DisableForeignKeyConstraintWhenMigrating,
-		IgnoreRelationshipsWhenMigrating:         src.IgnoreRelationshipsWhenMigrating,
-		DisableNestedTransaction:                 src.DisableNestedTransaction,
-		AllowGlobalUpdate:                        src.AllowGlobalUpdate,
-		QueryFields:                              src.QueryFields,
-		CreateBatchSize:                          src.CreateBatchSize,
-		TranslateError:                           src.TranslateError,
-		PropagateUnscoped:                        src.PropagateUnscoped,
-		ClauseBuilders:                           maps.Clone(src.ClauseBuilders),
-		Plugins:                                  maps.Clone(src.Plugins),
+func dialectorFor(dsn string) (gorm.Dialector, error) {
+	value, ok := dialectorFactories.Load(dsn)
+	if !ok {
+		return nil, errors.New("gorm dialector is not configured")
 	}
+	dialector := value.(DialectorFactory)(dsn)
+	if dialector == nil {
+		return nil, errors.New("gorm dialector is nil")
+	}
+	return dialector, nil
+}
+
+func openGormSQL(ctx context.Context, dsn string, _ xsql.Role) (*sql.DB, error) {
+	dialector, err := dialectorFor(dsn)
+	if err != nil {
+		return nil, err
+	}
+	gdb, err := gorm.Open(dialector)
+	if err != nil {
+		return nil, err
+	}
+	sqlDB, err := gdb.DB()
+	if err != nil {
+		return nil, err
+	}
+	if err := sqlDB.PingContext(ctx); err != nil {
+		_ = sqlDB.Close()
+		return nil, err
+	}
+	return sqlDB, nil
+}
+
+func openOnPool(dialector gorm.Dialector, db *sql.DB) (*gorm.DB, error) {
+	if err := setDialectorConn(dialector, db); err != nil {
+		return nil, err
+	}
+	return gorm.Open(dialector)
+}
+
+// setDialectorConn points a mysql or postgres dialector at an existing pool.
+// Those drivers read Config.Conn and ignore gorm.Config.ConnPool.
+func setDialectorConn(dialector gorm.Dialector, db *sql.DB) error {
+	target := connField(reflect.ValueOf(dialector))
+	if !target.IsValid() || !target.CanSet() {
+		return errors.New("gorm dialector cannot reuse an existing pool")
+	}
+	target.Set(reflect.ValueOf(db))
+	return nil
+}
+
+func connField(v reflect.Value) reflect.Value {
+	if !v.IsValid() {
+		return reflect.Value{}
+	}
+	if v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return reflect.Value{}
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return reflect.Value{}
+	}
+	if field := v.FieldByName("Config"); field.IsValid() {
+		if nested := connField(field); nested.IsValid() && nested.CanSet() {
+			return nested
+		}
+	}
+	field := v.FieldByName("Conn")
+	if field.IsValid() && field.CanSet() {
+		return field
+	}
+	return reflect.Value{}
 }
 
 func init() {

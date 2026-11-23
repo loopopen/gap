@@ -22,18 +22,22 @@ type GroupedSubs struct {
 	DependencyOtpsLst []ingap.DependencyOptions
 }
 
+// NewGroupedSubs creates an empty grouped subscription registry.
 func NewGroupedSubs() *GroupedSubs {
 	return &GroupedSubs{subs: make(map[string]*Sub)}
 }
 
+// AddDependencyOtps adds dependency options to the grouped subscriptions.
 func (g *GroupedSubs) AddDependencyOtps(lst []ingap.DependencyOptions) {
 	g.DependencyOtpsLst = append(g.DependencyOtpsLst, lst...)
 }
 
+// AddHandlerOtps adds handler options to the grouped subscriptions.
 func (g *GroupedSubs) AddHandlerOtps(lst []ingap.HandlerOptions) {
 	g.HandlerOtpsLst = append(g.HandlerOtpsLst, lst...)
 }
 
+// SubscribeAll builds all configured subscriptions.
 func (g *GroupedSubs) SubscribeAll(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions, stor storage.Storage, messagePump *pump.Pump) error {
 	//todo: IngestConcurrency
 	for _, o := range g.HandlerOtpsLst {
@@ -52,11 +56,13 @@ func (g *GroupedSubs) SubscribeAll(gapOpts *ingap.Options, brokerOpts *ingap.Bro
 }
 
 func (g *GroupedSubs) subscribeOne(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions, stor storage.Storage, messagePump *pump.Pump, opts *ingap.HandlerOptions) error {
-	group := opts.Group
+	groupOpts := opts.GroupOptions
+	if groupOpts.Group == "" && gapOpts != nil {
+		groupOpts.Group = gapOpts.DefaultGroup
+	}
+	group := groupOpts.Group
 	brokerName := plugin.BrokerName(brokerOpts)
-	brokerType := plugin.BrokerType(brokerOpts)
-	configIdentity := plugin.BrokerConfigIdentity(brokerOpts)
-	key := brokerType + "\x00" + brokerName + "\x00" + group
+	key := brokerName + "\x00" + group
 
 	sub, ok := g.subs[key]
 	if !ok {
@@ -65,7 +71,7 @@ func (g *GroupedSubs) subscribeOne(gapOpts *ingap.Options, brokerOpts *ingap.Bro
 			panic("consumer broker must not be nil")
 		}
 
-		sub = NewSub(gapOpts, &opts.GroupOptions, consumer, stor, messagePump, brokerType, brokerName, configIdentity)
+		sub = NewSub(gapOpts, brokerOpts, &groupOpts, consumer, stor, messagePump)
 		g.subs[key] = sub
 	}
 	err := sub.Subscribe(opts.Topic, opts.Handler)
@@ -75,6 +81,7 @@ func (g *GroupedSubs) subscribeOne(gapOpts *ingap.Options, brokerOpts *ingap.Bro
 	return nil
 }
 
+// ListeningAll starts all configured subscribers.
 func (g *GroupedSubs) ListeningAll() error {
 	for _, sub := range g.subs {
 		err := sub.Listening()
@@ -85,6 +92,7 @@ func (g *GroupedSubs) ListeningAll() error {
 	return nil
 }
 
+// Stop stops the receiver and waits for owned work to finish.
 func (g *GroupedSubs) Stop(ctx context.Context) error {
 	for _, sub := range g.subs {
 		if err := sub.Stop(ctx); err != nil {
@@ -119,7 +127,7 @@ func (s *Sub) Subscribe(topic string, handler ingap.Handler[[]byte]) error {
 
 	slog.Debug(fmt.Sprintf("subscribe: topic(%s) -> group(%s:%d)", topic, s.groupOpts.Group, s.groupOpts.IngestConcurrency))
 
-	ctx := s.opts.Context
+	ctx := s.opts.IntakeContext()
 	err := s.consumer.Subscribe(ctx, topic)
 	if err != nil {
 		return err
@@ -128,7 +136,8 @@ func (s *Sub) Subscribe(topic string, handler ingap.Handler[[]byte]) error {
 	return nil
 }
 
-func NewSub(opts *ingap.Options, groupOpts *ingap.GroupOptions, consumer broker.Consumer, storage storage.Storage, messagePump *pump.Pump, brokerType, brokerName, configIdentity string) *Sub {
+// NewSub creates a broker subscription.
+func NewSub(opts *ingap.Options, brokerOpts *ingap.BrokerOptions, groupOpts *ingap.GroupOptions, consumer broker.Consumer, storage storage.Storage, messagePump *pump.Pump) *Sub {
 	if consumer == nil {
 		panic(errx.ErrNoBroker)
 	}
@@ -138,8 +147,8 @@ func NewSub(opts *ingap.Options, groupOpts *ingap.GroupOptions, consumer broker.
 		groupOpts:  groupOpts,
 		storage:    storage,
 		consumer:   consumer,
-		brokerName: brokerName,
-		brokerType: brokerType,
+		brokerName: plugin.BrokerName(brokerOpts),
+		brokerType: plugin.BrokerType(brokerOpts),
 		handlers:   make(map[string]ingap.Handler[[]byte]),
 	}
 
@@ -147,7 +156,8 @@ func NewSub(opts *ingap.Options, groupOpts *ingap.GroupOptions, consumer broker.
 		if messagePump == nil {
 			panic("message pump must not be nil when storage is configured")
 		}
-		if err := messagePump.SetHandler(brokerType, brokerName, configIdentity, groupOpts.Group, sub); err != nil {
+		configID := plugin.BrokerConfigID(brokerOpts)
+		if err := messagePump.SetHandler(sub.brokerName, configID, groupOpts.Group, sub); err != nil {
 			panic(err)
 		}
 		sub.pump = messagePump
@@ -157,6 +167,7 @@ func NewSub(opts *ingap.Options, groupOpts *ingap.GroupOptions, consumer broker.
 	return sub
 }
 
+// Listening starts forwarding consumed messages to the subscriber.
 func (s *Sub) Listening() error {
 	s.listenOnce.Do(func() {
 		s.listenErr = s.startListening()
@@ -165,8 +176,8 @@ func (s *Sub) Listening() error {
 }
 
 func (s *Sub) startListening() error {
-	intakeCtx := s.opts.Context
-	workCtx := s.opts.DrainContext
+	intakeCtx := s.opts.IntakeContext()
+	workCtx := s.opts.WorkContext()
 	enCh, err := s.consumer.Consume(intakeCtx)
 	if err != nil {
 		return err
@@ -269,7 +280,7 @@ func (s *Sub) ingestParallel(ctx context.Context, envelope *entity.Envelope, sem
 }
 
 func (s *Sub) ingestSerial(ctx context.Context, envelope *entity.Envelope) {
-	envelope.AddHeader(KeysBrokerName, s.brokerName)
+	envelope.BrokerName = s.brokerName
 	envelope.AddHeader(KeysBrokerType, s.brokerType)
 	err := s.storage.CreateReceived(ctx, envelope)
 	if err != nil {
@@ -287,6 +298,7 @@ func (s *Sub) ingestSerial(ctx context.Context, envelope *entity.Envelope) {
 	s.dispatch(ctx, envelope)
 }
 
+// Stop stops the receiver and waits for owned work to finish.
 func (s *Sub) Stop(ctx context.Context) error {
 	if err := waitGroupContext(ctx, &s.listenWG); err != nil {
 		return err
@@ -316,16 +328,17 @@ func (s *Sub) handle(ctx context.Context, envelope *entity.Envelope) (err error)
 				envelope.Log().Error("recovered from panic when handling", slog.Any("err", r))
 				err = fmt.Errorf("%v", r)
 			}
+			err = errx.Permanent(err)
 		}
 	}()
 
 	handler, ok := s.handlers[envelope.Topic]
 	if !ok {
-		return errx.ErrHandlerNotFound(envelope.Topic, s.groupOpts.Group)
+		return errx.Permanent(errx.ErrHandlerNotFound(envelope.Topic, s.groupOpts.Group))
 	}
 	payload, err := envelope.PayloadBytes()
 	if err != nil {
-		return err
+		return errx.Permanent(err)
 	}
 	err = handler(ctx, payload, envelope.Headers)
 	if err != nil {
@@ -334,16 +347,12 @@ func (s *Sub) handle(ctx context.Context, envelope *entity.Envelope) (err error)
 	return nil
 }
 
+// HandleAndUpdate executes a handler and persists the resulting message state.
 func (s *Sub) HandleAndUpdate(ctx context.Context, envelope *entity.Envelope) error {
 	err := s.handle(ctx, envelope)
 	if err != nil {
 		envelope.Log().Error("failed to handle received message", slog.Any("err", err))
-
-		if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, envelope.LeaseToken, enum.StatusFailed); err != nil {
-			envelope.Log().Error("failed to set received status to Failed", slog.Any("err", err))
-			return err
-		}
-		return err
+		return s.failOrRetryReceived(ctx, envelope, err)
 	}
 
 	if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, envelope.LeaseToken, enum.StatusSucceeded); err != nil {
@@ -351,6 +360,21 @@ func (s *Sub) HandleAndUpdate(ctx context.Context, envelope *entity.Envelope) er
 		return err
 	}
 	return nil
+}
+
+func (s *Sub) failOrRetryReceived(ctx context.Context, envelope *entity.Envelope, cause error) error {
+	status := enum.StatusPending
+	if envelope.Retries >= s.opts.MaxRetries || errx.IsPermanent(cause) {
+		status = enum.StatusFailed
+	}
+	if err := s.storage.UpdateStatusReceived(ctx, envelope.ID, envelope.LeaseToken, status); err != nil {
+		envelope.Log().Error("failed to update received status", slog.String("status", status.String()), slog.Any("err", err))
+		return err
+	}
+	if status == enum.StatusPending {
+		envelope.Log().Debug("scheduled received retry", slog.Int("retries", envelope.Retries))
+	}
+	return cause
 }
 
 func (s *Sub) dispatch(ctx context.Context, envelope *entity.Envelope) {

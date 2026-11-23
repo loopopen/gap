@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loopopen/gap/internal/entity"
@@ -15,23 +16,31 @@ import (
 	"github.com/loopopen/gap/internal/txer"
 	"github.com/loopopen/gap/internal/utility"
 	"github.com/loopopen/gap/storage"
+	"github.com/loopopen/gap/storage/internal/xsql"
+	dbmodel "github.com/loopopen/gap/storage/xpostgres/internal/model"
 )
 
-type Storage struct {
+type storageAdapter struct {
 	gapOpts *ingap.Options
 	opts    *Options
-	db      *sql.DB
-	tx      *sql.Tx
+	db      *xsql.DB
+	tx      *xsql.Tx
+
+	pool      *xsql.Pool
+	closeOnce sync.Once
 }
 
-func (s *Storage) execer() Execer {
+func (s *storageAdapter) execer() interface {
+	xsql.Execer
+	xsql.RowQueryer
+} {
 	if s.tx != nil {
 		return s.tx
 	}
 	return s.db
 }
 
-func (s *Storage) beginClaim(ctx context.Context) (tx *sql.Tx, own bool, err error) {
+func (s *storageAdapter) beginClaim(ctx context.Context) (tx *xsql.Tx, own bool, err error) {
 	if s.tx != nil {
 		return s.tx, false, nil
 	}
@@ -43,35 +52,36 @@ func (s *Storage) beginClaim(ctx context.Context) (tx *sql.Tx, own bool, err err
 }
 
 // Bind implements [storage.Storage].
-func (s *Storage) Bind(txer txer.Txer) (storage.Storage, error) {
+func (s *storageAdapter) Bind(txer txer.Txer) (storage.Storage, error) {
 	tx, ok := txer.Tx().(*sql.Tx)
 	if !ok {
 		return nil, errx.ErrInvalidSQLTx
 	}
-	newS := Storage{
+	newS := storageAdapter{
 		gapOpts: s.gapOpts,
 		opts:    s.opts,
 		db:      s.db,
-		tx:      tx,
+		tx:      xsql.WrapTx(tx, logSQL(s.opts)),
 	}
 	return &newS, nil
 }
 
-func (s *Storage) InTx() bool {
+// InTx reports whether the storage is bound to a transaction.
+func (s *storageAdapter) InTx() bool {
 	return s.tx != nil
 }
 
 // ClaimPublishedBatch implements [storage.Storage].
-func (s *Storage) ClaimPublishedBatch(ctx context.Context, batchSize int) (es []*entity.Envelope, err error) {
-	return s.claimBatch(ctx, batchSize, "published", false)
+func (s *storageAdapter) ClaimPublishedBatch(ctx context.Context, batchSize int, brokerName string) (es []*entity.Envelope, err error) {
+	return s.claimBatch(ctx, batchSize, "published", "", brokerName)
 }
 
 // ClaimReceivedBatch implements [storage.Storage].
-func (s *Storage) ClaimReceivedBatch(ctx context.Context, batchSize int) (es []*entity.Envelope, err error) {
-	return s.claimBatch(ctx, batchSize, "received", true)
+func (s *storageAdapter) ClaimReceivedBatch(ctx context.Context, batchSize int, group, brokerName string) (es []*entity.Envelope, err error) {
+	return s.claimBatch(ctx, batchSize, "received", group, brokerName)
 }
 
-func (s *Storage) claimBatch(ctx context.Context, batchSize int, base string, received bool) (es []*entity.Envelope, err error) {
+func (s *storageAdapter) claimBatch(ctx context.Context, batchSize int, base, group, brokerName string) (es []*entity.Envelope, err error) {
 	o := s.gapOpts
 	now := time.Now()
 	table, err := s.quotedTable(base)
@@ -83,17 +93,7 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base string, re
 		return nil, err
 	}
 
-	columns := `"id","created_at","version","topic","status","headers","payload","retries","expired_at"`
-	if received {
-		columns += `,"group"`
-	}
-	script1 := "SELECT " + columns + " FROM " + table + " " +
-		`WHERE "version" = $1 ` +
-		`AND "status" = $2::` + statusType + ` ` +
-		`AND "next_attempt_at" <= $3 ` +
-		`AND ("lease_until" IS NULL OR "lease_until" <= $4) ` +
-		`AND "retries" < $5 ` +
-		`LIMIT $6 FOR UPDATE SKIP LOCKED`
+	isReceived := base == "received"
 
 	tx, own, err := s.beginClaim(ctx)
 	if err != nil {
@@ -108,32 +108,38 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base string, re
 			}
 		}()
 	}
-	if err = s.failExhausted(ctx, tx, table, statusType, now); err != nil {
-		return nil, err
+	var rows *sql.Rows
+	if isReceived {
+		if err = s.failExhaustedReceived(ctx, tx, table, statusType, group, brokerName); err != nil {
+			return nil, err
+		}
+		rows, err = tx.QueryContext(ctx, claimReceivedSQL(table, statusType),
+			claimFilterArgs(o.Version, enum.StatusPending, brokerName, o.MaxRetries, batchSize, group)...,
+		)
+	} else {
+		if err = s.failExhaustedPublished(ctx, tx, table, statusType, brokerName); err != nil {
+			return nil, err
+		}
+		rows, err = tx.QueryContext(ctx, claimPublishedSQL(table, statusType),
+			claimFilterArgs(o.Version, enum.StatusPending, brokerName, o.MaxRetries, batchSize)...,
+		)
 	}
-	rows, err := tx.QueryContext(ctx, script1,
-		o.Version,
-		enum.StatusPending,
-		now,
-		now,
-		o.MaxRetries,
-		batchSize,
-	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var pubs []*Published
-	var recs []*Received
+	var pubs []*dbmodel.Published
+	var recs []*dbmodel.Received
 	for rows.Next() {
-		if received {
-			var rec Received
+		if isReceived {
+			var rec dbmodel.Received
 			err = rows.Scan(
 				&rec.ID,
 				&rec.CreatedAt,
 				&rec.Version,
 				&rec.Topic,
+				&rec.BrokerName,
 				&rec.Status,
 				&rec.Headers,
 				&rec.Payload,
@@ -147,12 +153,13 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base string, re
 			recs = append(recs, &rec)
 			continue
 		}
-		var pub Published
+		var pub dbmodel.Published
 		err = rows.Scan(
 			&pub.ID,
 			&pub.CreatedAt,
 			&pub.Version,
 			&pub.Topic,
+			&pub.BrokerName,
 			&pub.Status,
 			&pub.Headers,
 			&pub.Payload,
@@ -169,7 +176,7 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base string, re
 	}
 
 	ids := make([]any, 0)
-	if received {
+	if isReceived {
 		if len(recs) == 0 {
 			return nil, nil
 		}
@@ -191,46 +198,118 @@ func (s *Storage) claimBatch(ctx context.Context, batchSize int, base string, re
 	leaseUntil := now.Add(o.LeaseTTL())
 	placeholders := make([]string, len(ids))
 	params := make([]any, 0, len(ids)+2)
-	params = append(params, leaseToken, leaseUntil)
+	params = append(params, leaseToken, int64(o.LeaseTTL()/time.Second))
 	for i, id := range ids {
 		placeholders[i] = fmt.Sprintf("$%d", i+3)
 		params = append(params, id)
 	}
 	for _, pub := range pubs {
 		pub.LeaseToken = leaseToken
+		pub.LeaseUntil = sql.Null[time.Time]{V: leaseUntil, Valid: true}
 	}
 	for _, rec := range recs {
 		rec.LeaseToken = leaseToken
+		rec.LeaseUntil = sql.Null[time.Time]{V: leaseUntil, Valid: true}
 	}
-	script2 := "UPDATE " + table + ` SET "retries" = "retries" + 1, "lease_token" = $1, "lease_until" = $2 WHERE "id" IN (` + strings.Join(placeholders, ", ") + ")"
+	script2 := "UPDATE " + table + ` SET "retries" = "retries" + 1, "lease_token" = $1, "lease_until" = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second') WHERE "id" IN (` + strings.Join(placeholders, ", ") + ")"
 	if _, err = tx.ExecContext(ctx, script2, params...); err != nil {
 		return nil, err
 	}
-	if received {
-		return recsToEntities(recs)
+	if isReceived {
+		return dbmodel.ReceivedToEntities(recs)
 	}
-	return pubsToEntities(pubs)
+	return dbmodel.PublishedToEntities(pubs)
 }
 
-func (s *Storage) failExhausted(ctx context.Context, tx *sql.Tx, table, statusType string, now time.Time) error {
-	_, err := tx.ExecContext(ctx, failExhaustedSQL(table, statusType), enum.StatusFailed, s.gapOpts.Version, enum.StatusPending, now, s.gapOpts.MaxRetries, now)
+func (s *storageAdapter) failExhaustedPublished(ctx context.Context, tx *xsql.Tx, table, statusType, brokerName string) error {
+	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
+	_, err := tx.ExecContext(ctx, failExhaustedPublishedSQL(table, statusType),
+		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, s.gapOpts.MaxRetries)...)
 	return err
 }
 
-func failExhaustedSQL(table, statusType string) string {
-	return "UPDATE " + table + ` SET "status" = $1::` + statusType + `, "lease_token" = NULL, "lease_until" = NULL ` +
-		`WHERE "version" = $2 AND "status" = $3::` + statusType + ` AND "next_attempt_at" <= $4 AND "retries" >= $5 AND ("lease_until" IS NULL OR "lease_until" <= $6)`
+func (s *storageAdapter) failExhaustedReceived(ctx context.Context, tx *xsql.Tx, table, statusType, group, brokerName string) error {
+	retentionSeconds := int64(s.gapOpts.Retention(enum.StatusFailed) / time.Second)
+	_, err := tx.ExecContext(ctx, failExhaustedReceivedSQL(table, statusType),
+		exhaustedArgs(enum.StatusFailed, retentionSeconds, s.gapOpts.Version, brokerName, s.gapOpts.MaxRetries, group)...)
+	return err
+}
+
+func claimPublishedSQL(table, statusType string) string {
+	return fmt.Sprintf(`
+SELECT "id","created_at","version","topic","broker_name","status","headers","payload","retries","expired_at"
+FROM %s
+WHERE "version" = $1
+AND "status" = $2::%s
+AND "broker_name" = $3
+AND "next_attempt_at" <= CURRENT_TIMESTAMP
+AND ("lease_until" IS NULL OR "lease_until" <= CURRENT_TIMESTAMP)
+AND "retries" < $4
+LIMIT $5 FOR UPDATE SKIP LOCKED`, table, statusType)
+}
+
+func claimReceivedSQL(table, statusType string) string {
+	return fmt.Sprintf(`
+SELECT "id","created_at","version","topic","broker_name","status","headers","payload","retries","expired_at","group"
+FROM %s
+WHERE "version" = $1
+AND "status" = $2::%s
+AND "broker_name" = $3
+AND "next_attempt_at" <= CURRENT_TIMESTAMP
+AND ("lease_until" IS NULL OR "lease_until" <= CURRENT_TIMESTAMP)
+AND "retries" < $4
+AND "group" = $5
+LIMIT $6 FOR UPDATE SKIP LOCKED`, table, statusType)
+}
+
+func failExhaustedPublishedSQL(table, statusType string) string {
+	return fmt.Sprintf(`
+UPDATE %s
+SET "status" = $1::%s, "expired_at" = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second'), "lease_token" = NULL, "lease_until" = NULL
+WHERE "version" = $3
+AND "status" = $4::%s
+AND "broker_name" = $5
+AND "next_attempt_at" <= CURRENT_TIMESTAMP
+AND ("lease_until" IS NULL OR "lease_until" <= CURRENT_TIMESTAMP)
+AND "retries" >= $6`, table, statusType, statusType)
+}
+
+func failExhaustedReceivedSQL(table, statusType string) string {
+	return fmt.Sprintf(`
+UPDATE %s
+SET "status" = $1::%s, "expired_at" = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second'), "lease_token" = NULL, "lease_until" = NULL
+WHERE "version" = $3
+AND "status" = $4::%s
+AND "broker_name" = $5
+AND "next_attempt_at" <= CURRENT_TIMESTAMP
+AND ("lease_until" IS NULL OR "lease_until" <= CURRENT_TIMESTAMP)
+AND "retries" >= $6
+AND "group" = $7`, table, statusType, statusType)
+}
+
+func claimFilterArgs(version string, status enum.Status, brokerName string, maxRetries, batchSize int, extra ...any) []any {
+	args := make([]any, 0, 4+len(extra))
+	args = append(args, version, status, brokerName, maxRetries)
+	args = append(args, extra...)
+	args = append(args, batchSize)
+	return args
+}
+
+func exhaustedArgs(failed enum.Status, retention int64, version, brokerName string, maxRetries int, extra ...any) []any {
+	args := make([]any, 0, 5+len(extra))
+	args = append(args, failed, retention, version, enum.StatusPending, brokerName, maxRetries)
+	return append(args, extra...)
 }
 
 // CreatePublished implements [storage.Storage].
-func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope) error {
+func (s *storageAdapter) CreatePublished(ctx context.Context, envelope *entity.Envelope) error {
 	if envelope == nil {
 		return errx.ErrParamIsNil("envelope")
 	}
 	envelope.WithLease(s.gapOpts.LeaseTTL())
-	pub := new(Published).FromEntity(envelope)
-	if pub.err != nil {
-		return pub.err
+	pub := new(dbmodel.Published).FromEntity(envelope)
+	if pub.Err() != nil {
+		return pub.Err()
 	}
 	table, err := s.quotedTable("published")
 	if err != nil {
@@ -241,20 +320,20 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 		return err
 	}
 	script := "INSERT INTO " + table + " (" +
-		`"id","created_at","version","topic","status","headers","payload","retries","lease_token","lease_until","next_attempt_at","expired_at"` +
-		") VALUES($1, $2, $3, $4, $5::" + statusType + ", $6, $7, $8, $9, $10, $11, $12)"
+		`"id","created_at","version","topic","broker_name","status","headers","payload","retries","lease_token","lease_until","next_attempt_at","expired_at"` +
+		") VALUES($1, $2, $3, $4, $5, $6::" + statusType + ", $7, $8, $9, $10, CURRENT_TIMESTAMP + ($11 * INTERVAL '1 second'), CURRENT_TIMESTAMP, $12)"
 	_, err = s.execer().ExecContext(ctx, script,
 		pub.ID,
 		pub.CreatedAt,
 		pub.Version,
 		pub.Topic,
+		pub.BrokerName,
 		pub.Status,
 		pub.Headers,
 		pub.Payload,
 		pub.Retries,
 		pub.LeaseToken,
-		pub.LeaseUntil,
-		pub.NextAttemptAt,
+		int64(s.gapOpts.LeaseTTL()/time.Second),
 		pub.ExpiredAt,
 	)
 	if err != nil {
@@ -265,14 +344,14 @@ func (s *Storage) CreatePublished(ctx context.Context, envelope *entity.Envelope
 }
 
 // CreateReceived implements [storage.Storage].
-func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope) error {
+func (s *storageAdapter) CreateReceived(ctx context.Context, envelope *entity.Envelope) error {
 	if envelope == nil {
 		return errx.ErrParamIsNil("envelope")
 	}
 	envelope.WithLease(s.gapOpts.LeaseTTL())
-	rec := new(Received).FromEntity(envelope)
-	if rec.err != nil {
-		return rec.err
+	rec := new(dbmodel.Received).FromEntity(envelope)
+	if rec.Err() != nil {
+		return rec.Err()
 	}
 	table, err := s.quotedTable("received")
 	if err != nil {
@@ -283,20 +362,20 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 		return err
 	}
 	script := "INSERT INTO " + table + " (" +
-		`"id","created_at","version","topic","status","headers","payload","retries","lease_token","lease_until","next_attempt_at","expired_at","group"` +
-		") VALUES($1, $2, $3, $4, $5::" + statusType + ", $6, $7, $8, $9, $10, $11, $12, $13)"
+		`"id","created_at","version","topic","broker_name","status","headers","payload","retries","lease_token","lease_until","next_attempt_at","expired_at","group"` +
+		") VALUES($1, $2, $3, $4, $5, $6::" + statusType + ", $7, $8, $9, $10, CURRENT_TIMESTAMP + ($11 * INTERVAL '1 second'), CURRENT_TIMESTAMP, $12, $13)"
 	_, err = s.execer().ExecContext(ctx, script,
 		rec.ID,
 		rec.CreatedAt,
 		rec.Version,
 		rec.Topic,
+		rec.BrokerName,
 		rec.Status,
 		rec.Headers,
 		rec.Payload,
 		rec.Retries,
 		rec.LeaseToken,
-		rec.LeaseUntil,
-		rec.NextAttemptAt,
+		int64(s.gapOpts.LeaseTTL()/time.Second),
 		rec.ExpiredAt,
 		rec.Group,
 	)
@@ -308,16 +387,22 @@ func (s *Storage) CreateReceived(ctx context.Context, envelope *entity.Envelope)
 }
 
 // UpdateStatusPublished implements [storage.Storage].
-func (s *Storage) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+func (s *storageAdapter) UpdateStatusPublished(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+	if status == enum.StatusPending {
+		return s.scheduleRetry(ctx, "published", id, leaseToken)
+	}
 	return s.updateStatus(ctx, "published", id, leaseToken, status)
 }
 
 // UpdateStatusReceived implements [storage.Storage].
-func (s *Storage) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+func (s *storageAdapter) UpdateStatusReceived(ctx context.Context, id uint, leaseToken string, status enum.Status) error {
+	if status == enum.StatusPending {
+		return s.scheduleRetry(ctx, "received", id, leaseToken)
+	}
 	return s.updateStatus(ctx, "received", id, leaseToken, status)
 }
 
-func (s *Storage) updateStatus(ctx context.Context, base string, id uint, leaseToken string, status enum.Status) error {
+func (s *storageAdapter) updateStatus(ctx context.Context, base string, id uint, leaseToken string, status enum.Status) error {
 	table, err := s.quotedTable(base)
 	if err != nil {
 		return err
@@ -326,7 +411,8 @@ func (s *Storage) updateStatus(ctx context.Context, base string, id uint, leaseT
 	if err != nil {
 		return err
 	}
-	result, err := s.execer().ExecContext(ctx, updateStatusSQL(table, statusType), status, id, enum.StatusPending, leaseToken)
+	retentionSeconds := int64(s.gapOpts.Retention(status) / time.Second)
+	result, err := s.execer().ExecContext(ctx, updateStatusSQL(table, statusType), status, retentionSeconds, id, enum.StatusPending, leaseToken)
 	if err != nil {
 		return err
 	}
@@ -342,21 +428,89 @@ func (s *Storage) updateStatus(ctx context.Context, base string, id uint, leaseT
 }
 
 func updateStatusSQL(table, statusType string) string {
-	return "UPDATE " + table + ` SET "status" = $1::` + statusType + `, "lease_token" = NULL, "lease_until" = NULL WHERE "id" = $2 AND "status" = $3::` + statusType + ` AND "lease_token" = $4`
+	return "UPDATE " + table + ` SET "status" = $1::` + statusType + `, "expired_at" = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second'), "lease_token" = NULL, "lease_until" = NULL WHERE "id" = $3 AND "status" = $4::` + statusType + ` AND "lease_token" = $5`
 }
 
-func NewStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *Storage {
-	s := &Storage{
+// DeleteExpiredPublishedBatch deletes one batch of expired terminal published messages.
+func (s *storageAdapter) DeleteExpiredPublishedBatch(ctx context.Context, batchSize int) (int64, error) {
+	return s.deleteExpiredBatch(ctx, "published", batchSize)
+}
+
+// DeleteExpiredReceivedBatch deletes one batch of expired terminal received messages.
+func (s *storageAdapter) DeleteExpiredReceivedBatch(ctx context.Context, batchSize int) (int64, error) {
+	return s.deleteExpiredBatch(ctx, "received", batchSize)
+}
+
+func (s *storageAdapter) deleteExpiredBatch(ctx context.Context, base string, batchSize int) (int64, error) {
+	table, err := s.quotedTable(base)
+	if err != nil {
+		return 0, err
+	}
+	statusType, err := s.statusType()
+	if err != nil {
+		return 0, err
+	}
+	result, err := s.execer().ExecContext(ctx, deleteExpiredSQL(table, statusType), enum.StatusSucceeded, enum.StatusFailed, batchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+func deleteExpiredSQL(table, statusType string) string {
+	return `WITH expired AS (` +
+		`SELECT "id" FROM ` + table + ` WHERE "expired_at" <= CURRENT_TIMESTAMP ` +
+		`AND "status" IN ($1::` + statusType + `, $2::` + statusType + `) ` +
+		`ORDER BY "expired_at", "id" LIMIT $3 FOR UPDATE SKIP LOCKED` +
+		`) DELETE FROM ` + table + ` AS target USING expired WHERE target."id" = expired."id"`
+}
+
+func (s *storageAdapter) scheduleRetry(ctx context.Context, base string, id uint, leaseToken string) error {
+	table, err := s.quotedTable(base)
+	if err != nil {
+		return err
+	}
+	statusType, err := s.statusType()
+	if err != nil {
+		return err
+	}
+	retryAfter := s.gapOpts.RetryInterval()
+	result, err := s.execer().ExecContext(ctx, retryAttemptSQL(table, statusType), int64(retryAfter/time.Second), id, enum.StatusPending, leaseToken)
+	if err != nil {
+		return err
+	}
+	if n, rowsErr := result.RowsAffected(); rowsErr != nil {
+		return rowsErr
+	} else if n == 0 {
+		return storage.ErrLeaseLost
+	}
+	if id != 0 {
+		slog.Debug("scheduled retry", slog.String("table", base), slog.Any("id", id), slog.Duration("retry_after", retryAfter))
+	}
+	return nil
+}
+
+func retryAttemptSQL(table, statusType string) string {
+	return "UPDATE " + table + ` SET "lease_token" = NULL, "lease_until" = NULL, "next_attempt_at" = CURRENT_TIMESTAMP + ($1 * INTERVAL '1 second') WHERE "id" = $2 AND "status" = $3::` + statusType + ` AND "lease_token" = $4`
+}
+
+func logSQL(opts *Options) bool {
+	return opts != nil && opts.Log
+}
+
+// newStorage creates a storage adapter.
+func newStorage(gapOpts *ingap.Options, opts *Options, db *sql.DB) *storageAdapter {
+	s := &storageAdapter{
 		gapOpts: gapOpts,
 		opts:    opts,
-		db:      db,
+		db:      xsql.WrapDB(db, logSQL(opts)),
 	}
 	var _ storage.Storage = s
 	return s
 }
 
-func (s *Storage) init() error {
-	quotedSchema, err := quoteIdent(s.opts.Schema)
+func (s *storageAdapter) init() error {
+	quotedSchema, err := xsql.Quote(xsql.Postgres, s.opts.Schema)
 	if err != nil {
 		return fmt.Errorf("schema: %w", err)
 	}
@@ -385,9 +539,6 @@ func (s *Storage) init() error {
 	if _, err = s.db.Exec(receivedCreateSQL(received, statusType)); err != nil {
 		return err
 	}
-	if err = s.migrateStatusType(context.Background(), []string{published, received}, statusType); err != nil {
-		return err
-	}
 
 	publishedIndex, err := claimIndexSQL(published, "idx_published_claim")
 	if err != nil {
@@ -400,83 +551,38 @@ func (s *Storage) init() error {
 	if _, err = s.db.Exec(publishedIndex); err != nil {
 		return err
 	}
-	_, err = s.db.Exec(receivedIndex)
+	if _, err = s.db.Exec(receivedIndex); err != nil {
+		return err
+	}
+	publishedCleanupIndex, err := cleanupIndexSQL(published, "idx_published_cleanup")
+	if err != nil {
+		return err
+	}
+	receivedCleanupIndex, err := cleanupIndexSQL(received, "idx_received_cleanup")
+	if err != nil {
+		return err
+	}
+	if _, err = s.db.Exec(publishedCleanupIndex); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(receivedCleanupIndex)
 	return err
 }
 
-func (s *Storage) migrateStatusType(ctx context.Context, tables []string, statusType string) (err error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
-
-	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, s.opts.Schema+".status_enum"); err != nil {
-		return err
-	}
-	var unexpected int
-	err = tx.QueryRowContext(ctx, `
-SELECT COUNT(*)
-FROM pg_enum e
-JOIN pg_type t ON t.oid = e.enumtypid
-JOIN pg_namespace n ON n.oid = t.typnamespace
-WHERE n.nspname = $1
-  AND t.typname = 'status_enum'
-  AND e.enumlabel NOT IN ('Pending', 'Succeeded', 'Failed')`, s.opts.Schema).Scan(&unexpected)
-	if err != nil {
-		return err
-	}
-	if unexpected == 0 {
-		return tx.Commit()
-	}
-
-	for _, table := range tables {
-		if _, err = tx.ExecContext(ctx,
-			"UPDATE "+table+` SET "status" = $1::`+statusType+` WHERE "status"::text NOT IN ($2, $3, $4)`,
-			enum.StatusPending, enum.StatusPending, enum.StatusSucceeded, enum.StatusFailed,
-		); err != nil {
-			return err
-		}
-		if _, err = tx.ExecContext(ctx,
-			"ALTER TABLE "+table+` ALTER COLUMN "status" TYPE text USING "status"::text`,
-		); err != nil {
-			return err
-		}
-	}
-	if _, err = tx.ExecContext(ctx, "DROP TYPE "+statusType); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, "CREATE TYPE "+statusType+" AS ENUM ('Pending', 'Succeeded', 'Failed')"); err != nil {
-		return err
-	}
-	for _, table := range tables {
-		if _, err = tx.ExecContext(ctx,
-			"ALTER TABLE "+table+` ALTER COLUMN "status" TYPE `+statusType+` USING "status"::`+statusType,
-		); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
-func (s *Storage) statusType() (string, error) {
-	schema, err := quoteIdent(s.opts.Schema)
+func (s *storageAdapter) statusType() (string, error) {
+	schema, err := xsql.Quote(xsql.Postgres, s.opts.Schema)
 	if err != nil {
 		return "", fmt.Errorf("schema: %w", err)
 	}
 	return schema + `."status_enum"`, nil
 }
 
-func (s *Storage) quotedTable(base string) (string, error) {
-	schema, err := quoteIdent(s.opts.Schema)
+func (s *storageAdapter) quotedTable(base string) (string, error) {
+	schema, err := xsql.Quote(xsql.Postgres, s.opts.Schema)
 	if err != nil {
 		return "", fmt.Errorf("schema: %w", err)
 	}
-	table, err := quoteIdent(base)
+	table, err := xsql.Quote(xsql.Postgres, base)
 	if err != nil {
 		return "", err
 	}

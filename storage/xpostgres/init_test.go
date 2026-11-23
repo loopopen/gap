@@ -1,0 +1,89 @@
+package xpostgres
+
+import (
+	"context"
+	"database/sql"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	ingap "github.com/loopopen/gap/internal/gap"
+	"github.com/loopopen/gap/storage"
+)
+
+func TestOpenPostgresEmptyDSN(t *testing.T) {
+	for _, dsn := range []string{"", " ", "\t"} {
+		db, err := openPostgres(context.Background(), dsn)
+		if err == nil || db != nil {
+			t.Fatalf("dsn %q: db=%v err=%v", dsn, db, err)
+		}
+		if !strings.Contains(err.Error(), "empty") {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestOpenPostgresPingFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	db, err := openPostgres(ctx, "postgres://root@127.0.0.1:1/gap?sslmode=disable&connect_timeout=1")
+	if err == nil || db != nil {
+		t.Fatalf("db=%v err=%v", db, err)
+	}
+}
+
+func TestCreateStorageEmptyDSN(t *testing.T) {
+	storOpts := &Options{Schema: "gap"}
+	opts := &ingap.Options{StorageOptions: storOpts}
+	opts.InitRuntime()
+	_, err := storOpts.OpenStorage(opts, storage.RoleData)
+	if err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatal(err)
+	}
+}
+
+func resetPools(t *testing.T) {
+	t.Helper()
+	registry.Reset()
+	t.Cleanup(registry.Reset)
+}
+
+func TestCreateStorageReleasesPoolWhenInitFails(t *testing.T) {
+	resetPools(t)
+	orig := openPoolDB
+	t.Cleanup(func() { openPoolDB = orig })
+
+	var opens atomic.Int32
+	var opened []*sql.DB
+	openPoolDB = func(context.Context, string, storage.Role) (*sql.DB, error) {
+		opens.Add(1)
+		db, err := sql.Open("pgx", "postgres://postgres@127.0.0.1:1/gap?sslmode=disable&connect_timeout=1")
+		opened = append(opened, db)
+		return db, err
+	}
+
+	storOpts := &Options{
+		Schema: "bad-schema",
+		DSN:    "dsn-init-fail",
+	}
+	opts := &ingap.Options{StorageOptions: storOpts}
+	opts.InitRuntime()
+	for range 2 {
+		_, err := storOpts.OpenStorage(opts, storage.RoleData)
+		if err == nil {
+			t.Fatal("expected init to fail")
+		}
+	}
+	if got := opens.Load(); got != 2 {
+		t.Fatalf("opens = %d", got)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	for _, db := range opened {
+		err := db.PingContext(ctx)
+		if err == nil || !strings.Contains(err.Error(), "database is closed") {
+			t.Fatalf("pool left open: %v", err)
+		}
+	}
+}

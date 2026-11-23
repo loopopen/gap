@@ -16,6 +16,9 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+var _ broker.Closer = (*Consumer)(nil)
+var _ broker.Consumer = (*Consumer)(nil)
+
 const corrid = internal.KeysCorrelationID
 
 type Consumer struct {
@@ -23,7 +26,7 @@ type Consumer struct {
 	opts    *Options
 	group   string
 	conn    *sharedConn
-	release func() error
+	release func(context.Context) error
 	mu      sync.Mutex
 	ch      *amqp.Channel
 	topics  map[string]struct{}
@@ -33,6 +36,7 @@ type Consumer struct {
 	ctag    string
 }
 
+// NewConsumer creates a broker consumer.
 func NewConsumer(gapOpts *ingap.Options, opts *Options, group string) *Consumer {
 	if group == "" {
 		panic("group should not be empty")
@@ -48,8 +52,6 @@ func NewConsumer(gapOpts *ingap.Options, opts *Options, group string) *Consumer 
 		q:       fmt.Sprintf("gap.%s.q.%s", gapOpts.Version, group),
 		group:   group,
 	}
-
-	var _ broker.Consumer = consumer
 	return consumer
 }
 
@@ -60,6 +62,7 @@ func (c *Consumer) init() error {
 	return err
 }
 
+// Subscribe subscribes the consumer to a topic.
 func (c *Consumer) Subscribe(_ context.Context, topic string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -87,6 +90,7 @@ func (c *Consumer) Subscribe(_ context.Context, topic string) error {
 	return nil
 }
 
+// Consume starts consuming broker messages.
 func (c *Consumer) Consume(ctx context.Context) (<-chan *entity.Envelope, error) {
 	enCh := make(chan *entity.Envelope, c.opts.PrefetchCount)
 
@@ -94,25 +98,40 @@ func (c *Consumer) Consume(ctx context.Context) (<-chan *entity.Envelope, error)
 		defer close(enCh)
 
 		for {
-			var deliCh <-chan amqp.Delivery
+			if ctx.Err() != nil {
+				return
+			}
+
 			ch, err := c.consumerChannel()
 			if err != nil {
 				if ctx.Err() != nil {
 					return
 				}
 				slog.Error("failed to open consumer channel", slog.Any("err", err))
-				goto RETRY
+				if !waitRetry(ctx) {
+					return
+				}
+				continue
 			}
 
-			deliCh, err = ch.ConsumeWithContext(
-				ctx,
+			// ConsumeWithContext cancels the consumer from another goroutine when
+			// ctx ends. Shutdown then calls Channel.Close on this same channel.
+			// The two calls share one reply mailbox and block each other.
+			deliCh, err := ch.Consume(
 				c.q,
 				c.consumerTag(),
 				false, false, false, false, nil,
 			)
 			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
 				slog.Error("rabbitmq: consume failed", slog.Any("err", err))
-				goto RETRY
+				c.invalidateChannel(ch)
+				if !waitRetry(ctx) {
+					return
+				}
+				continue
 			}
 
 			for deli := range deliCh {
@@ -129,18 +148,21 @@ func (c *Consumer) Consume(ctx context.Context) (<-chan *entity.Envelope, error)
 
 				select {
 				case <-ctx.Done():
+					// Consumer.Close owns Channel.Close during shutdown.
 					return
 				case enCh <- en:
 				}
 			}
 
-		RETRY:
-			c.invalidateChannel(ch)
-
-			select {
-			case <-ctx.Done():
+			// A broker-side close ends the range while intake is still active.
+			// Shutdown closes the channel itself; closing it here as well races
+			// with that call.
+			if ctx.Err() != nil {
 				return
-			case <-time.After(5 * time.Second):
+			}
+			c.invalidateChannel(ch)
+			if !waitRetry(ctx) {
+				return
 			}
 		}
 	}()
@@ -148,11 +170,22 @@ func (c *Consumer) Consume(ctx context.Context) (<-chan *entity.Envelope, error)
 	return enCh, nil
 }
 
+func waitRetry(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(5 * time.Second):
+		return true
+	}
+}
+
+// Commit acknowledges successful processing of a consumed message.
 func (c *Consumer) Commit(tag any) error {
 	deli, _ := tag.(amqp.Delivery)
 	return deli.Ack(false)
 }
 
+// Reject negatively acknowledges a consumed message.
 func (c *Consumer) Reject(tag any) error {
 	deli, _ := tag.(amqp.Delivery)
 	return deli.Nack(false, true)
@@ -245,7 +278,18 @@ func (c *Consumer) discardChannelLocked(ch *amqp.Channel) {
 	}
 }
 
+// Close releases resources held by the receiver.
 func (c *Consumer) Close() error {
+	return c.CloseContext(context.Background())
+}
+
+// CloseContext closes the consumer channel and releases the shared connection.
+// Channel.Close has no deadline of its own, so the shutdown context bounds it.
+func (c *Consumer) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
@@ -258,12 +302,10 @@ func (c *Consumer) Close() error {
 
 	var closeErr error
 	if ch != nil && !ch.IsClosed() {
-		closeErr = ch.Close()
+		closeErr = callWithin(ctx, ch.Close)
 	}
 	if c.release != nil {
-		closeErr = errors.Join(closeErr, c.release())
+		closeErr = errors.Join(closeErr, c.release(ctx))
 	}
 	return closeErr
 }
-
-var _ broker.Closer = (*Consumer)(nil)

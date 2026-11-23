@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/loopopen/gap/internal/entity"
+	"github.com/loopopen/gap/storage/internal/xsql"
+	dbmodel "github.com/loopopen/gap/storage/xgorm/internal/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -15,16 +17,21 @@ const (
 	DefPageSize int = 20
 )
 
-func (s *Storage) DashboardStats(ctx context.Context) (*entity.DashboardStats, error) {
-	published, err := messageStats(s.db.WithContext(ctx).Model(&Published{}))
+// DashboardStats returns aggregate delivery statistics for the dashboard.
+func (s *storageAdapter) DashboardStats(ctx context.Context) (*entity.DashboardStats, error) {
+	published, err := messageStats(s.db.WithContext(ctx).Model(&dbmodel.Published{}))
 	if err != nil {
 		return nil, err
 	}
-	received, err := messageStats(s.db.WithContext(ctx).Model(&Received{}))
+	received, err := messageStats(s.db.WithContext(ctx).Model(&dbmodel.Received{}))
 	if err != nil {
 		return nil, err
 	}
-	return &entity.DashboardStats{Published: published, Received: received}, nil
+	groups, err := s.receivedGroupStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &entity.DashboardStats{Published: published, Received: received, Groups: groups}, nil
 }
 
 func messageStats(db *gorm.DB) (entity.MessageStats, error) {
@@ -61,8 +68,70 @@ func messageStats(db *gorm.DB) (entity.MessageStats, error) {
 	}, nil
 }
 
-func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
-	var pub *Published
+func (s *storageAdapter) receivedGroupStats(ctx context.Context) ([]entity.GroupMessageStats, error) {
+	var rows []groupMessageStatsRow
+	query, err := receivedGroupStatsQuery(s.db.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	err = query.Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	groups := make([]entity.GroupMessageStats, 0, len(rows))
+	for _, row := range rows {
+		groups = append(groups, entity.GroupMessageStats{
+			Group: row.Group,
+			MessageStats: entity.MessageStats{
+				Total:         row.Total,
+				Pending:       row.Pending,
+				Succeeded:     row.Succeeded,
+				Failed:        row.Failed,
+				Retries:       row.Retries,
+				LastActivity:  row.LastActivity,
+				OldestBacklog: row.OldestBacklog,
+			},
+		})
+	}
+	return groups, nil
+}
+
+type groupMessageStatsRow struct {
+	Group         string `gorm:"column:grp"`
+	Total         int64
+	Pending       int64
+	Succeeded     int64
+	Failed        int64
+	Retries       int64
+	LastActivity  *time.Time
+	OldestBacklog *time.Time
+}
+
+func receivedGroupStatsQuery(db *gorm.DB) (*gorm.DB, error) {
+	col, err := quotedGroupColumn(db.Dialector.Name())
+	if err != nil {
+		return nil, err
+	}
+	return db.Model(&dbmodel.Received{}).
+		Select(col + ` AS grp,
+		COUNT(*) AS total,
+		COALESCE(SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END), 0) AS pending,
+		COALESCE(SUM(CASE WHEN status = 'Succeeded' THEN 1 ELSE 0 END), 0) AS succeeded,
+		COALESCE(SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END), 0) AS failed,
+		COALESCE(SUM(retries), 0) AS retries,
+		MAX(created_at) AS last_activity,
+		MIN(CASE WHEN status = 'Pending' THEN created_at END) AS oldest_backlog`).
+		Group("group").
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "group"}}), nil
+}
+
+func quotedGroupColumn(d xsql.Dialect) (string, error) {
+	return xsql.Quote(d, "group")
+}
+
+// GetPublishedByID returns a published message by ID.
+func (s *storageAdapter) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelope, error) {
+	var pub *dbmodel.Published
 	err := s.db.WithContext(ctx).Take(&pub, id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -71,15 +140,16 @@ func (s *Storage) GetPublishedByID(ctx context.Context, id uint) (*entity.Envelo
 		return nil, err
 	}
 	en := pub.ToEntity()
-	if pub.err != nil {
-		return nil, pub.err
+	if pub.Err() != nil {
+		return nil, pub.Err()
 	}
 	return en, nil
 }
 
-func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
-	var pubs []*Published
-	db := s.db.WithContext(ctx).Model(&Published{})
+// QueryPublished returns one filtered page of published messages.
+func (s *storageAdapter) QueryPublished(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
+	var pubs []*dbmodel.Published
+	db := s.db.WithContext(ctx).Model(&dbmodel.Published{})
 	db = applyMessageFilters(db, filter, false)
 
 	var count int64
@@ -96,7 +166,7 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 		return nil, nil, err
 	}
 
-	es, err := pubsToEntities(pubs)
+	es, err := dbmodel.PublishedToEntities(pubs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -104,9 +174,10 @@ func (s *Storage) QueryPublished(ctx context.Context, filter *entity.MessageFilt
 	return es, &pg, nil
 }
 
-func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
-	var recs []*Received
-	db := s.db.WithContext(ctx).Model(&Received{})
+// QueryReceived returns one filtered page of received messages.
+func (s *storageAdapter) QueryReceived(ctx context.Context, filter *entity.MessageFilter, page *entity.Pagination) ([]*entity.Envelope, *entity.Pagination, error) {
+	var recs []*dbmodel.Received
+	db := s.db.WithContext(ctx).Model(&dbmodel.Received{})
 	db = applyMessageFilters(db, filter, true)
 
 	var count int64
@@ -123,7 +194,7 @@ func (s *Storage) QueryReceived(ctx context.Context, filter *entity.MessageFilte
 		return nil, nil, err
 	}
 
-	es, err := recsToEntities(recs)
+	es, err := dbmodel.ReceivedToEntities(recs)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -28,9 +28,8 @@ func main() {
 	}))
 
 	g := gap.New(
-		gap.Context(ctx),
 		xgorm.UseGorm(
-			xgorm.DB(db),
+			xgorm.DSN(dsn, mysql.Open),
 		),
 	)
 	pub := g.NewEventPublisher(
@@ -42,7 +41,7 @@ func main() {
 	mySvc := service.NewMySvc(db, pub)
 
 	g.Subscribe(
-		pub,
+		gap.From(pub),
 		gap.Inject(mySvc),
 	)
 

@@ -12,7 +12,13 @@ type MessageStats struct {
 	OldestBacklog *time.Time `json:"oldestBacklog"`
 }
 
+type GroupMessageStats struct {
+	Group string `json:"group"`
+	MessageStats
+}
+
 type DashboardStats struct {
-	Published MessageStats `json:"published"`
-	Received  MessageStats `json:"received"`
+	Published MessageStats        `json:"published"`
+	Received  MessageStats        `json:"received"`
+	Groups    []GroupMessageStats `json:"groups"`
 }

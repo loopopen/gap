@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.work
           cache: true
@@ -30,8 +30,24 @@ jobs:
       - name: Install C compiler
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential
 
+      - name: Verify generated code
+        run: |
+          make generate
+          git diff --exit-code
+          if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "Code generation created untracked files:" >&2
+            git status --short --untracked-files=all >&2
+            exit 1
+          fi
+
       - name: Test modules independently
         run: make test-isolated
+
+      - name: Race tests
+        run: make test-race
+
+      - name: Test storage contracts
+        run: make test-storage
 
   dashboard:
     name: Dashboard

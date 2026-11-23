@@ -7,13 +7,14 @@ import (
 
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
+	"github.com/loopopen/gap/storage/internal/xsql"
 )
 
 func TestAddMessageFilters(t *testing.T) {
 	from := time.Date(2026, 10, 17, 9, 30, 0, 0, time.UTC)
 	to := from.Add(time.Hour)
 	id := uint(1844674407370955)
-	h := NewWhereHelper()
+	h := xsql.NewWhereBuilder(xsql.MySQL)
 	addMessageFilters(h, &entity.MessageFilter{
 		ID:          &id,
 		Status:      enum.StatusPending,

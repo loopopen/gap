@@ -3,9 +3,11 @@ package plugin
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal/entity"
@@ -53,6 +55,7 @@ func (*lifecycleBrokerOptionsStub) PluginType() enum.Plugin { return enum.Plugin
 func (o *lifecycleBrokerOptionsStub) OpenProducer(*ingap.Options) (broker.Producer, error) {
 	return o.producer, nil
 }
+
 func (o *lifecycleBrokerOptionsStub) OpenConsumer(*ingap.Options, string) (broker.Consumer, error) {
 	return o.consumer, nil
 }
@@ -61,9 +64,9 @@ func TestBrokerClientsCloseWithRuntimeResources(t *testing.T) {
 	producer := &closableProducerStub{closed: make(chan struct{})}
 	consumer := &closableConsumerStub{closed: make(chan struct{})}
 	plugin := &lifecycleBrokerOptionsStub{producer: producer, consumer: consumer}
-	gapOpts := &ingap.Options{Context: context.Background()}
-	gapOpts.InitializeRuntime()
-	brokerOpts := &ingap.BrokerOptions{Plugin: plugin}
+	gapOpts := new(ingap.Options).With()
+	gapOpts.InitRuntime()
+	brokerOpts := &ingap.BrokerOptions{BrokerName: "orders", Plugin: plugin}
 
 	if got := MustGetProducer(gapOpts, brokerOpts); got != producer {
 		t.Fatal("unexpected producer")
@@ -71,7 +74,7 @@ func TestBrokerClientsCloseWithRuntimeResources(t *testing.T) {
 	if got := MustGetConsumer(gapOpts, brokerOpts, "group"); got != consumer {
 		t.Fatal("unexpected consumer")
 	}
-	if err := gapOpts.CloseResources(); err != nil {
+	if err := gapOpts.CloseResources(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -87,6 +90,30 @@ func TestBrokerClientsCloseWithRuntimeResources(t *testing.T) {
 	}
 }
 
+type blockingCloser struct{}
+
+func (blockingCloser) Close() error {
+	<-make(chan struct{})
+	return nil
+}
+
+func TestCloseResourcesReturnsWhenCloseBlocks(t *testing.T) {
+	gapOpts := &ingap.Options{}
+	gapOpts.InitRuntime()
+	gapOpts.RegisterCloser(blockingCloser{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	err := gapOpts.CloseResources(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("CloseResources() error = %v, want deadline exceeded", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("CloseResources blocked for %s", elapsed)
+	}
+}
+
 func (*brokerOptionsStub) PluginType() enum.Plugin { return enum.PluginRabbitMQ }
 
 func (*brokerOptionsStub) OpenProducer(*ingap.Options) (broker.Producer, error) {
@@ -97,7 +124,7 @@ func (*brokerOptionsStub) OpenConsumer(*ingap.Options, string) (broker.Consumer,
 	return nil, nil
 }
 
-func (o *brokerOptionsStub) ConfigIdentity() string {
+func (o *brokerOptionsStub) ConfigID() string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(o.endpoint)))
 }
 
@@ -108,8 +135,8 @@ func TestBrokerNameIsIndependentOfBrokerConfiguration(t *testing.T) {
 	if got, want := BrokerName(first), BrokerName(second); got != want {
 		t.Fatalf("BrokerName changed with endpoint: %q != %q", got, want)
 	}
-	if BrokerConfigIdentity(first) == BrokerConfigIdentity(second) {
-		t.Fatal("config identity should change with endpoint")
+	if BrokerConfigID(first) == BrokerConfigID(second) {
+		t.Fatal("config ID should change with endpoint")
 	}
 }
 
