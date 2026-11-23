@@ -4,6 +4,8 @@
 
 GAP is a lightweight, event-driven messaging library for Go. It uses the outbox pattern, so a message is written in the same database transaction as your data, then delivered once that transaction commits. It speaks RabbitMQ and Kafka today, and it can store messages in MySQL or in any database GORM already supports. More brokers and databases are part of the plan. The library is shaped so those can be added without tearing up what you already have.
 
+v1.0.0 is the stable release. Changes are listed in [CHANGELOG.md](CHANGELOG.md). Upgrading from v1.0.0-beta.7 is described in [UPGRADING.md](UPGRADING.md).
+
 ## Operational Dashboard
 
 Monitor message delivery at a glance with the built-in operational dashboard. See publishing and consumption health, success rates, in-flight work, failures, backlog age, and active runtime components from one place.
