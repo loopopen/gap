@@ -9,7 +9,7 @@ import (
 	"github.com/loopopen/gap/internal/txer"
 )
 
-const version = "v1.0.0-beta.7"
+const version = "v1.0.0-beta.8"
 
 // Header names written by GAP. These strings are part of the v1 message format.
 const (
