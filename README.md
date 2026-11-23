@@ -189,6 +189,46 @@ Use `gap.SucceededRetentionSeconds`, `gap.FailedRetentionSeconds`,
 `gap.CleanupTimeoutSeconds` to tune retention and cleanup. Pass
 `gap.CleanupEnabled(false)` when cleanup is managed externally.
 
+## Routing
+
+A runtime claims only routes it has registered.
+
+A published row is claimed only when its `broker_name` matches a publisher in that process. A received row is claimed only when its `group` and `broker_name` match a handler registered through `Subscribe` in that process. The broker name is the value passed to `gap.BrokerName`. When that option is omitted, the name is the broker plugin name, such as `RabbitMQ` or `Kafka`. A handler that does not set a group, including `HandleTopic`, uses `gap.DefaultGroup`, which is `default` unless you change it. `HandleTopicWithinGroup`, and generated code that already names a group, keep that group. One broker name cannot be registered with two different connection settings.
+
+GAP has no global route directory. A row whose broker name, or whose group and broker name, is not registered by a running instance stays `Pending`. A missing route is not written as `Failed`. After a row is claimed, a process that no longer has the sender for that broker name, or the handler for that broker name and group, releases the row back to `Pending`. A subscriber that is registered for the group but has no handler for the topic is a permanent error, and that row becomes `Failed`.
+
+A claim also requires the row's `version` to equal the runtime's message version. That version defaults to `v1` and is changed with `gap.Version`. It isolates persisted messages. It is not the module version.
+
+## Lease, retry, and status
+
+An inserted row starts as `Pending`. The lease is calculated in that `INSERT` from the database clock: `lease_until` is the database's current timestamp plus `LeaseTTL`, which is 180 seconds by default. The clock therefore starts inside the caller's transaction. If the transaction stays open longer than `LeaseTTL`, the lease can already be expired when it commits. The fast path can still deliver the message it holds, and a poller can claim the same row. That is one extra delivery, and it remains at-least-once. A later status update must present the lease token. A token that no longer owns the row returns `ErrLeaseLost` and does not overwrite the newer owner. v1 keeps this insert-time lease.
+
+While a message is waiting in memory or being sent or handled, the runtime renews its lease around half of `LeaseTTL`. The database clock supplies the new deadline. If storage rejects the renewal, that attempt is skipped and writes no status.
+
+A claim takes due `Pending` rows whose lease is empty or expired, whose `retries` are still below `MaxRetries` (30 by default), and whose route this process owns. The claim adds one to `retries` and installs a new lease. The poll runs every `PumpInterval`, which is 1 second by default.
+
+- The broker accepts the message, or the handler returns nil: the row becomes `Succeeded` and the lease is cleared.
+- The send or the handler returns an ordinary error: the row stays `Pending`, the lease is cleared, and `next_attempt_at` becomes the database time plus `RetryInterval` (10 seconds by default).
+- The error is wrapped with `gap.Permanent`, the handler panics, the payload is not valid JSON, or the registered subscriber has no handler for the topic: the row becomes `Failed`.
+- `retries` has reached `MaxRetries` when that result is recorded, or a later claim finds a due, unleased row that has reached `MaxRetries`: the row becomes `Failed`.
+- The sender or the group handler is no longer registered: the row returns to `Pending`.
+
+`Succeeded` and `Failed` are terminal. Cleanup never deletes `Pending`.
+
+## Schema
+
+The `CREATE` statements run by `storage/xmysql`, `storage/xpostgres`, and `storage/xgorm` when they open are the v1 initial schema. Their DDL tests lock the columns and claim indexes. Opening storage creates missing tables and indexes. It does not change a table that already exists.
+
+Releases before v1.0.0 do not include a migration. A database created by those statements is the v1 baseline.
+
+After v1.0.0, a change to these tables is shipped by the storage module that owns them. The application runs that migration as part of upgrading the module. The core module and the broker modules do not migrate these tables, and `CREATE ... IF NOT EXISTS` does not alter an existing table.
+
+## Versions
+
+One GAP release tags the core module and every bundled broker and storage module with the same version. Each of those modules requires that core version. Require the same version of `github.com/loopopen/gap` and of every `github.com/loopopen/gap/broker/...` or `github.com/loopopen/gap/storage/...` module the application imports. Combining a core module with a broker or storage module from another release is not supported, because those modules share internal contracts.
+
+Throughout v1, the application API, the status rules above, and this schema stay compatible. A schema change comes with the storage module's migration. An incompatible change to the application API is a new major version.
+
 ## Usage Examples
 
 For a complete working example, see [`./examples/rabbitmq-gorm-mysql-example`](./examples/rabbitmq-gorm-mysql-example).
@@ -205,6 +245,10 @@ go run .
 ```
 
 ## API Reference
+
+The types, functions, and option functions listed here are the v1 application API. `gap.Permanent` marks an error that must not be retried. `gap.KeysMessageID`, `gap.KeysMessageType`, `gap.KeysGroup`, `gap.KeysCorrelationID`, `gap.KeysBrokerName`, and `gap.KeysBrokerType` are the header names GAP stores and delivers.
+
+`storage.TxerBase` is the supported base for an application transaction. The `storage.Storage` methods and the `broker` driver interfaces are the contract implemented by the bundled modules; they stay compatible within one GAP release. Code generated by `gapc` is compatible with the `gapc` from that same release. Regenerate it after upgrading.
 
 ### Publishers
 

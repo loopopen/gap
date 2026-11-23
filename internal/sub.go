@@ -56,7 +56,11 @@ func (g *GroupedSubs) SubscribeAll(gapOpts *ingap.Options, brokerOpts *ingap.Bro
 }
 
 func (g *GroupedSubs) subscribeOne(gapOpts *ingap.Options, brokerOpts *ingap.BrokerOptions, stor storage.Storage, messagePump *pump.Pump, opts *ingap.HandlerOptions) error {
-	group := opts.Group
+	groupOpts := opts.GroupOptions
+	if groupOpts.Group == "" && gapOpts != nil {
+		groupOpts.Group = gapOpts.DefaultGroup
+	}
+	group := groupOpts.Group
 	brokerName := plugin.BrokerName(brokerOpts)
 	key := brokerName + "\x00" + group
 
@@ -67,7 +71,7 @@ func (g *GroupedSubs) subscribeOne(gapOpts *ingap.Options, brokerOpts *ingap.Bro
 			panic("consumer broker must not be nil")
 		}
 
-		sub = NewSub(gapOpts, brokerOpts, &opts.GroupOptions, consumer, stor, messagePump)
+		sub = NewSub(gapOpts, brokerOpts, &groupOpts, consumer, stor, messagePump)
 		g.subs[key] = sub
 	}
 	err := sub.Subscribe(opts.Topic, opts.Handler)

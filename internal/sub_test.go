@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loopopen/gap/broker"
 	"github.com/loopopen/gap/internal/entity"
 	"github.com/loopopen/gap/internal/enum"
 	"github.com/loopopen/gap/internal/errx"
@@ -184,6 +185,55 @@ func TestHandleAndUpdateFailsPermanentAndExhaustedErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEmptyHandlerGroupUsesDefaultGroup(t *testing.T) {
+	gapOpts := new(ingap.Options).With(ingap.DefaultGroup("billing"))
+	brokerPlugin := &recordingBroker{}
+	subs := NewGroupedSubs()
+	subs.AddHandlerOtps([]ingap.HandlerOptions{{
+		Topic:   "orders",
+		Handler: func(context.Context, []byte, map[string]string) error { return nil },
+	}})
+	if err := subs.SubscribeAll(gapOpts, &ingap.BrokerOptions{Plugin: brokerPlugin}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if brokerPlugin.group != "billing" {
+		t.Fatalf("consumer group = %q, want billing", brokerPlugin.group)
+	}
+	if subs.subs["Kafka\x00billing"] == nil {
+		t.Fatal("handler was not registered under the default group")
+	}
+}
+
+func TestExplicitHandlerGroupIsKept(t *testing.T) {
+	gapOpts := new(ingap.Options).With(ingap.DefaultGroup("billing"))
+	brokerPlugin := &recordingBroker{}
+	subs := NewGroupedSubs()
+	subs.AddHandlerOtps([]ingap.HandlerOptions{{
+		GroupOptions: ingap.GroupOptions{Group: "shipping"},
+		Topic:        "orders",
+		Handler:      func(context.Context, []byte, map[string]string) error { return nil },
+	}})
+	if err := subs.SubscribeAll(gapOpts, &ingap.BrokerOptions{Plugin: brokerPlugin}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if brokerPlugin.group != "shipping" {
+		t.Fatalf("consumer group = %q, want shipping", brokerPlugin.group)
+	}
+}
+
+type recordingBroker struct {
+	group string
+}
+
+func (recordingBroker) PluginType() enum.Plugin { return enum.PluginKafka }
+func (recordingBroker) OpenProducer(*ingap.Options) (broker.Producer, error) {
+	return nil, nil
+}
+func (b *recordingBroker) OpenConsumer(_ *ingap.Options, group string) (broker.Consumer, error) {
+	b.group = group
+	return &consumerStub{}, nil
 }
 
 func receivedSub(stor storage.Storage, handler ingap.Handler[[]byte]) *Sub {

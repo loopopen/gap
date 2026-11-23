@@ -11,6 +11,7 @@ import (
 
 const version = "v1.0.0-beta.7"
 
+// Header names written by GAP. These strings are part of the v1 message format.
 const (
 	KeysMessageID     = internal.KeysMessageID
 	KeysMessageType   = internal.KeysMessageType
@@ -31,8 +32,8 @@ type Event = internal.Event
 
 type EventPublisher = internal.EventPublisher
 
-type OptionsGetter internal.OptionsGetter
-
+// BrokerOptionsGetter is implemented by a publisher. [From] copies its broker
+// configuration. This is part of the v1 application API.
 type BrokerOptionsGetter internal.BrokerOptionsGetter
 
 type Handler[T any] = ingap.Handler[T]

@@ -25,6 +25,10 @@ const (
 	RoleDashboard
 )
 
+// Storage is the v1 contract between the core module and the bundled storage
+// modules. Application code configures those modules with their option
+// functions and does not call Storage directly. The method set stays compatible
+// within v1; a change is released together with the core and every storage module.
 type Storage interface {
 	// Bind returns a Storage that uses the caller's transaction.
 	Bind(txer txer.Txer) (Storage, error)

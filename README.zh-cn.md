@@ -182,6 +182,46 @@ GAP 会分批自动删除终态消息记录，`Pending` 消息永远不会被自
 
 可以使用 `gap.SucceededRetentionSeconds`、`gap.FailedRetentionSeconds`、`gap.CleanupIntervalSeconds`、`gap.CleanupBatchSize` 和 `gap.CleanupTimeoutSeconds` 调整保留及清理策略。如果清理由外部任务负责，可传入 `gap.CleanupEnabled(false)`。
 
+## 路由
+
+一个 Runtime 只领取自己注册过的路由。
+
+`published` 行只会被 `broker_name` 与本进程某个 publisher 相同的实例领取。`received` 行只会被 `group` 和 `broker_name` 都与本进程 `Subscribe` 注册的 handler 相同的实例领取。broker name 使用 `gap.BrokerName` 传入的值；没有传入时，使用 broker 插件名，例如 `RabbitMQ` 或 `Kafka`。没有填写 group 的 handler，包括 `HandleTopic`，使用 `gap.DefaultGroup`；除非改过，否则是 `default`。`HandleTopicWithinGroup` 以及已经写了 group 的生成代码保留那个 group。同一个 broker name 不能同时注册两套不同的连接配置。
+
+GAP 没有全局路由目录。没有任何正在运行的实例注册该 broker name，或该 group 与 broker name 时，行保持 `Pending`，不会因为路由不存在而写成 `Failed`。行被领取之后，如果进程里已经没有对应 broker name 的 sender，或没有对应 broker name 与 group 的 handler，Runtime 把它释放回 `Pending`。group 已经注册，但其中没有这个 topic 的 handler，这是不可重试错误，行会变成 `Failed`。
+
+领取还要求行上的 `version` 等于 Runtime 的消息版本。消息版本默认是 `v1`，用 `gap.Version` 修改。它用来隔离已持久化的消息，不是模块版本。
+
+## 租约、重试和状态
+
+插入的行一开始是 `Pending`。租约在这条 `INSERT` 里按数据库时钟计算：`lease_until` 是数据库当前时间加上 `LeaseTTL`，默认 180 秒。计时因此从调用方的事务内部开始。事务打开的时间超过 `LeaseTTL` 时，提交的那一刻租约可能已经过期。快路径仍可能投递它正持有的消息，轮询也可能领取同一行。这会多投递一次，语义仍然是 at-least-once。之后的状态更新必须带上租约 token。token 已经不是该行的当前持有者时返回 `ErrLeaseLost`，不能覆盖新持有者写入的状态。v1 保持从 INSERT 起算租约。
+
+消息在内存中等待发送或处理，或者正在发送或处理时，Runtime 在大约半个 `LeaseTTL` 后续租。新的截止时间使用数据库时钟。存储拒绝续租时，这次尝试被跳过，不写状态。
+
+领取选择到期的 `Pending` 行：租约为空或已过期，`retries` 仍小于 `MaxRetries`（默认 30），并且路由属于本进程。领取时 `retries` 加一，并装上新租约。轮询间隔是 `PumpInterval`，默认 1 秒。
+
+- Broker 接受了消息，或 Handler 返回 nil：行变成 `Succeeded`，租约清除。
+- 发送或 Handler 返回普通错误：行保持 `Pending`，租约清除，`next_attempt_at` 变成数据库时间加上 `RetryInterval`（默认 10 秒）。
+- 错误用 `gap.Permanent` 包装、Handler panic、payload 不是合法 JSON，或已注册的订阅者没有这个 topic 的 handler：行变成 `Failed`。
+- 记录结果时 `retries` 已经达到 `MaxRetries`，或之后的领取发现到期且没有有效租约的行已经达到 `MaxRetries`：行变成 `Failed`。
+- sender 或 group handler 已经不再注册：行回到 `Pending`。
+
+`Succeeded` 和 `Failed` 是终态。清理不会删除 `Pending`。
+
+## Schema
+
+`storage/xmysql`、`storage/xpostgres` 和 `storage/xgorm` 打开时执行的 `CREATE` 语句就是 v1 初始 schema。DDL 测试锁住其中的列和领取索引。打开 storage 会补齐缺少的表和索引，不会修改已经存在的表。
+
+v1.0.0 之前的版本不提供 migration。由这些语句创建的数据库就是 v1 基线。
+
+v1.0.0 之后，这些表的结构变更由拥有该表的 storage 模块随发布提供 migration。应用在升级该模块时执行这份 migration。根模块和 broker 模块不迁移这些表。`CREATE ... IF NOT EXISTS` 也不会修改已有的表。
+
+## 版本
+
+一次 GAP 发布用同一个版本给根模块和所有附带的 broker、storage 模块打 tag。这些模块会 require 同一个根模块版本。应用里的 `github.com/loopopen/gap`，以及它 import 的每个 `github.com/loopopen/gap/broker/...` 或 `github.com/loopopen/gap/storage/...`，使用同一个版本。根模块配上另一次发布的 broker 或 storage 模块不受支持，因为这些模块共用内部契约。
+
+在整个 v1 期间，应用 API、上面的状态规则和这份 schema 保持兼容。schema 变更带有 storage 模块的 migration。不兼容的应用 API 变更属于新的主版本。
+
 ## 使用示例
 
 完整可运行示例请参见 [`./examples/rabbitmq-gorm-mysql-example`](./examples/rabbitmq-gorm-mysql-example)。
@@ -198,6 +238,10 @@ go run .
 ```
 
 ## API 参考
+
+这里列出的类型、函数和 option 函数是 v1 应用 API。`gap.Permanent` 表示这个错误不能重试。`gap.KeysMessageID`、`gap.KeysMessageType`、`gap.KeysGroup`、`gap.KeysCorrelationID`、`gap.KeysBrokerName` 和 `gap.KeysBrokerType` 是 GAP 保存并投递的 header 名。
+
+应用自己的事务以 `storage.TxerBase` 为基座。`storage.Storage` 的方法和 `broker` 的驱动接口由附带的模块实现，在同一次 GAP 发布内保持兼容。`gapc` 生成的代码与同一次发布里的 `gapc` 兼容。升级之后需要重新生成。
 
 ### 发布者
 
