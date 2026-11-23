@@ -20,7 +20,7 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/klauspost/compress v1.15.9 // indirect
-	github.com/loopopen/shoot v1.0.0 // indirect
+	github.com/loopopen/shoot v1.1.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.15 // indirect
 	github.com/segmentio/kafka-go v0.4.50 // indirect
 	golang.org/x/crypto v0.31.0 // indirect

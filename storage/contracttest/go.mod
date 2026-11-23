@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	github.com/loopopen/gap v1.0.0
+	github.com/loopopen/gap/broker/xrabbitmq v1.0.0-beta.7
 	github.com/loopopen/gap/storage/xgorm v1.0.0
 	github.com/loopopen/gap/storage/xmysql v1.0.0
 	github.com/loopopen/gap/storage/xpostgres v1.0.0
@@ -23,13 +24,16 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/loopopen/shoot v1.0.0 // indirect
+	github.com/loopopen/shoot v1.1.0 // indirect
+	github.com/rabbitmq/amqp091-go v1.15.0 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 )
 
 replace github.com/loopopen/gap => ../..
+
+replace github.com/loopopen/gap/broker/xrabbitmq => ../../broker/xrabbitmq
 
 replace github.com/loopopen/gap/storage/xgorm => ../xgorm
 

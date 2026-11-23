@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/loopopen/gap v1.0.0-beta.7
-	github.com/loopopen/shoot v1.0.0
+	github.com/loopopen/shoot v1.1.0
 	github.com/rabbitmq/amqp091-go v1.15.0
 )
 

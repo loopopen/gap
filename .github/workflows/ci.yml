@@ -43,6 +43,9 @@ jobs:
       - name: Test modules independently
         run: make test-isolated
 
+      - name: Race tests
+        run: make test-race
+
       - name: Test storage contracts
         run: make test-storage
 

@@ -28,3 +28,17 @@ services:
       timeout: 2s
       retries: 30
 
+  rabbitmq:
+    image: rabbitmq:3.13-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: gap
+      RABBITMQ_DEFAULT_PASS: gap
+    ports:
+      - "${GAP_TEST_RABBITMQ_PORT:-5673}:5672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+

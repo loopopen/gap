@@ -6,7 +6,7 @@ tool github.com/loopopen/shoot/cmd/shoot
 
 require (
 	github.com/bwmarrin/snowflake v0.3.0
-	github.com/loopopen/shoot v1.0.0
+	github.com/loopopen/shoot v1.1.0
 	golang.org/x/tools v0.42.0
 )
 
